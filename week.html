@@ -254,6 +254,25 @@ var DAY_AR=['الأحد','الاثنين','الثلاثاء','الأربعاء',
    ⚠️ If Emad calls it 401 (its apartment number) rather than زايد 2000, change the value here. */
 var FLAT_AR={ 'Zayed 2000':'زايد 2000' };
 function flatAr(f){ return FLAT_AR[f] || f; }
+/* Times in the ARABIC message: 12-hour with the part of day named the way it's said in Egypt —
+   صباحاً / ظهراً / عصراً / مساءً / ليلاً — not just morning-or-evening (4pm is عصراً, not مساءً,
+   and noon is ظهراً, not مساءً). Boundaries below; adjust them here if you'd shift any.
+   The app's own UI stays 24-hour, and the time SORT key stays 24-hour too (hm()) — sorting on a
+   12-hour string would put "1 مساءً" before "9 صباحاً". Whole hours drop the ":00". */
+function partOfDayAr(H){
+  if(H < 5)  return 'ليلاً';      // after midnight
+  if(H < 12) return 'صباحاً';     // 5:00 – 11:59
+  if(H < 15) return 'ظهراً';      // 12:00 – 14:59
+  if(H < 18) return 'عصراً';      // 15:00 – 17:59
+  return 'مساءً';                 // 18:00 – 23:59
+}
+function hmAr(t){
+  var s=hm(t); if(!s) return '';
+  var p=s.split(':'), H=parseInt(p[0],10), M=parseInt(p[1]||'0',10);
+  if(isNaN(H)) return s;
+  var h12=H%12; if(h12===0) h12=12;
+  return h12 + (M ? ':'+('0'+M).slice(-2) : '') + ' ' + partOfDayAr(H);
+}
 var DAY_EN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 function render(){
@@ -381,9 +400,9 @@ function waLine(c){
   var label = isStayClean(c) ? 'نظافة اثناء وجود ضيف'
             : c.type==='checkout' ? 'تنظيف خروج'
             : c.type==='revision' ? 'إعادة' : 'تنظيف إضافي';
-  var t='• شقة '+flatAr(c.flat)+': '+label+' الساعة '+hm(c.time);
+  var t='• شقة '+flatAr(c.flat)+': '+label+' الساعة '+hmAr(c.time);
   if(c.type==='checkout') t+=' — كود الباب '+c.code;
-  if(c.inTime) t+=' — دخول ضيف الساعة '+hm(c.inTime);
+  if(c.inTime) t+=' — دخول ضيف الساعة '+hmAr(c.inTime);
   return t+'\n';
 }
 function waSection(ws,list){
@@ -402,7 +421,7 @@ function waSection(ws,list){
     var items=[];
     dayCleans.forEach(function(c){ items.push({ at: hm(c.time) || '99:99', line: waLine(c) }); });
     dayReps.forEach(function(r){
-      var line='• شقة '+flatAr(r.flat)+': صيانة '+r.trade+(r.time?' الساعة '+hm(r.time):'')+(r.what?' — '+r.what:'');
+      var line='• شقة '+flatAr(r.flat)+': صيانة '+r.trade+(r.time?' الساعة '+hmAr(r.time):'')+(r.what?' — '+r.what:'');
       if(occStayOn(r.flat,d)) line+=' — الضيف موجود';
       items.push({ at: hm(r.time) || '99:99', line: line+'\n' });
     });
