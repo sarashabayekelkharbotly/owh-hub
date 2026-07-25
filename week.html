@@ -249,6 +249,11 @@ function buildRow(f,days){
 /* ---------- render ---------- */
 var TYPES=['checkout','revision','midstay','weekly','custom'];
 var DAY_AR=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+/* Flat names as written in the ARABIC WhatsApp message. Only names containing real English words
+   need an entry — 8A / 17A / 28A / 17B are apartment codes, not words, and read the same in Arabic.
+   ⚠️ If Emad calls it 401 (its apartment number) rather than زايد 2000, change the value here. */
+var FLAT_AR={ 'Zayed 2000':'زايد 2000' };
+function flatAr(f){ return FLAT_AR[f] || f; }
 var DAY_EN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 function render(){
@@ -328,9 +333,9 @@ function render(){
 
   /* --- WhatsApp (two-week span) --- */
   h+='<div class="card"><h3>WhatsApp<span class="rt">Arabic · two weeks · edit before copy</span></h3>';
-  h+='<textarea class="wa" id="wa">'+esc(waText())+'</textarea>';
+  h+='<textarea class="wa" id="wa" oninput="waCapture()"></textarea>';
   h+='<div class="btnrow"><button class="btn sec" onclick="regenWa()">↻ Regenerate</button><button class="btn sec" onclick="copyWa()">📋 Copy</button>'+
-     '<span class="muted">covers '+dm(days[0])+' → '+dm(addD(ws,13))+' · save both weeks, then copy from this (earlier) week</span> <span class="muted" id="wamsg"></span></div></div>';
+     '<span class="muted">covers '+dm(days[0])+' → '+dm(addD(ws,13))+' · your edits and notes are kept per week and follow you between weeks — only Regenerate rebuilds</span> <span class="muted" id="wamsg"></span></div></div>';
 
   /* --- confirm/save --- */
   h+='<div class="card"><div class="btnrow"><button class="btn" id="confirmBtn" onclick="confirmWeek()">✓ Save &amp; confirm this week ('+cleans.filter(function(c){return c.on;}).length+' cleans)</button>'+
@@ -339,6 +344,10 @@ function render(){
      '<div class="legend">Saving writes this week to the sheet (Cleaning schedule tab) — drives per-visit cleaning cost. Review &amp; save week 1, then ›&nbsp;go to week 2 and save it, then copy the two-week WhatsApp.</div></div>';
 
   document.getElementById('app').innerHTML=h;
+  /* Fill the WhatsApp box AFTER the HTML is in place, rather than inlining the text in the markup:
+     saved notes are free text and could contain characters that would break out of the element. */
+  var waEl=document.getElementById('wa');
+  if(waEl) waEl.value=waText();
 }
 
 /* ---------- interactions ---------- */
@@ -372,7 +381,7 @@ function waLine(c){
   var label = isStayClean(c) ? 'نظافة اثناء وجود ضيف'
             : c.type==='checkout' ? 'تنظيف خروج'
             : c.type==='revision' ? 'إعادة' : 'تنظيف إضافي';
-  var t='• شقة '+c.flat+': '+label+' الساعة '+hm(c.time);
+  var t='• شقة '+flatAr(c.flat)+': '+label+' الساعة '+hm(c.time);
   if(c.type==='checkout') t+=' — كود الباب '+c.code;
   if(c.inTime) t+=' — دخول ضيف الساعة '+hm(c.inTime);
   return t+'\n';
@@ -380,33 +389,85 @@ function waLine(c){
 function waSection(ws,list){
   var days=[]; for(var i=0;i<7;i++)days.push(addD(ws,i));
   var on=list.filter(function(c){return c.on;}), reps=openRepairs();
-  var t='*جدول النظافة — من السبت '+dm(days[0])+' إلى الجمعة '+dm(days[6])+'*\n';
-  var any=false;
+  /* Pass 1 — gather each day's lines. Done BEFORE the title so the title can name the first and
+     last day that actually has work: a heading reading "من السبت … إلى الجمعة" when nothing happens
+     until Monday and nothing after Wednesday just confuses the reader. */
+  var perDay=[];
   days.forEach(function(d){
     var k=ymd(d), dayCleans=on.filter(function(c){return c.date===k;}), dayReps=reps.filter(function(r){return r.date===k;});
-    if(!dayCleans.length&&!dayReps.length)return;
-    any=true;
-    t+='*'+DAY_AR[d.getDay()]+' '+dm(d)+':*\n';
+    if(!dayCleans.length&&!dayReps.length){ perDay.push(null); return; }
     /* Everything on one day is ordered BY TIME — cleans and repairs interleaved, not cleans
        first then repairs. hm() gives zero-padded HH:MM so a plain string sort is correct;
        an entry with no time sorts last (99:99) rather than jumping to the top. */
     var items=[];
     dayCleans.forEach(function(c){ items.push({ at: hm(c.time) || '99:99', line: waLine(c) }); });
     dayReps.forEach(function(r){
-      var line='• شقة '+r.flat+': صيانة '+r.trade+(r.time?' الساعة '+hm(r.time):'')+(r.what?' — '+r.what:'');
+      var line='• شقة '+flatAr(r.flat)+': صيانة '+r.trade+(r.time?' الساعة '+hm(r.time):'')+(r.what?' — '+r.what:'');
       if(occStayOn(r.flat,d)) line+=' — الضيف موجود';
       items.push({ at: hm(r.time) || '99:99', line: line+'\n' });
     });
     items.sort(function(a,b){ return a.at<b.at?-1:(a.at>b.at?1:0); });
-    items.forEach(function(it){ t+=it.line; });
+    perDay.push({ d: d, lines: items.map(function(it){ return it.line; }).join('') });
   });
-  if(!any) t+='لا توجد نظافة مجدولة.\n';
+
+  var firstI=-1, lastI=-1;
+  for(var i=0;i<7;i++) if(perDay[i]){ if(firstI<0) firstI=i; lastI=i; }
+
+  // nothing scheduled → keep the full Sat→Fri span so the reader still knows which week it is
+  if(firstI<0) return '*جدول النظافة — من '+DAY_AR[days[0].getDay()]+' '+dm(days[0])+
+                      ' إلى '+DAY_AR[days[6].getDay()]+' '+dm(days[6])+'*\nلا توجد نظافة مجدولة.\n';
+
+  var t='*جدول النظافة — من '+DAY_AR[days[firstI].getDay()]+' '+dm(days[firstI])+
+        ' إلى '+DAY_AR[days[lastI].getDay()]+' '+dm(days[lastI])+'*\n';
+  for(var j=firstI;j<=lastI;j++){
+    if(!perDay[j]) continue;
+    t+='*'+DAY_AR[perDay[j].d.getDay()]+' '+dm(perDay[j].d)+':*\n'+perDay[j].lines;
+  }
   return t;
 }
-function waText(){
-  return waSection(weekStart,cleans)+'\n'+waSection(addD(weekStart,7),cleans2);   // blank line between the two weeks
+
+/* ---------- WhatsApp edits are KEPT, per week ----------
+ * The message spans two weeks. Edits are stored against the week they belong to (not against the
+ * whole message), so a note typed while looking at week N is still there when week N is the SECOND
+ * half of the message on week N-1, and when it's the FIRST half on week N. That mirroring is the
+ * point: notes written by hand must never vanish because you paged to another week.
+ * Stored in localStorage, so a reload keeps them too. Only "Regenerate" discards them, and only
+ * for the two weeks on screen. */
+var WA_KEY='owh_wa_edits';
+function waEdits(){ try{ return JSON.parse(localStorage.getItem(WA_KEY)||'{}')||{}; }catch(e){ return {}; } }
+function waEditsSave(o){ try{ localStorage.setItem(WA_KEY,JSON.stringify(o)); }catch(e){} }
+var WA_MARK='*جدول النظافة';
+/* Split the edited message back into its two week-sections on the section heading. Falls back to
+   treating the whole thing as week 1 rather than losing text. */
+function waSplit(txt){
+  var first=txt.indexOf(WA_MARK);
+  var second=first<0?-1:txt.indexOf(WA_MARK,first+WA_MARK.length);
+  if(second<0) return [txt];
+  return [txt.slice(0,second).replace(/\s+$/,'')+'\n', txt.slice(second)];
 }
-function regenWa(){ document.getElementById('wa').value=waText(); }
+function waSectionText(ws,list){
+  var k=ymd(ws), e=waEdits();
+  return (typeof e[k]==='string' && e[k].length) ? e[k] : waSection(ws,list);
+}
+function waText(){
+  return waSectionText(weekStart,cleans)+'\n'+waSectionText(addD(weekStart,7),cleans2);   // blank line between the two weeks
+}
+/* Called on every keystroke in the textarea — stores each half against its own week. */
+function waCapture(){
+  var ta=document.getElementById('wa'); if(!ta) return;
+  var parts=waSplit(ta.value), e=waEdits();
+  e[ymd(weekStart)]=parts[0];
+  if(parts.length>1) e[ymd(addD(weekStart,7))]=parts[1];
+  waEditsSave(e);
+  var m=document.getElementById('wamsg'); if(m) m.textContent='edits kept';
+}
+/* Rebuild from the schedule, discarding saved notes for the two weeks on screen only. */
+function regenWa(){
+  if(!confirm('Rebuild the message from the schedule?\n\nAny notes you typed for these two weeks will be lost.')) return;
+  var e=waEdits(); delete e[ymd(weekStart)]; delete e[ymd(addD(weekStart,7))]; waEditsSave(e);
+  document.getElementById('wa').value=waText();
+  var m=document.getElementById('wamsg'); if(m){ m.textContent='rebuilt from the schedule'; setTimeout(function(){ m.textContent=''; },4000); }
+}
 function copyWa(){
   var ta=document.getElementById('wa'); ta.select();
   var done=function(ok){ document.getElementById('wamsg').textContent=ok?'copied ✓':'select & copy manually'; };
