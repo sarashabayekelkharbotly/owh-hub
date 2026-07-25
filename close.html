@@ -95,6 +95,12 @@ td.damt{font-size:11px;color:#5a4d4d}
 
   <div class="card" id="loader">
     <p class="muted">Connecting to the sheet…</p>
+  </div>
+
+  <!-- Debug affordance, hidden by default: it used to sit inside #loader, so "Offline / testing"
+       was on screen during every normal load and read like something was wrong. showFetchHelp()
+       reveals it only when the fetch actually fails. -->
+  <div class="card" id="pasteFallback" style="display:none">
     <details><summary class="muted">Offline / testing — paste the <code>props_get_all</code> JSON</summary>
       <textarea id="pasteBox" placeholder="paste the endpoint JSON here"></textarea>
       <button onclick="loadPasted()">Load pasted JSON</button>
@@ -147,9 +153,9 @@ function fetchOnce(){
   return api("props_get_all").then(function(j){ if(!j||!j.ok) throw new Error(j&&j.error||'bad response'); return j; });
 }
 function tryCache(){ try{var c=localStorage.getItem('owh_close');if(c)onData(JSON.parse(c),true);}catch(e){} }
-function showFetchHelp(e){ if(DATA)return; $('#err').style.display='block'; $('#err').innerHTML='<div class="err">Couldn\'t reach the endpoint'+(noAuthJs()?' — <b>auth.js did not load</b> (it must sit next to this file)':'')+'. Paste the JSON below to preview.<br><span class="muted">'+(e&&e.message||'')+'</span></div>'; }
+function showFetchHelp(e){ if(DATA)return; $('#err').style.display='block'; $('#err').innerHTML='<div class="err">Couldn\'t reach the endpoint'+(noAuthJs()?' — <b>auth.js did not load</b> (it must sit next to this file)':'')+'. Paste the JSON below to preview.<br><span class="muted">'+(e&&e.message||'')+'</span></div>'; var pf=document.getElementById('pasteFallback'); if(pf)pf.style.display='block'; }
 function loadPasted(){ try{ var j=JSON.parse($('#pasteBox').value); onData(j.data?j:{ok:true,data:j,generatedAt:new Date().toISOString()}); }catch(e){ alert('Not valid JSON'); } }
-function onData(j,fromCache){ DATA=j.data; DATA._gen=j.generatedAt; try{ if(!fromCache) localStorage.setItem('owh_close',JSON.stringify(j)); }catch(e){} $('#loader').style.display='none'; $('#err').style.display='none'; initControls(); render(); }
+function onData(j,fromCache){ DATA=j.data; DATA._gen=j.generatedAt; try{ if(!fromCache) localStorage.setItem('owh_close',JSON.stringify(j)); }catch(e){} $('#loader').style.display='none'; $('#err').style.display='none'; var pf=document.getElementById('pasteFallback'); if(pf)pf.style.display='none'; initControls(); render(); }
 
 /* ---------- controls ---------- */
 function initControls(){
