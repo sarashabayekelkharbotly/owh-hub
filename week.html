@@ -371,7 +371,7 @@ function isStayClean(c){ return c.type==='midstay'||c.type==='weekly'||(c.type==
 function waLine(c){
   var label = isStayClean(c) ? 'نظافة اثناء وجود ضيف'
             : c.type==='checkout' ? 'تنظيف خروج'
-            : c.type==='revision' ? 'تنظيف تجديد قبل الوصول' : 'تنظيف إضافي';
+            : c.type==='revision' ? 'إعادة' : 'تنظيف إضافي';
   var t='• شقة '+c.flat+': '+label+' الساعة '+hm(c.time);
   if(c.type==='checkout') t+=' — كود الباب '+c.code;
   if(c.inTime) t+=' — دخول ضيف الساعة '+hm(c.inTime);
@@ -387,12 +387,18 @@ function waSection(ws,list){
     if(!dayCleans.length&&!dayReps.length)return;
     any=true;
     t+='*'+DAY_AR[d.getDay()]+' '+dm(d)+':*\n';
-    dayCleans.forEach(function(c){ t+=waLine(c); });
+    /* Everything on one day is ordered BY TIME — cleans and repairs interleaved, not cleans
+       first then repairs. hm() gives zero-padded HH:MM so a plain string sort is correct;
+       an entry with no time sorts last (99:99) rather than jumping to the top. */
+    var items=[];
+    dayCleans.forEach(function(c){ items.push({ at: hm(c.time) || '99:99', line: waLine(c) }); });
     dayReps.forEach(function(r){
-      t+='• شقة '+r.flat+': صيانة '+r.trade+(r.time?' الساعة '+hm(r.time):'')+(r.what?' — '+r.what:'');
-      if(occStayOn(r.flat,d)) t+=' — الضيف موجود';
-      t+='\n';
+      var line='• شقة '+r.flat+': صيانة '+r.trade+(r.time?' الساعة '+hm(r.time):'')+(r.what?' — '+r.what:'');
+      if(occStayOn(r.flat,d)) line+=' — الضيف موجود';
+      items.push({ at: hm(r.time) || '99:99', line: line+'\n' });
     });
+    items.sort(function(a,b){ return a.at<b.at?-1:(a.at>b.at?1:0); });
+    items.forEach(function(it){ t+=it.line; });
   });
   if(!any) t+='لا توجد نظافة مجدولة.\n';
   return t;
