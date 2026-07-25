@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Hub · Repairs</title>
+<link rel="icon" href="hub-logo.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+:root{--blush:#f9f0f0;--red:#cc5f5f;--blue:#b8c9d9;--ink:#1a1a1a;--soft:#6b6b6b;--white:#fff;--line:#ecdede;--grey:#f6f2f2;--g:#3a7d4d;--rr:#cc5f5f;--amber:#e8b45f}
+*{box-sizing:border-box}
+body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink);font-variant-numeric:tabular-nums;padding:0 0 40px}
+.frame{max-width:440px;margin:16px auto;background:var(--white);border:1px solid var(--line);border-radius:20px;box-shadow:0 5px 24px rgba(0,0,0,.10);overflow:hidden}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:11px 15px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:15px;white-space:nowrap;flex:none}.brand .r{color:var(--red)}.brand .logo{width:26px;height:26px;border-radius:6px;flex:none}.brand .bs{font-weight:600;font-size:11.5px;color:var(--soft);border-left:1px solid var(--line);padding-left:7px}
+.rib{font-size:10px;color:#4c4040;text-align:right;line-height:1.5}.rib b{color:#1a1a1a}
+.body{padding:13px 13px 12px;background:var(--blush)}
+.tabbar{display:flex;background:var(--white);border-top:1px solid var(--line)}
+.tabbar .tab{flex:1;text-align:center;padding:7px 2px 8px;font-size:10px;color:var(--soft);text-decoration:none;font-weight:600;border-top:2px solid transparent}
+.tabbar .tab .ti{display:block;font-size:17px;line-height:1.15;margin-bottom:1px}
+.tabbar .tab.active{color:var(--red);border-top-color:var(--red)}
+.tabbar .tab.dis{opacity:.38;pointer-events:none}
+.card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:10px}
+.card h3{margin:0 0 8px;font-size:13px;font-weight:700}
+.card h3 .rt{float:right;font-weight:400;color:var(--soft);font-size:11px}
+.frm{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.frm label{font-size:10px;color:var(--soft);display:block;margin-bottom:2px}
+.frm select,.frm input,.frm textarea{width:100%;font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:7px;padding:5px 7px;background:var(--white)}
+.frm .full{grid-column:1/3}
+.frm textarea{min-height:44px;resize:vertical}
+.btn{border:0;background:var(--red);color:#fff;font-family:inherit;font-weight:700;font-size:12.5px;border-radius:9px;padding:7px 16px;cursor:pointer}
+.btn:disabled{opacity:.5;cursor:default}
+.tick{border-bottom:1px solid var(--line);padding:7px 0;font-size:12.5px;line-height:1.5}
+.tick:last-child{border-bottom:0}
+.tick .top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.tick b .tr{color:#7a5a2f}
+.tick .what{color:var(--soft);font-size:11.5px}
+.badge{font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:9px;white-space:nowrap}
+.b-open{background:#e2edf3;color:#2c5468}.b-over{background:#f4dede;color:#a24a4a}.b-closed{background:#efefef;color:#6b6b6b}
+.act{font-size:10.5px;cursor:pointer;font-weight:700;margin-right:10px}
+.act.edit{color:var(--red)}.act.del{color:#a24a4a}
+.editbox{margin-top:6px;border:1px solid var(--line);border-radius:9px;padding:8px;background:var(--grey)}
+.editbox .frm select,.editbox .frm input,.editbox .frm textarea{background:var(--white)}
+.muted{color:var(--soft);font-size:11px}
+.err{background:#f6e3e3;border:1px solid #e6b9b9;border-radius:10px;padding:12px;font-size:13px}
+.legend{font-size:9.5px;color:var(--soft);margin-top:6px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="topbar">
+    <div class="brand"><img class="logo" src="hub-logo.png" alt="The Hub"><span class="bn">The Hub</span><span class="bs">Repairs</span></div>
+    <div class="rib" id="rib"></div>
+  </div>
+  <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
+  <nav class="tabbar">
+    <a class="tab" href="today.html"><span class="ti">🏠</span>Today</a>
+    <a class="tab" href="week.html"><span class="ti">🗓️</span>Week</a>
+    <a class="tab active" href="repairs.html"><span class="ti">🔧</span>Repairs</a>
+    <a class="tab" href="close.html"><span class="ti">📑</span>Close</a>
+    <a class="tab" href="stats.html"><span class="ti">📊</span>Stats</a>
+    <a class="tab" href="internet.html"><span class="ti">📶</span>Net</a>
+  </nav>
+</div>
+
+<script src="auth.js"></script>
+<script>
+/* CONFIG (ENDPOINT + session) lives in auth.js */
+var GRACE_HOURS = 24;   // open ticket flips to overdue this long after its scheduled time
+
+var TRADES = ['سباك','كهربائي','فني تكييف','نجار','منجد','أخرى'];
+
+var D=null;
+function day(s){ return new Date(String(s).slice(0,10)+'T00:00:00'); }
+function ymd(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function dmon(s){ var d=day(s); return d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]; }
+function esc(s){ return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
+function allFlats(){ return D.meta.flatsOrder; }
+function isOverdue(r){
+  if(r.status!=='open'||!r.date)return false;
+  var sched=new Date(r.date.slice(0,10)+'T'+(r.time&&/^\d\d:\d\d/.test(r.time)?r.time.slice(0,5):'17:00')+':00');
+  return Date.now() > sched.getTime()+GRACE_HOURS*3600000;
+}
+
+function boot(){ fetchOnce().then(onData).catch(function(){ setTimeout(function(){ fetchOnce().then(onData).catch(showErr); },800); }); }
+function fetchOnce(){ return api('props_get_all').then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
+function onData(j){ D=j.data; render(); document.getElementById('rib').innerHTML='data <b>'+new Date().toTimeString().slice(0,5)+'</b>'; }
+function showErr(e){ document.getElementById('app').innerHTML='<div class="err"><b>Couldn\'t load.</b> '+esc(e.message||e)+'</div>'; }
+
+function render(){
+  var reps=D.repairs||[];
+  var open=reps.filter(function(r){return r.status==='open';}).sort(function(a,b){return a.date<b.date?-1:1;});
+  var closed=reps.filter(function(r){return r.status==='closed';}).sort(function(a,b){return a.closedDate<b.closedDate?1:-1;}).slice(0,10);
+  var h='';
+
+  /* --- open a ticket --- */
+  h+='<div class="card"><h3>Open a repair<span class="rt">no cost at open — Emad closes in dry-clean</span></h3><div class="frm">'+
+     '<div><label>Flat</label><select id="rFlat">'+allFlats().map(function(f){return '<option>'+esc(f)+'</option>';}).join('')+'</select></div>'+
+     '<div><label>Trade</label><select id="rTrade">'+TRADES.map(function(t){return '<option>'+t+'</option>';}).join('')+'</select></div>'+
+     '<div><label>Scheduled date</label><input type="date" id="rDate" value="'+ymd(new Date())+'"></div>'+
+     '<div><label>Time</label><input type="time" id="rTime" value="12:00"></div>'+
+     '<div class="full"><label>What needs doing</label><textarea id="rWhat" placeholder="e.g. AC in bedroom not cooling"></textarea></div>'+
+     '<div class="full"><button class="btn" id="rBtn" onclick="openTicket()">+ Open ticket</button> <span class="muted" id="rMsg"></span></div>'+
+     '</div></div>';
+
+  /* --- open tickets --- */
+  h+='<div class="card"><h3>Open tickets<span class="rt">'+open.length+' open</span></h3>';
+  if(!open.length) h+='<span class="muted">No open repairs.</span>';
+  open.forEach(function(r){
+    var over=isOverdue(r);
+    h+='<div class="tick" id="tk_'+esc(r.id)+'"><div class="top"><span dir="ltr"><b>'+esc(r.flat)+'</b> — '+dmon(r.date)+(r.time?' '+esc(r.time.slice(0,5)):'')+' · <bdi class="tr">'+esc(r.trade)+'</bdi></span>'+
+       '<span class="badge '+(over?'b-over':'b-open')+'">'+(over?'overdue':'open')+'</span></div>'+
+       (r.what?'<div class="what">'+esc(r.what)+'</div>':'')+
+       '<div><span class="act edit" onclick="editForm(\''+esc(r.id)+'\')">✎ edit</span>'+
+       '<span class="act del" onclick="delTicket(\''+esc(r.id)+'\',\''+esc(r.flat)+'\',\''+esc(r.trade)+'\')">🗑 delete</span>'+
+       '<span class="muted">opened '+(r.openedAt?new Date(r.openedAt).toLocaleDateString():'')+' by '+esc(r.by)+'</span></div>'+
+       '<div id="ed_'+esc(r.id)+'"></div></div>';
+  });
+  h+='<div class="legend">Open tickets ride the Week grid + WhatsApp. Overdue = still open '+GRACE_HOURS+'h after the scheduled time — edit (reschedule/fix) or delete it here. Emad closes it (actual date · final cost EGP · what was done) in the dry-clean app, which writes the Maintenance row to WeShare.</div></div>';
+
+  /* --- closed log --- */
+  h+='<div class="card"><h3>Closed log<span class="rt">last '+closed.length+'</span></h3>';
+  if(!closed.length) h+='<span class="muted">Nothing closed yet.</span>';
+  closed.forEach(function(r){
+    h+='<div class="tick"><div class="top"><span dir="ltr"><b>'+esc(r.flat)+'</b> — closed '+(r.closedDate?dmon(r.closedDate):'')+(r.cost?' · '+r.cost+' EGP':'')+' · <bdi>'+esc(r.trade)+'</bdi></span>'+
+       '<span class="badge b-closed">closed</span></div>'+(r.done||r.what?'<div class="what">'+esc(r.done||r.what)+'</div>':'')+'</div>';
+  });
+  h+='</div>';
+
+  document.getElementById('app').innerHTML=h;
+}
+
+function openTicket(){
+  var flat=document.getElementById('rFlat').value, trade=document.getElementById('rTrade').value,
+      date=document.getElementById('rDate').value, time=document.getElementById('rTime').value,
+      what=document.getElementById('rWhat').value;
+  if(!date){ document.getElementById('rMsg').textContent='pick a date'; return; }
+  var btn=document.getElementById('rBtn'); btn.disabled=true;
+  document.getElementById('rMsg').textContent='saving…';
+  api('props_open_repair',{user:(ME&&ME.user)||'',flat:flat,trade:trade,date:date,time:time,what:what}).then(function(j){
+    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+    return fetchOnce().then(onData);
+  }).catch(function(e){ btn.disabled=false; document.getElementById('rMsg').textContent='failed: '+(e.message||e); });
+}
+function editForm(id){
+  var box=document.getElementById('ed_'+id); if(!box)return;
+  if(box.innerHTML){ box.innerHTML=''; return; }                      // toggle closed
+  var r=(D.repairs||[]).filter(function(x){return x.id===id;})[0]; if(!r)return;
+  box.innerHTML='<div class="editbox"><div class="frm">'+
+    '<div><label>Flat</label><select id="e_flat_'+id+'">'+allFlats().map(function(f){return '<option'+(f===r.flat?' selected':'')+'>'+esc(f)+'</option>';}).join('')+'</select></div>'+
+    '<div><label>Trade</label><select id="e_trade_'+id+'">'+TRADES.map(function(t){return '<option'+(t===r.trade?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>'+
+    '<div><label>Date</label><input type="date" id="e_date_'+id+'" value="'+esc(r.date.slice(0,10))+'"></div>'+
+    '<div><label>Time</label><input type="time" id="e_time_'+id+'" value="'+esc((r.time||'12:00').slice(0,5))+'"></div>'+
+    '<div class="full"><label>What</label><textarea id="e_what_'+id+'">'+esc(r.what)+'</textarea></div>'+
+    '<div class="full"><button class="btn" onclick="saveEdit(\''+id+'\')">Save changes</button> '+
+    '<button class="btn" style="background:#fff;color:#1a1a1a;border:1px solid var(--line)" onclick="editForm(\''+id+'\')">Cancel</button> '+
+    '<span class="muted" id="e_msg_'+id+'"></span></div></div></div>';
+}
+function saveEdit(id){
+  var g=function(k){return document.getElementById('e_'+k+'_'+id).value;};
+  document.getElementById('e_msg_'+id).textContent='saving…';
+  api('props_edit_repair',{id:id,flat:g('flat'),trade:g('trade'),date:g('date'),time:g('time'),what:g('what')}).then(function(j){
+    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+    return fetchOnce().then(onData);
+  }).catch(function(e){ document.getElementById('e_msg_'+id).textContent='failed: '+(e.message||e); });
+}
+function delTicket(id,flat,trade){
+  if(!confirm('Delete this open ticket?\n'+flat+' · '+trade))return;
+  api('props_delete_repair',{id:id}).then(function(j){
+    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+    return fetchOnce().then(onData);
+  }).catch(function(e){ alert('failed: '+(e.message||e)); });
+}
+
+AUTH_ON_LOGIN = boot; if (authGuard()) boot();   // signed in → load now; otherwise the sign-in form loads it
+</script>
+</body>
+</html>

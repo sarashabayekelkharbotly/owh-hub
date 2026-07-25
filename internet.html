@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Hub · Internet</title>
+<link rel="icon" href="hub-logo.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+:root{--blush:#f9f0f0;--red:#cc5f5f;--blue:#b8c9d9;--ink:#1a1a1a;--soft:#6b6b6b;--white:#fff;--line:#ecdede;--grey:#f6f2f2;--g:#3a7d4d;--rr:#cc5f5f;--amber:#e8b45f}
+*{box-sizing:border-box}
+body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink);font-variant-numeric:tabular-nums;padding:0 0 40px}
+.frame{max-width:440px;margin:16px auto;background:var(--white);border:1px solid var(--line);border-radius:20px;box-shadow:0 5px 24px rgba(0,0,0,.10);overflow:hidden}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:11px 15px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:15px;white-space:nowrap;flex:none}.brand .r{color:var(--red)}.brand .logo{width:26px;height:26px;border-radius:6px;flex:none}.brand .bs{font-weight:600;font-size:11.5px;color:var(--soft);border-left:1px solid var(--line);padding-left:7px}
+.rib{font-size:10px;color:#4c4040;text-align:right;line-height:1.5}.rib b{color:#1a1a1a}
+.body{padding:13px 13px 12px;background:var(--blush)}
+.tabbar{display:flex;background:var(--white);border-top:1px solid var(--line)}
+.tabbar .tab{flex:1;text-align:center;padding:7px 1px 8px;font-size:9.5px;color:var(--soft);text-decoration:none;font-weight:600;border-top:2px solid transparent}
+.tabbar .tab .ti{display:block;font-size:16px;line-height:1.15;margin-bottom:1px}
+.tabbar .tab.active{color:var(--red);border-top-color:var(--red)}
+.tabbar .tab.dis{opacity:.38;pointer-events:none}
+.card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:10px}
+.card h3{margin:0 0 3px;font-size:14px;font-weight:700}
+.card h3 .rt{float:right;font-weight:400;color:var(--soft);font-size:11px}
+.sub{font-size:11px;color:var(--soft);margin-bottom:8px}
+.bar{height:9px;background:#eee3e3;border-radius:6px;overflow:hidden;margin:8px 0 4px}
+.bar > i{display:block;height:100%;border-radius:6px}
+.stat{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:8px 0}
+.stat .s{background:var(--grey);border-radius:9px;padding:6px 4px;text-align:center}
+.stat .sv{font-size:14px;font-weight:700;line-height:1.1}
+.stat .s.dep-b .sv{color:#a24a4a}
+.stat .sl{font-size:8.5px;color:var(--soft);margin-top:2px}
+.dep{font-size:12px;font-weight:700;padding:6px 9px;border-radius:9px;margin-top:4px}
+.dep.ok{background:#dce9df;color:#2f6a41}.dep.warn{background:#f6dede;color:#a24a4a}.dep.wait{background:#eef1f4;color:#4a6377}
+.wait2{color:var(--soft);font-size:12px;padding:4px 0}
+.foot{font-size:10.5px;color:var(--soft);margin-top:6px;line-height:1.5}
+.pace{font-size:11px;margin-top:6px;display:flex;align-items:center;gap:6px}
+.fb{font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:9px;white-space:nowrap}
+.fb.ok{background:#dce9df;color:#2f6a41}.fb.hi{background:#f7edd6;color:#8a6d2f}.fb.ov{background:#f6dede;color:#a24a4a}
+.usage{margin-top:8px;border-top:1px solid var(--line);padding-top:6px}
+.usage .uh{font-size:9.5px;color:var(--soft);font-weight:700;margin-bottom:3px}
+.ur{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11.5px;padding:3px 0}
+.ur .ug{font-weight:700}.ur .un{color:var(--soft);font-size:10px}
+.ur .um{white-space:nowrap}
+details{margin-top:8px;border-top:1px solid var(--line);padding-top:8px}
+summary{cursor:pointer;font-size:11.5px;font-weight:700;color:var(--red);list-style:none}
+summary::-webkit-details-marker{display:none}
+.frm{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.frm label{font-size:9.5px;color:var(--soft);display:block;margin-bottom:2px}
+.frm select,.frm input{width:100%;font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:7px;padding:5px 7px;background:var(--white)}
+.frm .full{grid-column:1/3}
+.btn{border:0;background:var(--red);color:#fff;font-family:inherit;font-weight:700;font-size:12px;border-radius:8px;padding:6px 14px;cursor:pointer}
+.btn.sec{background:var(--white);color:var(--ink);border:1px solid var(--line)}
+.msg{font-size:10.5px;color:var(--soft);margin-left:6px}
+.muted{color:var(--soft);font-size:11px}
+.err{background:#f6e3e3;border:1px solid #e6b9b9;border-radius:10px;padding:12px;font-size:13px}
+.ov{font-size:10.5px;font-weight:700;color:#a24a4a;background:#f7e2e2;border-radius:8px;padding:4px 8px;margin-top:6px;display:inline-block}
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="topbar">
+    <div class="brand"><img class="logo" src="hub-logo.png" alt="The Hub"><span class="bn">The Hub</span><span class="bs">Internet</span></div>
+    <div class="rib" id="rib"></div>
+  </div>
+  <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
+  <nav class="tabbar">
+    <a class="tab" href="today.html"><span class="ti">🏠</span>Today</a>
+    <a class="tab" href="week.html"><span class="ti">🗓️</span>Week</a>
+    <a class="tab" href="repairs.html"><span class="ti">🔧</span>Repairs</a>
+    <a class="tab active" href="internet.html"><span class="ti">📶</span>Net</a>
+    <a class="tab" href="close.html"><span class="ti">📑</span>Close</a>
+    <a class="tab" href="stats.html"><span class="ti">📊</span>Stats</a>
+  </nav>
+</div>
+
+<script src="auth.js"></script>
+<script>
+/* CONFIG (ENDPOINT + session) lives in auth.js */
+/* Bundle catalog lives ONLY in the sheet ("Internet catalog" tab) — no code-side defaults, nothing fabricated. */
+function catalog(){ return (D.internet&&D.internet.catalog)?D.internet.catalog:[]; }
+
+var D=null, DAYMS=86400000, STAYS=[], MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function esc(s){ return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
+function pdt(s){ s=(s||'').toString().trim(); if(!s)return null; s=s.replace(' ','T'); if(s.length<=10)s+='T00:00'; var d=new Date(s); return isNaN(d)?null:d; }
+function day(s){ return new Date(String(s).slice(0,10)+'T00:00:00'); }
+/* logical stays: contiguous same-guest bookings merge into one continuous stay (cleaning + internet only) */
+function mergeStays(stays){
+  var live=(stays||[]).filter(function(s){ return isLive(s)&&s.checkIn&&s.checkOut; })
+    .slice().sort(function(a,b){ return a.flat<b.flat?-1:(a.flat>b.flat?1:(a.checkIn<b.checkIn?-1:1)); });
+  var out=[], acc=null;
+  live.forEach(function(s){
+    if(acc && acc.flat===s.flat && acc.guest===s.guest && acc.checkOut===s.checkIn){
+      acc.checkOut=s.checkOut; acc.nights=Math.round((day(acc.checkOut)-day(acc.checkIn))/DAYMS);
+      acc.guests=Math.max(acc.guests||1,s.guests||1); acc.ids.push(s.id);
+    } else { if(acc)out.push(acc);
+      acc={ id:s.id, ids:[s.id], flat:s.flat, guest:s.guest, checkIn:s.checkIn, checkOut:s.checkOut, nights:s.nights, guests:s.guests }; }
+  });
+  if(acc)out.push(acc);
+  return out;
+}
+/* GUARD — STAYS (merged) = INTERNET / occupancy only. rawStays() (per booking) = MONEY / CHANNEL /
+   PAYMENT / STATISTICS. Revenue-by-channel and -by-payment are per booking, never off the merged view. */
+function rawStays(){ return D.stays || []; }
+function ymd(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function dmon(d){ return d.getDate()+' '+MON[d.getMonth()]; }
+function isLive(s){ var st=(s.status||'').toLowerCase(); return st.indexOf('cancel')<0 && st.indexOf('block')<0; }
+function flatsWithNet(){ return D.meta.flatsOrder; }   // internet covers all flats incl 17B
+function nowLocal(){ return new Date(D.meta.asOf+'T'+new Date().toTimeString().slice(0,5)+':00'); }
+
+function curBundle(flat){
+  var b=null; (D.internet.bundles||[]).forEach(function(x){ if(x.flat!==flat)return; var d=pdt(x.cycleStart); if(!d)return;
+    if(!b||d>pdt(b.cycleStart))b=x; }); return b;
+}
+function lastReading(flat, sinceDt){
+  var r=null; (D.internet.readings||[]).forEach(function(x){ if(x.flat!==flat)return; var d=pdt(x.at); if(!d)return;
+    if(sinceDt&&d<sinceDt)return; if(!r||d>pdt(r.at))r=x; }); return r;
+}
+function nextCheckout(flat, from){
+  var next=null; STAYS.forEach(function(s){ if(s.flat!==flat)return; var co=day(s.checkOut);
+    if(co>=from&&(!next||co<next))next=co; }); return next;
+}
+function curStay(flat, dt){
+  var cur=null; STAYS.forEach(function(s){ if(s.flat!==flat)return;
+    if(day(s.checkIn)<=dt&&dt<day(s.checkOut))cur=s; }); return cur;
+}
+function overageThisMonth(flat){
+  var m={}; (D.internet.bundles||[]).forEach(function(x){ if(x.flat!==flat)return; var d=pdt(x.cycleStart); if(!d)return;
+    var k=d.getFullYear()+'-'+d.getMonth(); m[k]=(m[k]||0)+1; });
+  for(var k in m) if(m[k]>=2) return true; return false;
+}
+
+/* the shared depletion model — also used by Today's alert */
+function netCalc(flat){
+  var b=curBundle(flat); if(!b) return {state:'nobundle'};
+  var cs=pdt(b.cycleStart); var r=lastReading(flat, cs);
+  if(!r) return {state:'waiting', bundle:b};
+  var at=pdt(r.at)||nowLocal(), consumed=Math.max(0,b.quota-r.remaining);
+  var elapsed=(at-cs)/DAYMS;
+  var burn = elapsed>0.05 ? consumed/elapsed : 0;              // GB/day since cycle start
+  var depl = burn>0 ? new Date(at.getTime()+(r.remaining/burn)*DAYMS) : null;   // when remaining hits 0
+  var ce=new Date(cs.getTime()+30*DAYMS);                      // cycle end / renewal — WE bundles run 30 days
+  var cycleDays=(ce-cs)/DAYMS, fairDaily=cycleDays>0?b.quota/cycleDays:0;   // pace that makes the bundle last exactly one cycle
+  return { state:'live', bundle:b, reading:r, at:at, cycleStart:cs, cycleEnd:ce, cycleDays:cycleDays,
+           consumed:consumed, remaining:r.remaining, burn:burn, fairDaily:fairDaily,
+           pace: fairDaily>0?burn/fairDaily:0, depletion:depl, pct: b.quota>0?Math.max(0,Math.min(1,r.remaining/b.quota)):0 };
+}
+function paceBadge(ratio){ return ratio<=1.0?{cls:'ok',txt:'fair'}:(ratio<=1.3?{cls:'hi',txt:'high'}:{cls:'ov',txt:'over'}); }
+/* per-guest usage: attribute consumption between consecutive readings to whoever occupied the flat then */
+function guestUsage(flat){
+  var b=curBundle(flat); if(!b) return [];
+  var cs=pdt(b.cycleStart); if(!cs) return [];
+  var ce=new Date(cs.getTime()+30*DAYMS);                      // 30-day cycle
+  var cycleDays=(ce-cs)/DAYMS, fairDaily=cycleDays>0?b.quota/cycleDays:0, asOf=day(D.meta.asOf);
+  var reads=(D.internet.readings||[]).filter(function(x){ var d=pdt(x.at); return x.flat===flat&&d&&d>=cs; })
+    .map(function(x){ return {at:pdt(x.at), remaining:x.remaining}; }).sort(function(a,b){ return a.at-b.at; });
+  var pts=[{at:cs,remaining:b.quota}].concat(reads), by={};
+  for(var i=0;i<pts.length-1;i++){
+    var a=pts[i], z=pts[i+1], delta=Math.max(0,a.remaining-z.remaining); if(delta<=0)continue;
+    var startMs=a.at.getTime(), endMs=z.at.getTime(), total=endMs-startMs; if(total<=0)continue;
+    // split the delta across the calendar days in the interval, by whoever occupied each day (proportional)
+    var d0=new Date(a.at); d0.setHours(0,0,0,0);
+    for(var t=d0.getTime(); t<endMs; t+=DAYMS){
+      var segStart=Math.max(startMs,t), segEnd=Math.min(endMs,t+DAYMS); if(segEnd<=segStart)continue;
+      var st=curStay(flat, new Date(t+DAYMS/2)), key=st?st.id:'__v';   // STAYS are pre-merged (contiguous same-guest = one stay)
+      if(!by[key])by[key]={stay:st,consumed:0};
+      by[key].consumed += delta*(segEnd-segStart)/total;
+    }
+  }
+  var out=[];
+  for(var k in by){ var u=by[k], st=u.stay, nights=0;
+    if(st){ var s0=Math.max(day(st.checkIn),cs), s1=Math.min(day(st.checkOut), asOf<ce?asOf:ce); nights=Math.max(0,Math.round((s1-s0)/DAYMS)); }
+    out.push({stay:st, guest:st?st.guest:'(vacant / between guests)', nights:nights, consumed:u.consumed, fair:fairDaily*nights, over:u.consumed-fairDaily*nights});
+  }
+  return out.filter(function(u){ return u.consumed>0.1; }).sort(function(a,b){ return b.over-a.over; });
+}
+
+/* ---------- fetch ---------- */
+function boot(){ fetchOnce().then(onData).catch(function(){ setTimeout(function(){ fetchOnce().then(onData).catch(showErr); },800); }); }
+function fetchOnce(){ return api('props_get_all').then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
+function onData(j){ D=j.data; D.internet=D.internet||{bundles:[],readings:[]}; STAYS=mergeStays(D.stays); render(); document.getElementById('rib').innerHTML='data <b>'+new Date().toTimeString().slice(0,5)+'</b>'; }
+function showErr(e){ document.getElementById('app').innerHTML='<div class="err"><b>Couldn\'t load.</b> '+esc(e.message||e)+'</div>'; }
+
+function render(){
+  var asOf=day(D.meta.asOf), h='';
+  flatsWithNet().forEach(function(f){
+    var c=netCalc(f), b=c.bundle, over=overageThisMonth(f);
+    h+='<div class="card"><h3>'+esc(f)+(b?'<span class="rt">'+esc(b.name)+' · '+b.quota+' GB</span>':'<span class="rt">no bundle</span>')+'</h3>';
+
+    if(c.state==='nobundle'){ h+='<div class="wait2">No bundle set — add one below.</div>'; }
+    else {
+      var cs=pdt(b.cycleStart), ce=cs?new Date(cs.getTime()+30*DAYMS):null;   // cycle end / renewal — 30 days
+      h+='<div class="sub">cycle '+ (cs?dmon(cs)+' '+cs.toTimeString().slice(0,5):esc(b.cycleStart)) + (ce?' → renews <b>'+dmon(ce)+'</b>':'') +' · '+b.price+' EGP</div>';
+      if(over) h+='<div class="ov">⚠ 2 cycle-starts this month → overage (VAR)</div>';
+      if(c.state==='waiting'){ h+='<div class="dep wait">Waiting on reading — enter the remaining GB from the WE app.</div>'; }
+      else {
+        var pctW=Math.round(c.pct*100), col=pctW<20?'#cc5f5f':(pctW<45?'#e8b45f':'#3a7d4d');
+        h+='<div class="bar"><i style="width:'+pctW+'%;background:'+col+'"></i></div>';
+        var soon = c.depletion && (day(ymd(c.depletion))-asOf) <= DAYMS;   // 1 day before depletion (or sooner)
+        h+='<div class="stat"><div class="s"><div class="sv">'+fmtGB(c.remaining)+'</div><div class="sl">GB left</div></div>'+
+           '<div class="s"><div class="sv">'+fmtGB(c.burn)+'</div><div class="sl">GB/day</div></div>'+
+           '<div class="s"><div class="sv">'+(c.depletion?Math.max(0,Math.round((c.depletion-nowLocal())/DAYMS)):'∞')+'</div><div class="sl">days left</div></div>'+
+           '<div class="s'+(soon?' dep-b':'')+'"><div class="sv" style="font-size:12.5px">'+(c.depletion?dmon(c.depletion):'—')+'</div><div class="sl">depletes</div></div></div>';
+        var co=nextCheckout(f,asOf);
+        if(c.depletion){
+          var before = co && c.depletion < co, warn = soon || before;
+          var vsCycle = ce ? (c.depletion < ce ? ' · runs out '+Math.round((ce-c.depletion)/DAYMS)+'d before renewal ('+dmon(ce)+')' : ' · lasts the cycle (renews '+dmon(ce)+')') : '';
+          h+='<div class="dep '+(warn?'warn':'ok')+'">'+(
+                soon   ? '⚠ About to run out — depletes '+dmon(c.depletion)+'. Top up / renew.'
+              : before ? '⚠ May deplete '+dmon(c.depletion)+' — before check-out '+dmon(co)+'. Top up / renew.'
+              :          'Projected depletion '+dmon(c.depletion)+(co?' · check-out '+dmon(co)+' is safe':''))+vsCycle+'</div>';
+        } else h+='<div class="dep ok">No usage yet this cycle.</div>';
+        // pace vs fair (does usage keep the bundle within one cycle?)
+        var pb=paceBadge(c.pace);
+        h+='<div class="pace"><span class="fb '+pb.cls+'">'+pb.txt+'</span> pace '+fmtGB(c.burn)+' GB/day vs fair '+fmtGB(c.fairDaily)+' ('+(Math.round(c.pace*10)/10)+'×)</div>';
+        h+='<div class="foot">Last reading '+fmtGB(c.remaining)+' GB at '+(c.at?dmon(c.at)+' '+c.at.toTimeString().slice(0,5):'')+' · fair = quota ÷ '+Math.round(c.cycleDays)+' cycle-days</div>';
+        // per-guest fairness — who is over their share this cycle
+        var usage=guestUsage(f);
+        if(usage.length){
+          h+='<div class="usage"><div class="uh">This cycle · consumed vs fair share</div>';
+          usage.forEach(function(u){
+            if(!u.stay){ h+='<div class="ur"><span class="un">between guests (vacant)</span><span class="um" style="color:var(--soft)">'+fmtGB(u.consumed)+' GB idle</span></div>'; return; }
+            var ub=paceBadge(u.fair>0?u.consumed/u.fair:9);
+            h+='<div class="ur"><span><span class="ug">'+esc((u.guest||"").split(" ")[0])+'</span>'+(u.nights?' <span class="un">'+u.nights+'n</span>':'')+'</span>'+
+               '<span class="um">'+fmtGB(u.consumed)+' / '+fmtGB(u.fair)+' GB &nbsp;<span class="fb '+ub.cls+'">'+(u.over>0?'+':'')+fmtGB(u.over)+'</span></span></div>';
+          });
+          h+='</div>';
+        }
+      }
+    }
+
+    /* --- inputs --- */
+    h+='<details><summary>+ Add reading / renew bundle</summary>';
+    h+='<div class="frm">'+
+       '<div class="full"><label>Remaining quota now (GB) — from WE app</label><input type="number" step="0.1" id="rem_'+f+'" placeholder="e.g. 84.5"></div>'+
+       '<div><label>Reading date</label><input type="date" id="rdt_'+f+'" value="'+ymd(new Date())+'"></div>'+
+       '<div><label>Time</label><input type="time" id="rtm_'+f+'" value="'+new Date().toTimeString().slice(0,5)+'"></div>'+
+       '<div class="full"><button class="btn" onclick="saveReading(\''+f+'\')">Save reading</button><span class="msg" id="rmsg_'+f+'"></span></div>'+
+       '</div>';
+    h+='<div class="frm" style="margin-top:10px">'+
+       '<div><label>Bundle</label><select id="bn_'+f+'" onchange="fillFromCatalog(\''+f+'\')">'+(catalog().length?catalog().map(function(x){return '<option'+(b&&b.name===x.name?' selected':'')+'>'+esc(x.name)+'</option>';}).join(''):'<option value="">— add plans in Internet catalog tab —</option>')+'</select></div>'+
+       '<div><label>Quota (GB)</label><input type="number" step="1" id="bq_'+f+'" value="'+(b?b.quota:'')+'" placeholder="GB"></div>'+
+       '<div><label>Price (EGP)</label><input type="number" step="0.1" id="bp_'+f+'" value="'+(b?b.price:'')+'"></div>'+
+       '<div><label>Cycle start date</label><input type="date" id="bd_'+f+'" value="'+ymd(new Date())+'"></div>'+
+       '<div><label>Cycle start time</label><input type="time" id="bt_'+f+'" value="'+new Date().toTimeString().slice(0,5)+'"></div>'+
+       '<div style="align-self:end"><button class="btn sec" onclick="saveBundle(\''+f+'\')">Renew / set bundle</button></div>'+
+       '<div class="full"><span class="msg" id="bmsg_'+f+'"></span></div>'+
+       '</div></details>';
+    h+='</div>';
+  });
+  h+='<div class="card"><div class="foot">Remaining GB is <b>read off the WE app</b> — never a GB-used subtraction. Bundle is an accrued cost (smoothed in the sheet); a 2nd cycle-start in one month is a mid-cycle renewal → overage. Top-ups are WE-wallet cash, not a P&amp;L cost. Depletion-before-checkout also appears on <b>Today</b>.</div></div>';
+  document.getElementById('app').innerHTML=h;
+}
+function fmtGB(n){ n=+n||0; return n>=100?Math.round(n):(Math.round(n*10)/10); }
+
+function fillFromCatalog(f){ var n=document.getElementById('bn_'+f).value; catalog().forEach(function(x){ if(x.name===n){ document.getElementById('bp_'+f).value=x.price; if(x.quota)document.getElementById('bq_'+f).value=x.quota; } }); }
+function saveReading(f){
+  var rem=document.getElementById('rem_'+f).value; if(rem===''){ document.getElementById('rmsg_'+f).textContent='enter GB'; return; }
+  var at=document.getElementById('rdt_'+f).value+' '+document.getElementById('rtm_'+f).value;
+  document.getElementById('rmsg_'+f).textContent='saving…';
+  post('props_add_reading', {flat:f, remaining:rem, at:at}, 'rmsg_'+f);
+}
+function saveBundle(f){
+  var name=document.getElementById('bn_'+f).value, q=document.getElementById('bq_'+f).value, p=document.getElementById('bp_'+f).value;
+  if(q===''){ document.getElementById('bmsg_'+f).textContent='enter quota GB'; return; }
+  var cs=document.getElementById('bd_'+f).value+' '+document.getElementById('bt_'+f).value;
+  document.getElementById('bmsg_'+f).textContent='saving…';
+  post('props_set_bundle', {flat:f, name:name, quota:q, price:p, cycleStart:cs}, 'bmsg_'+f);
+}
+function post(fn, params, msgId){
+  var body={user:(ME&&ME.user)||''};
+  for(var k in params) body[k]=params[k];
+  api(fn, body).then(function(j){
+    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+    boot();
+  }).catch(function(e){ document.getElementById(msgId).textContent='failed: '+(e.message||e); });
+}
+
+AUTH_ON_LOGIN = boot; if (authGuard()) boot();   // signed in → load now; otherwise the sign-in form loads it
+</script>
+</body>
+</html>

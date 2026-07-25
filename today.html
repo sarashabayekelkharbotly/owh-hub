@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Hub · Today</title>
+<link rel="icon" href="hub-logo.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+:root{--blush:#f9f0f0;--red:#cc5f5f;--blue:#b8c9d9;--ink:#1a1a1a;--soft:#6b6b6b;--white:#fff;--line:#ecdede;--grey:#f6f2f2;--g:#3a7d4d;--rr:#cc5f5f;--amber:#e8b45f;
+--ch-airbnb:#e0798a;--ch-booking:#4a7fb5;--ch-direct:#6f9a76}
+*{box-sizing:border-box}
+body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink);font-variant-numeric:tabular-nums;padding:0 0 40px}
+.frame{max-width:440px;margin:16px auto;background:var(--white);border:1px solid var(--line);border-radius:20px;box-shadow:0 5px 24px rgba(0,0,0,.10);overflow:hidden}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:11px 15px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:15px;white-space:nowrap;flex:none}.brand .r{color:var(--red)}.brand .logo{width:26px;height:26px;border-radius:6px;flex:none}.brand .bs{font-weight:600;font-size:11.5px;color:var(--soft);border-left:1px solid var(--line);padding-left:7px}
+.rib{font-size:10px;color:#4c4040;text-align:right;line-height:1.5}.rib b{color:#1a1a1a}
+.body{padding:13px 13px 12px;background:var(--blush)}
+.tabbar{display:flex;background:var(--white);border-top:1px solid var(--line)}
+.tabbar .tab{flex:1;text-align:center;padding:7px 2px 8px;font-size:10px;color:var(--soft);text-decoration:none;font-weight:600;border-top:2px solid transparent}
+.tabbar .tab .ti{display:block;font-size:17px;line-height:1.15;margin-bottom:1px}
+.tabbar .tab.active{color:var(--red);border-top-color:var(--red)}
+.tabbar .tab.dis{opacity:.38;pointer-events:none}
+h1{font-size:19px;margin:0 0 10px}.h1s{font-size:12px;color:var(--soft);font-weight:400;margin-left:6px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.kpi{background:var(--white);border:1px solid var(--line);border-radius:11px;padding:9px 11px}
+.kl{font-size:10px;color:var(--soft);margin-bottom:2px}
+.kv{font-size:19px;font-weight:700;line-height:1.05}
+.ks{font-size:10px;color:var(--soft);margin-top:3px;line-height:1.45}
+.card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:10px}
+.card h3{margin:0 0 8px;font-size:13px;font-weight:700}
+.card h3 .rt{float:right;font-weight:400;color:var(--soft);font-size:11px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:right;padding:4px 5px;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+thead th{font-size:9.5px;color:var(--soft);font-weight:700}
+tr:last-child td{border-bottom:0}
+.tot td{font-weight:700;border-top:1px solid var(--ink)}
+.g{color:var(--g)}.r{color:var(--rr)}.soft{color:var(--soft)}
+.pill{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;white-space:nowrap}
+.p-out{background:#f4dede;color:#a24a4a}.p-in{background:#dce9df;color:#3a7d4d}.p-stay{background:#e2edf3;color:#2c5468}.p-gap{background:#f3ead9;color:#8a6d2f}.p-free{background:#fdeaea;color:#cc5f5f;border:1px dashed #e0b3b3}
+.rfree td{background:#fdf5f5}
+.code{font-family:monospace;font-weight:700;font-size:11.5px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:4px;vertical-align:middle}
+.legend{font-size:9.5px;color:var(--soft);margin-top:6px}
+.need{display:flex;gap:9px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px;line-height:1.4}
+.need:last-child{border-bottom:0}
+.nb{font-weight:700;flex:none}.n-warn .nb{color:var(--amber)}.n-info .nb{color:var(--blue)}.n-ok .nb{color:var(--g)}
+.payctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:5px}
+.payctl select{font-family:inherit;font-size:11.5px;border:1px solid var(--line);border-radius:6px;padding:2px 5px;background:var(--white)}
+.paybtn{border:0;background:var(--red);color:#fff;font-family:inherit;font-weight:700;font-size:11.5px;border-radius:7px;padding:3px 12px;cursor:pointer}
+.paymsg{font-size:10.5px;color:var(--soft)}
+.err{background:#f6e3e3;border:1px solid #e6b9b9;border-radius:10px;padding:12px;font-size:13px}
+.muted{color:var(--soft);font-size:11px}
+a.tab{font-size:11px;color:var(--red);text-decoration:none;font-weight:700}
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="topbar">
+    <div class="brand"><img class="logo" src="hub-logo.png" alt="The Hub"><span class="bn">The Hub</span><span class="bs">Today</span></div>
+    <div class="rib" id="rib"></div>
+  </div>
+  <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
+  <nav class="tabbar">
+    <a class="tab active" href="today.html"><span class="ti">🏠</span>Today</a>
+    <a class="tab" href="week.html"><span class="ti">🗓️</span>Week</a>
+    <a class="tab" href="repairs.html"><span class="ti">🔧</span>Repairs</a>
+    <a class="tab" href="close.html"><span class="ti">📑</span>Close</a>
+    <a class="tab" href="stats.html"><span class="ti">📊</span>Stats</a>
+    <a class="tab" href="internet.html"><span class="ti">📶</span>Net</a>
+  </nav>
+</div>
+
+<script src="auth.js"></script>
+<script>
+/* CONFIG lives in auth.js: ENDPOINT + the session token. No password or shared
+   secret in this file — who you are comes from the signed-in session. */
+
+var D=null, DAYMS=86400000, STAYS=[];
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var fmt=function(n){return (n<0?'-':'')+Math.abs(Math.round(n)).toLocaleString('en-US');};
+var pct=function(n){return (isFinite(n)?Math.round(n*100):0)+'%';};
+var $=function(s){return document.querySelector(s);};
+var day=function(s){return new Date((s||'').slice(0,10)+'T00:00:00');};
+var ymd=function(d){return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);};
+var dmon=function(s){var d=day(s);return d.getDate()+' '+MON[d.getMonth()];};
+
+/* fetch: one silent retry, stale-while-revalidate */
+function boot(){ fetchOnce().then(onData).catch(function(e){ if(e&&e.message==='AUTH')return; setTimeout(function(){ fetchOnce().then(onData).catch(function(e2){ if(e2&&e2.message==='AUTH')return; if(!D){var c=cache();c?onData(c,true):showErr(e2);} }); },800); }); }
+function fetchOnce(){ return api('props_get_all').then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); if(j.me){ ME=j.me; try{localStorage.setItem('owh_me',JSON.stringify(ME));}catch(e){} } return j; }); }
+function cache(){ try{return JSON.parse(localStorage.getItem('owh_today'));}catch(e){return null;} }
+function showErr(e){ if(D)return; $('#app').innerHTML='<div class="err">Couldn\'t reach the endpoint.<br><span class="muted">'+(e&&e.message||'')+'</span></div>'; }
+var ALERTS=null;
+function onData(j,fromCache){ D=j.data; D._gen=j.generatedAt; STAYS=mergeStays(D.stays); try{ if(!fromCache)localStorage.setItem('owh_today',JSON.stringify(j)); }catch(e){} render(); if(!fromCache)fetchAlerts(); }
+/* light read-only alerts (WeShare pending confirmations) — fetched after the main render so the load stays fast */
+function fetchAlerts(){ api('props_alerts').then(function(j){ if(j&&j.ok){ ALERTS=j; render(); } }).catch(function(){}); }
+/* run the whole pipeline on demand (month-close / snapshot) */
+function syncAll(){
+  var btn=document.getElementById('syncAllBtn'); if(btn){ btn.disabled=true; btn.textContent='⏳ syncing…'; }
+  api('props_sync_all').then(function(j){
+    if(j&&j.ok){ var pc=(j.needsAttention&&j.needsAttention.pendingConfirmations)||0;
+      alert('Synced ✓'+(pc?('\n\n⚠️ '+pc+' item'+(pc>1?'s':'')+' still pending confirmation in WeShare.'):'\n\nEverything confirmed and up to date.'));
+      boot();
+    } else { if(btn){btn.disabled=false;btn.textContent='🔄 Sync all';} alert('Sync error: '+((j&&j.error)||'failed')); }
+  }).catch(function(e){ if(btn){btn.disabled=false;btn.textContent='🔄 Sync all';} alert('Sync failed: '+(e.message||e)); });
+}
+/* logical stays: contiguous same-guest bookings merge (cleaning + internet + occupancy events; revenue is sheet-side, per booking) */
+function mergeStays(stays){
+  var live=(stays||[]).filter(function(s){ return isLive(s)&&s.checkIn&&s.checkOut; })
+    .slice().sort(function(a,b){ return a.flat<b.flat?-1:(a.flat>b.flat?1:(a.checkIn<b.checkIn?-1:1)); });
+  var out=[], acc=null;
+  live.forEach(function(s){
+    if(acc && acc.flat===s.flat && acc.guest===s.guest && acc.checkOut===s.checkIn){
+      acc.checkOut=s.checkOut; acc.nights=Math.round((day(acc.checkOut)-day(acc.checkIn))/DAYMS);
+      acc.guests=Math.max(acc.guests||1,s.guests||1); acc.ids.push(s.id);
+      if(acc.portals.indexOf(s.portal)<0)acc.portals.push(s.portal);   // a stay can span channels (early-night extension)
+    } else { if(acc)out.push(acc);
+      acc={ id:s.id, ids:[s.id], flat:s.flat, portal:s.portal, portals:[s.portal], status:s.status, guest:s.guest,
+            checkIn:s.checkIn, checkOut:s.checkOut, nights:s.nights, guests:s.guests, allIn:s.allIn }; }
+  });
+  if(acc)out.push(acc);
+  return out;
+}
+/* ============================================================================
+   GUARD — TWO VIEWS OF BOOKINGS. Don't cross the streams.
+   • STAYS (merged, from mergeStays)  → CLEANING / OCCUPANCY-EVENTS / INTERNET only.
+   • rawStays() (per Smoobu booking)  → MONEY, CHANNEL, PAYMENT-METHOD, and STATISTICS.
+   Revenue-by-channel and revenue-by-payment-method are per-booking — a guest can extend
+   across channels, so those MUST read rawStays(), never the merged STAYS.
+   ============================================================================ */
+function rawStays(){ return D.stays || []; }
+
+/* ---------- month + booking helpers ---------- */
+function mInfo(ym){ var y=+ym.slice(0,4),mo=+ym.slice(5,7); var start=new Date(y,mo-1,1),nextStart=new Date(y,mo,1); return {ym:ym,start:start,nextStart:nextStart,dim:Math.round((nextStart-start)/DAYMS)}; }
+function nextYm(ym){ var y=+ym.slice(0,4),mo=+ym.slice(5,7)+1; if(mo>12){mo=1;y++;} return y+'-'+('0'+mo).slice(-2); }
+function prevYm(ym){ var y=+ym.slice(0,4),mo=+ym.slice(5,7)-1; if(mo<1){mo=12;y--;} return y+'-'+('0'+mo).slice(-2); }
+function isLive(s){ var st=(s.status||'').toLowerCase(); return st.indexOf('cancel')<0 && st.indexOf('block')<0; }
+function overlapNights(s,m){ if(!s.checkIn||!s.checkOut)return 0; var os=Math.max(day(s.checkIn),m.start),oe=Math.min(day(s.checkOut),m.nextStart); return Math.max(0,Math.round((oe-os)/DAYMS)); }
+function flatNights(f,m){ var n=0; D.stays.forEach(function(s){ if(s.flat===f&&isLive(s))n+=overlapNights(s,m); }); return n; }
+function isBlocked(s){ return (s.status||'').toLowerCase().indexOf('block')>-1; }
+// distinct blocked calendar nights in month m (Smoobu creates one block per channel, so ranges overlap — union them)
+function flatBlockedNights(f,m){ var set={}; D.stays.forEach(function(s){ if(s.flat!==f||!isBlocked(s)||!s.checkIn||!s.checkOut)return;
+  var t=new Date(Math.max(day(s.checkIn),m.start)), b=Math.min(day(s.checkOut),m.nextStart);
+  for(; t<b; t.setDate(t.getDate()+1)) set[ymd(t)]=1; }); return Object.keys(set).length; }
+function flatBooked(f,m){ var v=0; rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; var on=overlapNights(s,m); if(on&&s.nights)v+=s.allIn*on/s.nights; }); return v; }   // MONEY → rawStays()
+function airbnbFlats(){ return D.meta.flatsOrder.filter(function(f){ return D.targets.byFlat[f]; }); }
+function targetB(f,m){ return (D.targets.byFlat[f]||{B:0}).B*m.dim/D.targets.daysBasis; }
+function targetA(f,m){ return (D.targets.byFlat[f]||{A:0}).A*m.dim/D.targets.daysBasis; }
+
+function nextCheckIn(flat,asOf){ var next=null; STAYS.forEach(function(s){ if(s.flat!==flat)return; var ci=day(s.checkIn); if(ci>=asOf&&(!next||ci<next))next=ci; }); return next; }
+function occStayOn(flat,asOf){ var o=null; STAYS.forEach(function(s){ if(s.flat===flat&&s.checkIn&&s.checkOut&&day(s.checkIn)<=asOf&&asOf<day(s.checkOut))o=s; }); return o; }
+function codeOf(d){ return ('0'+d.getDate()).slice(-2)+('0'+(d.getMonth()+1)).slice(-2); }
+// while a guest is IN → current stay's code; else next arrival's (only if within 2 days); else default 0107
+function doorCode(flat,asOf){ var cur=occStayOn(flat,asOf); if(cur)return codeOf(day(cur.checkIn));
+  var n=nextCheckIn(flat,asOf); if(!n)return '0107'; if((n-asOf)/DAYMS>2)return '0107'; return codeOf(n); }
+function prevCheckOut(flat,before){ var last=null; STAYS.forEach(function(s){ if(s.flat!==flat)return; var co=day(s.checkOut); if(co<=before&&(!last||co>last))last=co; }); return last; }
+
+/* free-night runs (>=2) in cm, from today forward */
+function freeRuns(flat,cm,fromISO){
+  var occ={}; D.stays.forEach(function(s){ if(s.flat!==flat||!s.checkIn||!s.checkOut||(!isLive(s)&&!isBlocked(s)))return; for(var t=day(s.checkIn),b=day(s.checkOut); t<b; t.setDate(t.getDate()+1))occ[ymd(t)]=1; });
+  var from=day(fromISO); if(from<cm.start)from=new Date(cm.start);
+  var runs=[],cur=null;
+  for(var d=new Date(from); d<cm.nextStart; d.setDate(d.getDate()+1)){ var k=ymd(d);
+    if(!occ[k]){ if(!cur)cur={s:d.getDate(),n:0}; cur.n++; cur.e=d.getDate(); } else if(cur){runs.push(cur);cur=null;} }
+  if(cur)runs.push(cur);
+  // min 2-night bookings: deduct 1 night per gap, keep only runs with >=2 fillable nights left
+  return runs.map(function(r){ r.use=r.n-1; return r; }).filter(function(r){ return r.use>=2; });
+}
+
+/* ---------- render ---------- */
+function render(){
+  var cmY=D.meta.currentMonth, nmY=nextYm(cmY), pmY=prevYm(cmY);
+  var cm=mInfo(cmY), nm=mInfo(nmY), pm=mInfo(pmY), flats=airbnbFlats(), asOf=day(D.meta.asOf);
+  $('#rib').innerHTML=authWho()+' · FX '+(D.meta.fx.current||'?')+' · '+(D._gen?new Date(D._gen).toLocaleDateString():'');
+
+  var pf={}, T={earn:0,tB:0,tA:0,n:0, nmEarn:0,nmTB:0,nmN:0, pmN:0, blk:0, blkVal:0};
+  flats.forEach(function(f){
+    var earn=(((D.pnl[f]||{})[cmY]||{}).revenue||{}).earnings||0;
+    var n=flatNights(f,cm), nmEarn=flatBooked(f,nm), nmN=flatNights(f,nm), pmN=flatNights(f,pm);
+    var tB=targetB(f,cm), nmtB=targetB(f,nm), adr=n?earn/n:0, blk=flatBlockedNights(f,cm);
+    pf[f]={earn:earn,n:n,occ:n/cm.dim,adr:adr,vsB:tB?earn/tB:0, nmEarn:nmEarn,nmVsB:nmtB?nmEarn/nmtB:0, blk:blk, blkVal:blk*adr};
+    T.earn+=earn;T.tB+=tB;T.tA+=targetA(f,cm);T.n+=n; T.nmEarn+=nmEarn;T.nmTB+=nmtB;T.nmN+=nmN; T.pmN+=pmN; T.blk+=blk; T.blkVal+=blk*adr;
+  });
+  var denom=cm.dim*flats.length;
+  var occ=T.n/denom, pmOcc=T.pmN/(pm.dim*flats.length);
+  var occExBlk=(denom-T.blk)>0?T.n/(denom-T.blk):0, pctBlk=denom?T.blk/denom:0;
+
+  // free nights (forward)
+  var runs=[], freeVal=0, freeN=0;
+  flats.forEach(function(f){ freeRuns(f,cm,D.meta.asOf).forEach(function(r){ var v=r.use*pf[f].adr; runs.push({flat:f,s:r.s,e:r.e,n:r.n,use:r.use,adr:pf[f].adr,val:v}); freeVal+=v; freeN+=r.use; }); });
+  runs.sort(function(a,b){return b.val-a.val;});
+
+  var d0=new Date(D.meta.asOf+'T00:00:00');
+  var h='<h1>Today <span class="h1s">'+d0.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'})+'</span></h1>';
+
+  // ---- 4 KPI tiles
+  h+='<div class="kpis">';
+  h+=kpi(mLabel(cmY)+' earnings','$'+fmt(T.earn),'B '+col(T.earn/T.tB)+' · A '+pct(T.tA?T.earn/T.tA:0));
+  h+=kpi(mLabel(nmY)+' earnings','$'+fmt(T.nmEarn),'B '+col(T.nmTB?T.nmEarn/T.nmTB:0)+' · '+T.nmN+'n booked / '+flats.length+' flats');
+  h+=kpi('Free '+mLabel(cmY)+' nights',String(freeN),runs.length+' run'+(runs.length===1?'':'s')+' · $'+fmt(freeVal));
+  h+=kpi('Occupancy',pct(occ),mLabel(pmY)+' '+pct(pmOcc)+' · '+deltaPts(occ,pmOcc));
+  h+='</div>';
+
+  // ---- by flat (this month + next-month vs B)
+  h+='<div class="card"><h3>By flat<span class="rt">'+mLabel(cmY)+' &amp; '+mLabel(nmY)+'</span></h3><table><thead><tr><th>Flat</th><th>'+mLabel(cmY)+' $</th><th>vs B</th><th>Occ</th><th>ADR</th><th>'+mLabel(nmY)+' vsB</th></tr></thead><tbody>';
+  flats.forEach(function(f){ var p=pf[f];
+    h+='<tr><td>'+f+'</td><td>'+fmt(p.earn)+'</td><td class="'+cc(p.vsB)+'">'+pct(p.vsB)+'</td><td>'+pct(p.occ)+'</td><td>'+p.adr.toFixed(1)+'</td><td class="'+cc(p.nmVsB)+'">'+pct(p.nmVsB)+'</td></tr>'; });
+  h+='<tr class="tot"><td>Portfolio</td><td>'+fmt(T.earn)+'</td><td class="'+cc(T.tB?T.earn/T.tB:0)+'">'+pct(T.tB?T.earn/T.tB:0)+'</td><td>'+pct(occ)+'</td><td>'+(T.n?(T.earn/T.n).toFixed(1):'—')+'</td><td class="'+cc(T.nmTB?T.nmEarn/T.nmTB:0)+'">'+pct(T.nmTB?T.nmEarn/T.nmTB:0)+'</td></tr>';
+  h+='</tbody></table></div>';
+
+  // ---- happening today
+  h+=happening(cm,asOf);
+
+  // ---- free nights table
+  if(runs.length){
+    h+='<div class="card"><h3>Free nights<span class="rt">'+mLabel(cmY)+' · fillable</span></h3><table><thead><tr><th>Flat</th><th>Run</th><th>Gap</th><th>Fillable</th><th>ADR</th><th>Value</th></tr></thead><tbody>';
+    runs.forEach(function(r){ h+='<tr><td>'+r.flat+'</td><td>'+r.s+'–'+r.e+'</td><td class="soft">'+r.n+'n</td><td>'+r.use+'n</td><td>'+r.adr.toFixed(1)+'</td><td>$'+fmt(r.val)+'</td></tr>'; });
+    h+='<tr class="tot"><td colspan="5">Total</td><td>$'+fmt(freeVal)+'</td></tr></tbody></table><div class="legend">Min 2-night bookings: each gap loses 1 night; gaps with under 2 fillable nights are dropped. Value = fillable × ADR (estimate).</div></div>';
+  }
+
+  // ---- blocked nights (opportunity cost) — self-inflicted unavailability; hurts occupancy, not ADR
+  if(T.blk>0){
+    h+='<div class="card"><h3>Blocked nights<span class="rt">'+mLabel(cmY)+' · opportunity cost</span></h3>';
+    h+='<table><thead><tr><th>Flat</th><th>Blocked</th><th>ADR</th><th>Value</th></tr></thead><tbody>';
+    flats.forEach(function(f){ var p=pf[f]; if(p.blk>0) h+='<tr><td>'+f+'</td><td>'+p.blk+'n</td><td>'+p.adr.toFixed(1)+'</td><td>$'+fmt(p.blkVal)+'</td></tr>'; });
+    h+='<tr class="tot"><td>Total</td><td>'+T.blk+'n</td><td></td><td>$'+fmt(T.blkVal)+'</td></tr></tbody></table>';
+    h+='<div class="legend">'+pct(pctBlk)+' of the month is blocked. Occupancy is '+pct(occ)+' — without the blocks it would be '+pct(occExBlk)+' ('+deltaPts(occExBlk,occ)+'). Value = blocked nights × actual ADR. Blocked nights don\'t affect ADR.</div></div>';
+  }
+
+  // ---- needs you
+  h+=needs(cm,pmY);
+
+  $('#app').innerHTML=h;
+}
+
+function mLabel(ym){ return MON[+ym.slice(5,7)-1]; }
+function kpi(l,v,s){ return '<div class="kpi"><div class="kl">'+l+'</div><div class="kv">'+v+'</div><div class="ks">'+s+'</div></div>'; }
+function col(x){ return isFinite(x)?'<span class="'+cc(x)+'">'+pct(x)+'</span>':'—'; }
+function cc(x){ return x>=1?'g':'r'; }
+function deltaPts(a,b){ var d=Math.round((a-b)*100); return '<span class="'+(d>=0?'g':'r')+'">'+(d>=0?'+':'')+d+'</span>'; }
+
+function happening(cm,asOf){
+  var today=D.meta.asOf, rows=[];
+  // every flat always shown; same-day turnover (out + in) shows both rows
+  airbnbFlats().forEach(function(f){
+    var cur=null, coToday=null;
+    STAYS.forEach(function(s){ if(s.flat!==f)return;
+      if(day(s.checkIn)<=asOf&&asOf<day(s.checkOut))cur=s;   // occupied tonight (incl. check-in today)
+      if(s.checkOut===today)coToday=s; });
+    if(coToday) rows.push({flat:f,portals:coToday.portals,guest:coToday.guest,kind:'out',
+      action:nextAction(coToday,asOf,today,true,false), code:doorCode(f,asOf)});
+    if(cur){
+      var inn=cur.checkIn===today;
+      rows.push({flat:f,portals:cur.portals,guest:cur.guest,kind:inn?'in':'stay',
+        action:nextAction(cur,asOf,today,false,inn), code:doorCode(f,asOf)});
+    } else if(!coToday){
+      var n=nextCheckIn(f,asOf), guest='', portal='', action, code='';
+      if(!n){ rows.push({flat:f,portal:'',guest:'',kind:'free',action:'No booking coming up',code:doorCode(f,asOf)}); }
+      else {
+        var inS=null; STAYS.forEach(function(s){ if(s.flat===f&&s.checkIn&&day(s.checkIn).getTime()===n.getTime())inS=s; });
+        var portals=inS?inS.portals:[];   // guest stays blank — nobody has checked in yet
+        // RULE: gap > 2 days between check-out and next check-in => revision clean the day before arrival
+        var pco=prevCheckOut(f,n), gap=pco?Math.round((n-pco)/DAYMS):0, diff=Math.round((n-asOf)/DAYMS);
+        var sched=nextSched(f,asOf);
+        if(sched) action=sched.label;                 // confirmed clean/repair from Week wins
+        else if(gap>2){ var rev=new Date(n); rev.setDate(rev.getDate()-1); action='Revision clean '+dmon(ymd(rev)); }
+        else action='clean → new guest '+(diff<=0?'today':(diff===1?'tomorrow':dmon(ymd(n))));
+        rows.push({flat:f,portals:portals,guest:guest,kind:'gap',action:action,code:doorCode(f,asOf)});
+      }
+    }
+  });
+  var h='<div class="card"><h3>Happening today</h3>';
+  h+='<table><thead><tr><th>Flat</th><th style="text-align:left">Event</th><th style="text-align:left">Guest</th><th style="text-align:left">Next action</th><th>Code</th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    var pill=r.kind==='out'?'<span class="pill p-out">out</span>':(r.kind==='in'?'<span class="pill p-in">in</span>':(r.kind==='gap'?'<span class="pill p-gap">vacant</span>':(r.kind==='free'?'<span class="pill p-free">not booked</span>':'<span class="pill p-stay">in stay</span>')));
+    h+='<tr'+(r.kind==='free'?' class="rfree"':'')+'><td>'+((r.portals&&r.portals.length)?r.portals.map(dotp).join(''):'')+r.flat+'</td><td style="text-align:left">'+pill+'</td><td style="text-align:left">'+esc(r.guest||'')+'</td><td dir="ltr" style="text-align:left" class="soft">'+r.action+'</td><td class="code">'+(r.code||'')+'</td></tr>';
+  });
+  h+='</tbody></table><div class="legend"><span class="dot" style="background:var(--ch-airbnb)"></span>Airbnb <span class="dot" style="background:var(--ch-booking)"></span>Booking <span class="dot" style="background:var(--ch-direct)"></span>Direct</div></div>';
+  return h;
+}
+// RULE: stays > 12 nights get in-stay cleanings — first mid-stay, then weekly,
+// every 7 nights from check-in, stopping once <=4 nights remain to check-out.
+function cleanPlan(s){
+  var N=s.nights||0; if(N<=12||!s.checkIn) return [];
+  var ci=day(s.checkIn), plan=[], j=0;
+  for(var off=6; N-off>4; off+=7,j++){ var d=new Date(ci); d.setDate(d.getDate()+off); plan.push({d:d,first:j===0}); }
+  return plan;
+}
+// NEXT ACTION mirrors the Week screen's CONFIRMED schedule — cleans (D.cleans) + open repairs (D.repairs) —
+// NOT an independent recalculation. Whatever you set/edit in Week is the source of truth shown here.
+function cleanTypeLabel(t){ t=(t||'').toLowerCase(); return t==='checkout'?'Check-out clean':t==='midstay'?'Mid-stay clean':t==='weekly'?'Weekly clean':t==='revision'?'Revision clean':'Clean'; }
+function nextSched(flat,asOf){
+  var best=null;
+  (D.cleans||[]).forEach(function(c){ if(c.flat!==flat||!c.date)return; var d=day(c.date); if(d>=asOf&&(!best||d<best.d)) best={d:d,label:cleanTypeLabel(c.type)+' '+dmon(c.date)}; });
+  (D.repairs||[]).forEach(function(r){ if(r.flat!==flat||r.status!=='open'||!r.date)return; var d=day(r.date); if(d>=asOf&&(!best||d<best.d)) best={d:d,label:'🔧 <bdi>'+esc(r.trade||'repair')+'</bdi> '+dmon(r.date)}; });
+  return best;
+}
+function nextAction(s,asOf,today,out,inn){
+  var sched=nextSched(s.flat,asOf);
+  if(sched) return sched.label;                       // confirmed clean / open repair from the Week schedule
+  if(out){ var n=nextCheckIn(s.flat,asOf); if(n){ var diff=Math.round((n-asOf)/DAYMS); return 'clean → new guest '+(diff<=0?'tonight':(diff===1?'tomorrow':dmon(ymd(n)))); } return 'clean'; }
+  if(inn) return 'in · out '+dmon(s.checkOut);
+  return 'check-out '+dmon(s.checkOut);
+}
+function dotp(portal){ var p=(portal||'').toLowerCase(); var c=p.indexOf('airbnb')>-1?'--ch-airbnb':(p.indexOf('book')>-1?'--ch-booking':'--ch-direct'); return '<span class="dot" style="background:var('+c+')"></span>'; }
+
+/* ---- internet depletion (Screen 8 mirrors here, §13.2) ---- */
+function pdt(s){ s=(s||'').toString().trim(); if(!s)return null; s=s.replace(' ','T'); if(s.length<=10)s+='T00:00'; var d=new Date(s); return isNaN(d)?null:d; }
+function netAlerts(){
+  if(!D.internet) return [];
+  var asOf=day(D.meta.asOf), out=[];
+  (D.meta.flatsOrder||[]).forEach(function(f){
+    var b=null; D.internet.bundles.forEach(function(x){ if(x.flat!==f)return; var d=pdt(x.cycleStart); if(d&&(!b||d>pdt(b.cycleStart)))b=x; });
+    if(!b)return;
+    var cs=pdt(b.cycleStart), r=null;
+    D.internet.readings.forEach(function(x){ if(x.flat!==f)return; var d=pdt(x.at); if(!d||(cs&&d<cs))return; if(!r||d>pdt(r.at))r=x; });
+    if(!r)return;
+    var at=pdt(r.at)||asOf, consumed=Math.max(0,b.quota-r.remaining), elapsed=(at-cs)/DAYMS;
+    if(elapsed<=0.05)return; var burn=consumed/elapsed; if(burn<=0)return;
+    var depl=new Date(at.getTime()+(r.remaining/burn)*DAYMS), deplDay=day(ymd(depl));
+    var co=null; STAYS.forEach(function(s){ if(s.flat!==f)return; var c=day(s.checkOut); if(c>=asOf&&(!co||c<co))co=c; });
+    var soon=(deplDay-asOf)<=DAYMS, before=co&&deplDay<co;               // soon = 1 day before depletion (or sooner)
+    if(soon||before) out.push({flat:f,depl:depl,co:co,soon:soon,before:before});
+  });
+  return out;
+}
+function isDirect(portal){ return (portal||'').toLowerCase().indexOf('direct')>-1; }
+/* direct bookings the Smoobu sync brought in without a payment method yet (§14).
+   Flag a direct booking with no route when it was booked recently OR is current/upcoming —
+   this targets fresh arrivals & live bookings, never nags about old completed history. */
+function directNeedsPay(){
+  var asOf=day(D.meta.asOf), cutoff=new Date(asOf); cutoff.setDate(cutoff.getDate()-30);
+  return rawStays().filter(function(s){   // PAYMENT per booking → rawStays()
+    if(!isDirect(s.portal)||!isLive(s)||s.payRoute||!s.checkOut) return false;
+    var recentlyBooked=s.booked&&day(s.booked)>=cutoff, currentOrFuture=day(s.checkOut)>=asOf;
+    return recentlyBooked||currentOrFuture;
+  }).sort(function(a,b){ return a.checkIn<b.checkIn?-1:1; });
+}
+function payRow(s){
+  var id=esc(s.id);
+  return '<div class="need n-warn" id="pay_'+id+'"><span class="nb">₪</span><span>'+
+    '<b>Confirm payment</b> — '+esc(s.flat)+' · '+esc(s.guest||'')+' · direct booking '+dmon(s.checkIn)+' ($'+fmt(s.allIn)+')'+
+    '<div class="payctl">'+
+      '<select id="pm_'+id+'"><option>Stripe</option><option>Cash</option><option>Instapay</option></select>'+
+      '<select id="pc_'+id+'"><option>USD</option><option>EGP</option></select>'+
+      '<button class="paybtn" onclick="savePay(\''+id+'\')">Save</button>'+
+      '<span class="paymsg" id="pmsg_'+id+'"></span>'+
+    '</div></span></div>';
+}
+function needs(cm,pmY){
+  var items=[];
+  if(!D.meta.fx.isCurrentMonthSet) items.push({t:'warn',txt:'<b>FX not set for '+D.meta.currentMonth+'</b> — carrying '+(D.meta.fx.current||'?')+' from last close.'});
+  var anyOpen=false; airbnbFlats().forEach(function(f){ var r=(D.pnl[f]||{})[pmY]; if(r&&r.status&&r.status!=='final')anyOpen=true; });
+  if(anyOpen) items.push({t:'info',txt:'<b>'+pmY+' not closed</b> — review &amp; mark final on the close screen.'});
+  var pays=directNeedsPay(), nets=netAlerts();
+  nets.forEach(function(a){ items.unshift({t:'warn',txt:'<b>Internet — '+esc(a.flat)+'</b> '+
+    (a.soon ? 'about to run out — depletes <b>'+dmon(ymd(a.depl))+'</b>.'
+            : 'may deplete <b>'+dmon(ymd(a.depl))+'</b>, before check-out '+dmon(ymd(a.co))+'.')+
+    ' <a class="tab" href="internet.html">Top up / renew →</a>'}); });
+  if(ALERTS && ALERTS.pendingCount>0) items.unshift({t:'warn',txt:'<b>'+ALERTS.pendingCount+' expense'+(ALERTS.pendingCount>1?'s':'')+' awaiting confirmation</b> in WeShare — confirm who paid and they flow to the P&amp;L.'});
+  // Thursday-6pm reminder: confirm the Week schedule + send the WhatsApp (shows Thu-eve & Fri until the upcoming week is confirmed)
+  (function(){ var nd=new Date(), dow=nd.getDay();
+    if((dow===4&&nd.getHours()>=18)||dow===5){
+      var sat=new Date(nd); sat.setDate(sat.getDate()+(((6-dow+7)%7)||7));   // upcoming Saturday = operational week start
+      var satY=ymd(sat), done=(D.cleans||[]).some(function(c){ return c.week===satY; });
+      if(!done) items.unshift({t:'warn',txt:'<b>It\'s Thursday</b> — confirm the <a class="tab" href="week.html">Week</a> schedule &amp; send the WhatsApp.'});
+    }
+  })();
+  if(!items.length&&!pays.length) items.push({t:'ok',txt:'Nothing needs you right now.'});
+  var h='<div class="card"><h3>Needs you<button id="syncAllBtn" onclick="syncAll()" style="float:right;font:inherit;font-size:11px;font-weight:700;border:1px solid var(--line,#ecdede);background:#fff;color:var(--red,#cc5f5f);border-radius:8px;padding:3px 9px;cursor:pointer">🔄 Sync all</button></h3>';
+  pays.forEach(function(s){ h+=payRow(s); });
+  items.forEach(function(i){ h+='<div class="need n-'+i.t+'"><span class="nb">'+(i.t==='warn'?'!':(i.t==='ok'?'✓':'•'))+'</span><span>'+i.txt+'</span></div>'; });
+  return h+'</div>';
+}
+function savePay(id){
+  var m=document.getElementById('pm_'+id).value, c=document.getElementById('pc_'+id).value, msg=document.getElementById('pmsg_'+id);
+  msg.textContent='saving…';
+  api('props_set_pay',{id:id,method:m,currency:c}).then(function(j){
+    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+    boot();                                        // reload — the item drops off once the route is set
+  }).catch(function(e){ msg.textContent='failed: '+(e.message||e); });
+}
+function esc(s){return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
+
+AUTH_ON_LOGIN = boot; if (authGuard()) boot();   // signed in → load now; otherwise the sign-in form loads it
+</script>
+</body>
+</html>
