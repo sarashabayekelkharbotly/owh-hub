@@ -83,7 +83,12 @@ try{ CUR=localStorage.getItem('owh_cur')||'USD'; }catch(e){}
 var $=function(s){return document.querySelector(s);};
 var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function esc(s){return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
-function fmt(n){ if(n==null||!isFinite(n)) return '—'; return (n<0?'−':'')+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
+/* Dollars carry 2 decimals, EGP none — see the note in partner.html. `fmtN` is for things that are
+   not money (nights, bookings), which must never grow decimals. */
+function fmt(n){ if(n==null||!isFinite(n)) return '—';
+  var d=(CUR==='USD')?2:0;
+  return (n<0?'−':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+function fmtN(n){ if(n==null||!isFinite(n)) return '—'; return Math.round(n).toLocaleString('en-US'); }
 function fmt2(n){ if(n==null||!isFinite(n)) return '—'; return (n<0?'−':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function monShort(ym){ var p=(ym||'').split('-'); return p.length===2 ? MON[(+p[1])-1] : ym; }
 function monLabel(ym){ var p=(ym||'').split('-'); return p.length===2 ? MON[(+p[1])-1]+' '+p[0] : ym; }
@@ -218,19 +223,27 @@ function occChart(){
     return {m:m, occ:n/daysIn(m), adr:adr, n:n};
   });
   var ny=function(f){ return h-pb-ih*f; };                       // 0..1 -> y
-  /* Both axes labelled: occupancy on the left, the nightly rate on the right, each in its own
-     colour so a glance at the chart says which scale belongs to which series. */
-  var grid='', ticks=[0,0.25,0.5,0.75,1];
-  ticks.forEach(function(f){
-    grid+='<line x1="'+pl+'" y1="'+ny(f)+'" x2="'+(w-pr)+'" y2="'+ny(f)+'" stroke="#f2e8e8"></line>'+
-      '<text x="'+(pl-7)+'" y="'+(ny(f)+3)+'" font-size="9" text-anchor="end" fill="var(--occ)">'+Math.round(f*100)+'%</text>'+
-      '<text x="'+(w-pr+7)+'" y="'+(ny(f)+3)+'" font-size="9" fill="var(--adr)">'+sym()+fmt(adrMax*f)+'</text>';
+  /* No axis scales: every value is written on the mark it belongs to, which is one less thing to
+     read across. Faint gridlines stay for shape. */
+  var grid='';
+  [0.25,0.5,0.75,1].forEach(function(f){
+    grid+='<line x1="'+pl+'" y1="'+ny(f)+'" x2="'+(w-pr)+'" y2="'+ny(f)+'" stroke="#f7efef"></line>';
   });
   var bars=pts.map(function(p,i){
     var bh=ih*Math.min(p.occ,1), x=pl+i*iw+iw*0.24, bw=Math.max(iw*0.52,3);
-    return '<rect x="'+x+'" y="'+(h-pb-bh)+'" width="'+bw+'" height="'+bh+'" rx="2" fill="var(--occ)" opacity=".8">'+
-           '<title>'+monLabel(p.m)+' · '+Math.round(p.occ*100)+'% occupied · '+p.n+' nights</title></rect>'+
+    var pctTxt=Math.round(p.occ*100)+'%';
+    // inside the bar when it is tall enough to hold the text, just above it when it is not
+    var lbl = bh>=17
+      ? '<text x="'+(x+bw/2)+'" y="'+(h-pb-bh+12)+'" font-size="9" font-weight="700" text-anchor="middle" fill="#fff">'+pctTxt+'</text>'
+      : '<text x="'+(x+bw/2)+'" y="'+(h-pb-bh-4)+'" font-size="9" font-weight="700" text-anchor="middle" fill="var(--occ)">'+pctTxt+'</text>';
+    return '<rect x="'+x+'" y="'+(h-pb-bh)+'" width="'+bw+'" height="'+bh+'" rx="2" fill="var(--occ)" opacity=".82">'+
+           '<title>'+monLabel(p.m)+' · '+pctTxt+' occupied · '+p.n+' nights</title></rect>'+lbl+
            '<text x="'+(x+bw/2)+'" y="'+(h-pb+13)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+monShort(p.m)+'</text>';
+  }).join('');
+  // the nightly rate written above each point
+  var adrLbl=pts.map(function(p,i){
+    return '<text x="'+(pl+i*iw+iw/2)+'" y="'+(ny(p.adr/adrMax)-7)+'" font-size="9" font-weight="700" '+
+           'text-anchor="middle" fill="var(--adr)">'+sym()+fmt(p.adr)+'</text>';
   }).join('');
   var line=pts.map(function(p,i){ return (i?'L':'M')+(pl+i*iw+iw/2)+','+ny(p.adr/adrMax); }).join(' ');
   var circles=pts.map(function(p,i){
@@ -242,7 +255,7 @@ function occChart(){
     '<text x="'+pl+'" y="13" font-size="10" font-weight="700" fill="var(--occ)" text-anchor="start">bars · occupancy %</text>'+
     '<text x="'+(w-pr)+'" y="13" font-size="10" font-weight="700" fill="var(--adr)" text-anchor="end">line · nightly rate ('+CUR+')</text>'+
     '<line x1="'+pl+'" y1="'+(h-pb)+'" x2="'+(w-pr)+'" y2="'+(h-pb)+'" stroke="#e0d0d0"></line>'+
-    bars+'<path d="'+line+'" fill="none" stroke="var(--adr)" stroke-width="1.9"></path>'+circles+'</svg>'+
+    bars+'<path d="'+line+'" fill="none" stroke="var(--adr)" stroke-width="1.9"></path>'+circles+adrLbl+'</svg>'+
     '<div class="legend"><span><i style="background:var(--occ)"></i>occupancy % — share of the month\'s nights booked</span>'+
     '<span><i style="background:var(--adr)"></i>ADR — earnings ÷ nights, in '+CUR+'</span></div>';
 }
@@ -269,25 +282,29 @@ function chanChart(){
   var data=chanData(ms), series=(CHAN==='net')?[['Net','var(--g)']]:CH;
   var money=(CHAN==='revenue'||CHAN==='net');
   var unit={revenue:CUR,net:CUR,stays:'bookings',nights:'nights'}[CHAN];
-  var w=980,h=245,pl=54,pr=16,pt=26,pb=30, iw=(w-pl-pr)/ms.length, max=1, ih=h-pt-pb;
+  var val=function(v){ return money ? sym()+fmt(v) : fmtN(v); };      // counts never grow decimals
+  var w=980,h=245,pl=22,pr=16,pt=26,pb=30, iw=(w-pl-pr)/ms.length, max=1, ih=h-pt-pb;
   ms.forEach(function(m){ var t=series.reduce(function(a,c){ return a+(data[m][c[0]]||0); },0); if(t>max)max=t; });
   var ny=function(f){ return h-pb-ih*f; };
-  var grid='';                                    // a labelled scale, so the bars can be read not just compared
-  [0,0.5,1].forEach(function(f){
-    grid+='<line x1="'+pl+'" y1="'+ny(f)+'" x2="'+(w-pr)+'" y2="'+ny(f)+'" stroke="#f2e8e8"></line>'+
-      '<text x="'+(pl-7)+'" y="'+(ny(f)+3)+'" font-size="9" text-anchor="end" fill="#6b6b6b">'+
-      (money?sym():'')+fmt(max*f)+'</text>';
+  var grid='';                                    // shape only — every number is written on its own segment
+  [0.25,0.5,0.75,1].forEach(function(f){
+    grid+='<line x1="'+pl+'" y1="'+ny(f)+'" x2="'+(w-pr)+'" y2="'+ny(f)+'" stroke="#f7efef"></line>';
   });
   var body=ms.map(function(m,i){
-    var y=h-pb, x=pl+i*iw+iw*0.22, bw=Math.max(iw*0.56,3), out='';
+    var y=h-pb, x=pl+i*iw+iw*0.22, bw=Math.max(iw*0.56,3), out='', lbls='';
     series.forEach(function(c){
       var v=data[m][c[0]]||0; if(v<=0) return;
       var bh=ih*(v/max); y-=bh;
       out+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" fill="'+c[1]+'" opacity=".88">'+
-           '<title>'+monLabel(m)+' · '+c[0]+' · '+(money?sym()+fmt(v):fmt(v)+' '+unit)+'</title></rect>';
+           '<title>'+monLabel(m)+' · '+c[0]+' · '+val(v)+'</title></rect>';
+      /* the split written on the segment itself — the point of a stacked bar is the breakdown, and
+         reading it off a shared axis is guesswork. Skipped when the slice is too thin to hold text. */
+      if(bh>=13) lbls+='<text x="'+(x+bw/2)+'" y="'+(y+bh/2+3.5)+'" font-size="9" font-weight="700" '+
+                       'text-anchor="middle" fill="#fff">'+val(v)+'</text>';
     });
     var tot=series.reduce(function(a,c){ return a+(data[m][c[0]]||0); },0);
-    if(tot>0) out+='<text x="'+(x+bw/2)+'" y="'+(y-4)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+fmt(tot)+'</text>';
+    if(tot>0) out+='<text x="'+(x+bw/2)+'" y="'+(y-5)+'" font-size="9.5" font-weight="700" text-anchor="middle" fill="#4c4040">'+val(tot)+'</text>';
+    out+=lbls;
     out+='<text x="'+(x+bw/2)+'" y="'+(h-pb+13)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+monShort(m)+'</text>';
     return out;
   }).join('');
