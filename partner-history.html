@@ -7,47 +7,52 @@
 <link rel="icon" href="hub-logo.png">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
-:root{--blush:#f9f0f0;--red:#cc5f5f;--ink:#1a1a1a;--soft:#6b6b6b;--white:#fff;--line:#ecdede;--grey:#f6f2f2;--g:#3a7d4d;--greentint:#e4efe7;
---d-air:#e0798a;--d-book:#4a7fb5;--d-dir:#6f9a76;--adr:#8a6fa8}
+:root{--blush:#f9f0f0;--red:#cc5f5f;--ink:#1a1a1a;--soft:#6b6b6b;--white:#fff;--line:#ecdede;--grey:#f6f2f2;--g:#3a7d4d;
+--d-air:#e0798a;--d-book:#4a7fb5;--d-dir:#6f9a76;--adr:#8a6fa8;--occ:#cc5f5f}
 *{box-sizing:border-box}
 body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink);font-variant-numeric:tabular-nums;padding:0 0 40px}
-.frame{max-width:1000px;margin:16px auto;background:var(--white);border:1px solid var(--line);border-radius:20px;box-shadow:0 5px 24px rgba(0,0,0,.10);overflow:hidden}
+.frame{max-width:1120px;margin:16px auto;background:var(--white);border:1px solid var(--line);border-radius:20px;box-shadow:0 5px 24px rgba(0,0,0,.10);overflow:hidden}
 .topbar{display:flex;justify-content:space-between;align-items:center;padding:11px 15px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:15px;white-space:nowrap;flex:none}
 .brand .logo{width:26px;height:26px;border-radius:6px;flex:none}
 .brand .bs{font-weight:600;font-size:11.5px;color:var(--soft);border-left:1px solid var(--line);padding-left:7px}
 .rib{font-size:10px;color:#4c4040;text-align:right;line-height:1.5}
 .body{padding:13px;background:var(--blush)}
-.h1{font-size:18px;font-weight:700;margin:0 0 9px}
+.h1{font-size:18px;font-weight:700;margin:0 0 10px}
 .h1 .sub{font-size:12px;font-weight:400;color:var(--soft)}
-.split{display:grid;grid-template-columns:1.35fr 1fr;gap:9px}
-.card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:9px}
-.card h3{margin:0 0 7px;font-size:13px;font-weight:700}
+.card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:10px}
+.card h3{margin:0;font-size:13px;font-weight:700}
+.chead{display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:9px}
+.csub{font-size:10.5px;color:var(--soft);margin:-4px 0 8px}
+.seg{display:inline-flex;background:var(--white);border:1px solid var(--line);border-radius:9px;overflow:hidden;flex-wrap:wrap}
+.seg button{border:0;background:transparent;font-family:inherit;font-size:11px;font-weight:700;color:var(--soft);padding:4px 9px;cursor:pointer;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--red);color:#fff}
+.rowbtns{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
 .wrap{overflow-x:auto}
 table.d{width:100%;border-collapse:collapse;font-size:12px}
-table.d th,table.d td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.d th,table.d td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.d th:first-child,table.d td:first-child{text-align:left;position:sticky;left:0;background:var(--white)}
 table.d th{font-size:9.5px;color:var(--soft);font-weight:700}
-table.d .r{text-align:right}
 table.d tr.tot td{font-weight:700;border-top:2px solid var(--ink)}
+table.d tr.head td{font-weight:700}
+table.d tr.sub td{color:#7a6a6a;font-size:11px;background:#fbf7f7}
+table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
+.drillable{cursor:pointer}.drillable:hover td{background:#faf5f5}
+.drillable:hover td:first-child{background:#faf5f5}
 .g{color:var(--g)}.neg{color:var(--red)}
-.btn{border:1px solid var(--line);background:var(--white);color:var(--ink);font-family:inherit;font-weight:700;font-size:12px;border-radius:9px;padding:7px 13px;cursor:pointer}
+.btn{border:1px solid var(--line);background:var(--white);color:var(--ink);font-family:inherit;font-weight:700;font-size:12px;border-radius:9px;padding:6px 13px;cursor:pointer}
 .btn:hover{background:var(--grey)}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
-.seg button{font-family:inherit;font-size:12px;font-weight:600;border:0;background:var(--white);color:var(--soft);padding:6px 12px;cursor:pointer}
-.seg button.on{background:var(--red);color:#fff}
-.chart{width:100%;height:200px}
-.legend{font-size:10px;color:var(--soft);margin-top:5px}
-.sw{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;margin:0 4px 0 10px}
-.legend .sw:first-child{margin-left:0}
-.note{font-size:10px;color:var(--soft);line-height:1.55;margin:7px 0 0}
+.legend{font-size:10.5px;color:var(--soft);margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.note{font-size:10px;color:var(--soft);line-height:1.55;margin:8px 0 0}
 .muted{color:var(--soft);font-size:11px}
 .err{background:#f6e3e3;border:1px solid #e6b9b9;border-radius:10px;padding:12px;font-size:13px}
-.demo{background:#efe9f5;border:1px solid #d9cbe8;border-radius:10px;padding:7px 11px;font-size:10.5px;color:#5c4a72;margin-bottom:9px}
+.demo{background:#efe9f5;border:1px solid #d9cbe8;border-radius:10px;padding:7px 11px;font-size:10.5px;color:#5c4a72;margin-bottom:10px}
 .tabbar{display:flex;background:var(--white);border-top:1px solid var(--line)}
 .tabbar .tab{flex:1;text-align:center;padding:7px 2px 8px;font-size:10px;color:var(--soft);text-decoration:none;font-weight:600;border-top:2px solid transparent}
 .tabbar .tab .ti{display:block;font-size:17px;line-height:1.15;margin-bottom:1px}
 .tabbar .tab.active{color:var(--red);border-top-color:var(--red)}
-@media(max-width:720px){.split{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -65,17 +70,25 @@ table.d tr.tot td{font-weight:700;border-top:2px solid var(--ink)}
 
 <script src="auth.js"></script>
 <script>
-/* SCREEN 7 — Partner, history & statistics. Built to the mock-up (OWH_final_2.html §7):
-   months across the columns, Export CSV, occupancy & ADR, stays by channel. Same server-side wall
-   as Screen 6. Everything here is USD so the columns reconcile — Net = Revenue − Costs − Fee — which
-   is the one place a partner will check the arithmetic themselves. */
+/* SCREEN 7 — Partner, history & statistics.
+   Each card carries its own time range, the same 3M/6M/YTD/12M/all control the Statistics screen uses,
+   so a partner can look at one chart closely without disturbing the others. Server-side scoping is the
+   security boundary; this page only ever holds their own flat. */
 AUTH_ROLE = 'partner';
 
-var DATA=null, CUR='USD';
-try{ CUR=localStorage.getItem('owh_cur')||'USD'; }catch(e){}    // shared with the statement screen
+var DATA=null, CUR='USD', OPEN={rev:false,cost:false}, CHAN='revenue';
+var R={hist:'12M', occ:'12M', chan:'12M'};
+try{ CUR=localStorage.getItem('owh_cur')||'USD'; }catch(e){}
 
-/* Each month converted at ITS OWN rate, recovered from the sheet's own figures — see the long note
-   in partner.html. Converting a closed month at today's rate would silently restate it. */
+var $=function(s){return document.querySelector(s);};
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function esc(s){return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
+function fmt(n){ if(n==null||!isFinite(n)) return '—'; return (n<0?'−':'')+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function fmt2(n){ if(n==null||!isFinite(n)) return '—'; return (n<0?'−':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function monShort(ym){ var p=(ym||'').split('-'); return p.length===2 ? MON[(+p[1])-1] : ym; }
+function monLabel(ym){ var p=(ym||'').split('-'); return p.length===2 ? MON[(+p[1])-1]+' '+p[0] : ym; }
+
+/* ---- currency: each month at ITS OWN rate, recovered from the sheet's own figures ---- */
 function fxNow(){ return (DATA.meta.fx&&DATA.meta.fx.current)||1; }
 function rateFor(r){
   if(!r) return fxNow();
@@ -84,16 +97,11 @@ function rateFor(r){
   var allCostsUsd=r.revenue.total-r.net, egpAsUsd=allCostsUsd-usd;
   return (egp>0 && egpAsUsd>0.01) ? egp/egpAsUsd : fxNow();
 }
-function cv(v,rate){ if(v==null||!isFinite(v)) return null; return CUR==='USD' ? v : v*rate; }   // pnl values are USD
+function cv(v,rate){ if(v==null||!isFinite(v)) return null; return CUR==='USD' ? v : v*rate; }
+function cvCost(v,cur,rate){ if(v==null||!isFinite(v)) return null;      // a cost line in its own currency
+  if(CUR===cur) return v; return CUR==='USD' ? v/rate : v*rate; }
 function sym(){ return CUR==='USD' ? '$' : 'EGP '; }
 function setCur(c){ CUR=c; try{ localStorage.setItem('owh_cur',c); }catch(e){} render(); }
-var $=function(s){return document.querySelector(s);};
-var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function esc(s){return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
-function fmt(n){ if(n==null||!isFinite(n)) return '—'; return (n<0?'−':'')+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
-function fmt2(n){ if(n==null||!isFinite(n)) return '—'; return (n<0?'−':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function monShort(ym){ var p=(ym||'').split('-'); return p.length===2 ? MON[(+p[1])-1] : ym; }
-function monLabel(ym){ var p=(ym||'').split('-'); return p.length===2 ? MON[(+p[1])-1]+' '+p[0] : ym; }
 
 function boot(){ fetchOnce().then(onData).catch(function(e){ if(e&&e.message==='AUTH')return;
   setTimeout(function(){ fetchOnce().then(onData).catch(function(e2){ if(e2&&e2.message==='AUTH')return; showErr(e2); }); },800); }); }
@@ -105,22 +113,27 @@ function onData(j){ DATA=j.data; if(j.me) ME=j.me; render(); }
 
 function myFlat(){ return (ME&&ME.flat) || (DATA.meta.flatsOrder&&DATA.meta.flatsOrder[0]) || ''; }
 function flatName(){ var f=myFlat(), m=(DATA.flats||[]).filter(function(x){return x.id===f;})[0]; return (m&&m.name)||f; }
-function months(){ var f=myFlat(); return DATA.pnl&&DATA.pnl[f] ? Object.keys(DATA.pnl[f]).sort() : []; }
+function allMonths(){ var f=myFlat(); return DATA.pnl&&DATA.pnl[f] ? Object.keys(DATA.pnl[f]).sort() : []; }
+function recFor(m){ var f=myFlat(); return (DATA.pnl&&DATA.pnl[f]&&DATA.pnl[f][m])||null; }
 function daysIn(ym){ return new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate(); }
 
-function rows(){
-  var f=myFlat();
-  return months().map(function(m){
-    var r=DATA.pnl[f][m], pv=r.partnerView||{};
-    var rate=rateFor(r);
-    return { m:m, rate:rate,
-             rev:cv(r.revenue.total,rate), earn:cv(r.revenue.earnings||0,rate), costs:cv(r.revenue.total-r.net,rate),
-             fee:cv(pv.managementFee||0,rate), net:cv(pv.netPayout!=null?pv.netPayout:r.net,rate),
-             pct:pv.managementFeePct||0, open:(r.status!=='final') };
-  });
+/* ---- ranges, matching the Statistics screen ---- */
+function inRange(rng){
+  var all=allMonths(); if(rng==='all') return all;
+  if(rng==='YTD'){ var y=(all[all.length-1]||'').slice(0,4); return all.filter(function(m){ return m.slice(0,4)===y; }); }
+  var n=rng==='3M'?3:(rng==='6M'?6:12); return all.slice(-n);
 }
+function seg(opts,cur,fn){ return '<div class="seg">'+opts.map(function(o){
+  var v=Array.isArray(o)?o[0]:o, lbl=Array.isArray(o)?o[1]:o;
+  return '<button class="'+(cur===v?'on':'')+'" onclick="'+fn+'(\''+v+'\')">'+lbl+'</button>'; }).join('')+'</div>'; }
+function timeSeg(k){ return seg(['3M','6M','YTD','12M','all'], R[k], 'setR_'+k); }
+function setR_hist(v){ R.hist=v; render(); }
+function setR_occ(v){ R.occ=v; render(); }
+function setR_chan(v){ R.chan=v; render(); }
+function setChan(v){ CHAN=v; render(); }
+function toggle(k){ OPEN[k]=!OPEN[k]; render(); }
 
-/* ---- their flat's own stays ---- */
+/* ---- their stays ---- */
 function liveStays(){
   var f=myFlat();
   return (DATA.stays||[]).filter(function(s){
@@ -128,38 +141,64 @@ function liveStays(){
     return s.flat===f && s.portal!=='Blocked' && st.indexOf('cancel')<0 && st.indexOf('block')<0 && s.checkIn && s.checkOut;
   });
 }
-function nightsByMonth(){
-  var out={};
-  liveStays().forEach(function(s){
-    var ci=new Date(s.checkIn.slice(0,10)+'T00:00:00'), co=new Date(s.checkOut.slice(0,10)+'T00:00:00');
-    for(var d=new Date(ci); d<co; d.setDate(d.getDate()+1)){
-      var k=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2);
-      out[k]=(out[k]||0)+1;
-    }
-  });
-  return out;
+/* Nights of one stay inside one month — a stay crossing a month boundary belongs to both, and the
+   P&L splits it the same way, so every per-month figure here is built on this. */
+function nightsOf(s,ym){
+  var lo=new Date(ym+'-01T00:00:00'), hi=new Date(+ym.slice(0,4), +ym.slice(5,7), 1), n=0;
+  var ci=new Date(s.checkIn.slice(0,10)+'T00:00:00'), co=new Date(s.checkOut.slice(0,10)+'T00:00:00');
+  for(var d=new Date(Math.max(ci,lo)); d<co && d<hi; d.setDate(d.getDate()+1)) n++;
+  return n;
 }
+function earnedIn(s,ym){ var tot=s.nights||nightsOf(s,ym)||1; return (s.allIn||0)*nightsOf(s,ym)/tot; }
 function chKey(p){ var s=(p||'').toLowerCase();
   return s.indexOf('airbnb')>-1?'Airbnb':(s.indexOf('booking')>-1?'Booking':'Direct'); }
 var CH=[['Airbnb','var(--d-air)'],['Booking','var(--d-book)'],['Direct','var(--d-dir)']];
-function staysByChannel(){                 // count of stays per channel per month, keyed on check-out
-  var ms=months(), out={};
-  ms.forEach(function(m){ out[m]={Airbnb:0,Booking:0,Direct:0}; });
-  liveStays().forEach(function(s){
-    var ym=(s.checkOut||'').slice(0,7);
-    if(out[ym]) out[ym][chKey(s.portal)]++;
-  });
-  return out;
+function nightsIn(ym){ return liveStays().reduce(function(a,s){ return a+nightsOf(s,ym); },0); }
+
+/* ---- cost categories ---- */
+var ORDER=['cleaning-labor','laundry','supplies','electricity','tv-phone-internet','water','heat-gas','maintenance','compound-maintenance','opsmanager','services-contingency','contingency','gifts-contingency','general-contingency','subscription'];
+var LABEL={'cleaning-labor':'cleaning','laundry':'laundry','supplies':'supplies','electricity':'electricity','tv-phone-internet':'internet',
+  'water':'water','heat-gas':'gas','maintenance':'maintenance','compound-maintenance':'compound','opsmanager':'operations',
+  'services-contingency':'services','contingency':'contingency','gifts-contingency':'contingency','general-contingency':'contingency','subscription':'booking software'};
+function usedCostKeys(ms){
+  var seen={}, keys=[];
+  ms.forEach(function(m){ var r=recFor(m); if(!r) return;
+    (r.costs||[]).forEach(function(c){ if(c.amount) seen[c.key]=1; }); });
+  ORDER.forEach(function(k){ if(seen[k]){ keys.push(k); delete seen[k]; } });
+  for(var k in seen) keys.push(k);
+  return keys;
+}
+function costCell(m,key){
+  var r=recFor(m); if(!r) return null;
+  var c=(r.costs||[]).filter(function(x){return x.key===key;})[0];
+  return c ? cvCost(c.amount, c.currency, rateFor(r)) : null;
+}
+
+/* ---- one row of the history table ---- */
+function rowFor(m){
+  var r=recFor(m); if(!r) return null;
+  var pv=r.partnerView||{}, rate=rateFor(r);
+  return { m:m, rate:rate,
+    rev:cv(r.revenue.total,rate), earn:cv(r.revenue.earnings||0,rate), other:cv(r.revenue.other||0,rate),
+    costs:cv(r.revenue.total-r.net,rate), fee:cv(pv.managementFee||0,rate),
+    net:cv(pv.netPayout!=null?pv.netPayout:r.net,rate),
+    pct:pv.managementFeePct||0, open:(r.status!=='final') };
 }
 
 function csv(){
-  var rs=rows(), ms=rs.map(function(r){return r.m;});
-  var line=function(lbl,pick){ return [lbl].concat(rs.map(function(r){ return pick(r).toFixed(2); })).join(','); };
-  var out=[['Line'].concat(ms.map(function(m){ return monLabel(m); })).join(',')];
-  out.push(line('Revenue ('+CUR+')',function(r){return r.rev;}));
+  var ms=inRange(R.hist), rs=ms.map(rowFor).filter(Boolean);
+  var line=function(lbl,pick){ return [lbl].concat(rs.map(function(r){ var v=pick(r); return v==null?'':v.toFixed(2); })).join(','); };
+  var out=[['Line'].concat(ms.map(monLabel)).join(',')];
+  out.push(line('Total revenue ('+CUR+')',function(r){return r.rev;}));
+  out.push(line('  Earnings',function(r){return r.earn;}));
+  out.push(line('  Other revenue',function(r){return r.other;}));
   out.push(line('Costs ('+CUR+')',function(r){return r.costs;}));
+  usedCostKeys(ms).forEach(function(k){
+    out.push(['  '+(LABEL[k]||k)].concat(ms.map(function(m){ var v=costCell(m,k); return v==null?'':v.toFixed(2); })).join(','));
+  });
   out.push(line('Management fee ('+CUR+')',function(r){return r.fee;}));
   out.push(line('Net to you ('+CUR+')',function(r){return r.net;}));
+  out.push(['Nights'].concat(ms.map(function(m){ return nightsIn(m); })).join(','));
   out.push(['Status'].concat(rs.map(function(r){ return r.open?'in progress':'final'; })).join(','));
   var blob=new Blob([out.join('\n')],{type:'text/csv;charset=utf-8;'});
   var a=document.createElement('a');
@@ -168,99 +207,141 @@ function csv(){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
-/* ---- occupancy bars + ADR line, one SVG, no library ---- */
+/* ---- occupancy bars + ADR line ---- */
 function occChart(){
-  var ms=months(), nb=nightsByMonth(), rs=rows();
-  if(!ms.length) return '';
-  var w=520,h=200,pl=30,pr=34,pt=12,pb=26, iw=(w-pl-pr)/ms.length;
-  var adrMax=1;
-  var pts=ms.map(function(m,i){
-    var n=nb[m]||0, occ=n/daysIn(m), rr=rs[i], adr=n?rr.earn/n:0;
+  var ms=inRange(R.occ);
+  if(!ms.length) return '<div class="muted">No data in range.</div>';
+  var w=980,h=230,pl=34,pr=44,pt=16,pb=28, iw=(w-pl-pr)/ms.length, adrMax=1;
+  var pts=ms.map(function(m){
+    var r=recFor(m), n=nightsIn(m), adr=n?cv((r&&r.revenue.earnings)||0,rateFor(r))/n:0;
     if(adr>adrMax) adrMax=adr;
-    return {m:m,occ:occ,adr:adr,n:n};
+    return {m:m, occ:n/daysIn(m), adr:adr, n:n};
   });
   var bars=pts.map(function(p,i){
-    var bh=(h-pt-pb)*Math.min(p.occ,1), x=pl+i*iw+iw*0.22, bw=iw*0.56;
-    return '<rect x="'+x+'" y="'+(h-pb-bh)+'" width="'+bw+'" height="'+bh+'" rx="2" fill="#cc5f5f" opacity=".8"></rect>'+
-           '<text x="'+(x+bw/2)+'" y="'+(h-pb+11)+'" font-size="8.5" text-anchor="middle" fill="#6b6b6b">'+monShort(p.m)+'</text>';
+    var bh=(h-pt-pb)*Math.min(p.occ,1), x=pl+i*iw+iw*0.24, bw=Math.max(iw*0.52,3);
+    return '<rect x="'+x+'" y="'+(h-pb-bh)+'" width="'+bw+'" height="'+bh+'" rx="2" fill="var(--occ)" opacity=".8">'+
+           '<title>'+monLabel(p.m)+' · '+Math.round(p.occ*100)+'% · '+p.n+' nights</title></rect>'+
+           '<text x="'+(x+bw/2)+'" y="'+(h-pb+12)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+monShort(p.m)+'</text>';
   }).join('');
-  var line=pts.map(function(p,i){
-    return (i?'L':'M')+(pl+i*iw+iw/2)+','+(h-pb-(h-pt-pb)*(p.adr/adrMax));
-  }).join(' ');
-  var dots=pts.map(function(p,i){
-    return '<circle cx="'+(pl+i*iw+iw/2)+'" cy="'+(h-pb-(h-pt-pb)*(p.adr/adrMax))+'" r="2.5" fill="var(--adr)"></circle>';
+  var line=pts.map(function(p,i){ return (i?'L':'M')+(pl+i*iw+iw/2)+','+(h-pb-(h-pt-pb)*(p.adr/adrMax)); }).join(' ');
+  var circles=pts.map(function(p,i){
+    return '<circle cx="'+(pl+i*iw+iw/2)+'" cy="'+(h-pb-(h-pt-pb)*(p.adr/adrMax))+'" r="2.6" fill="var(--adr)">'+
+           '<title>'+monLabel(p.m)+' · '+sym()+fmt2(p.adr)+' a night</title></circle>';
   }).join('');
-  return '<svg class="chart" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="xMidYMid meet">'+
+  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:230px" preserveAspectRatio="xMidYMid meet">'+
     '<line x1="'+pl+'" y1="'+(h-pb)+'" x2="'+(w-pr)+'" y2="'+(h-pb)+'" stroke="#ecdede"></line>'+
-    '<text x="4" y="'+(pt+8)+'" font-size="8.5" fill="#6b6b6b">100%</text>'+
-    '<text x="'+(w-pr+4)+'" y="'+(pt+8)+'" font-size="8.5" fill="var(--adr)">'+sym()+fmt(adrMax)+'</text>'+
-    bars+'<path d="'+line+'" fill="none" stroke="var(--adr)" stroke-width="1.8"></path>'+dots+'</svg>'+
-    '<div class="legend"><span class="sw" style="background:#cc5f5f"></span>occupancy'+
-    '<span class="sw" style="background:var(--adr)"></span>average nightly rate</div>';
+    '<text x="4" y="'+(pt+6)+'" font-size="9" fill="var(--occ)">100%</text>'+
+    '<text x="'+(w-pr+5)+'" y="'+(pt+6)+'" font-size="9" fill="var(--adr)">'+sym()+fmt(adrMax)+'</text>'+
+    bars+'<path d="'+line+'" fill="none" stroke="var(--adr)" stroke-width="1.9"></path>'+circles+'</svg>'+
+    '<div class="legend"><span><i style="background:var(--occ)"></i>occupancy %</span>'+
+    '<span><i style="background:var(--adr)"></i>average nightly rate</span></div>';
 }
 
-/* ---- stays by channel, stacked per month ---- */
-function chanChart(){
-  var ms=months(), sc=staysByChannel();
-  if(!ms.length) return '';
-  var w=940,h=190,pl=26,pr=12,pt=12,pb=26, iw=(w-pl-pr)/ms.length;
-  var max=1;
-  ms.forEach(function(m){ var t=CH.reduce(function(a,c){ return a+sc[m][c[0]]; },0); if(t>max)max=t; });
-  var body=ms.map(function(m,i){
-    var y=h-pb, x=pl+i*iw+iw*0.2, bw=iw*0.6, out='';
-    CH.forEach(function(c){
-      var v=sc[m][c[0]]; if(!v) return;
-      var bh=(h-pt-pb)*(v/max); y-=bh;
-      out+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" fill="'+c[1]+'" opacity=".85"><title>'+monLabel(m)+' · '+c[0]+' · '+v+' stays</title></rect>';
+/* ---- the bottom chart: revenue / stays / nights by channel, or net (which no channel owns) ---- */
+function chanData(ms){
+  var out={};
+  ms.forEach(function(m){ out[m]={Airbnb:0,Booking:0,Direct:0}; });
+  if(CHAN==='net'){ ms.forEach(function(m){ var r=rowFor(m); out[m]={Net:r?r.net:0}; }); return out; }
+  liveStays().forEach(function(s){
+    ms.forEach(function(m){
+      var n=nightsOf(s,m); if(!n) return;
+      var k=chKey(s.portal), r=recFor(m);
+      if(CHAN==='nights')       out[m][k]+=n;
+      else if(CHAN==='stays'){ if((s.checkOut||'').slice(0,7)===m) out[m][k]+=1; }
+      else                      out[m][k]+=cv(earnedIn(s,m), rateFor(r));
     });
-    var tot=CH.reduce(function(a,c){ return a+sc[m][c[0]]; },0);
-    if(tot) out+='<text x="'+(x+bw/2)+'" y="'+(y-3)+'" font-size="8.5" text-anchor="middle" fill="#6b6b6b">'+tot+'</text>';
-    out+='<text x="'+(x+bw/2)+'" y="'+(h-pb+11)+'" font-size="8.5" text-anchor="middle" fill="#6b6b6b">'+monShort(m)+'</text>';
+  });
+  return out;
+}
+function chanChart(){
+  var ms=inRange(R.chan);
+  if(!ms.length) return '<div class="muted">No data in range.</div>';
+  var data=chanData(ms), series=(CHAN==='net')?[['Net','var(--g)']]:CH;
+  var money=(CHAN==='revenue'||CHAN==='net');
+  var w=980,h=225,pl=30,pr=14,pt=20,pb=28, iw=(w-pl-pr)/ms.length, max=1;
+  ms.forEach(function(m){ var t=series.reduce(function(a,c){ return a+(data[m][c[0]]||0); },0); if(t>max)max=t; });
+  var body=ms.map(function(m,i){
+    var y=h-pb, x=pl+i*iw+iw*0.22, bw=Math.max(iw*0.56,3), out='';
+    series.forEach(function(c){
+      var v=data[m][c[0]]||0; if(v<=0) return;
+      var bh=(h-pt-pb)*(v/max); y-=bh;
+      out+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" fill="'+c[1]+'" opacity=".88">'+
+           '<title>'+monLabel(m)+' · '+c[0]+' · '+(money?sym()+fmt(v):fmt(v))+'</title></rect>';
+    });
+    var tot=series.reduce(function(a,c){ return a+(data[m][c[0]]||0); },0);
+    if(tot>0) out+='<text x="'+(x+bw/2)+'" y="'+(y-4)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+fmt(tot)+'</text>';
+    out+='<text x="'+(x+bw/2)+'" y="'+(h-pb+12)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+monShort(m)+'</text>';
     return out;
   }).join('');
-  return '<svg class="chart" style="height:190px" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="xMidYMid meet">'+
+  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:225px" preserveAspectRatio="xMidYMid meet">'+
     '<line x1="'+pl+'" y1="'+(h-pb)+'" x2="'+(w-pr)+'" y2="'+(h-pb)+'" stroke="#ecdede"></line>'+body+'</svg>'+
-    '<div class="legend">'+CH.map(function(c){ return '<span class="sw" style="background:'+c[1]+'"></span>'+c[0]; }).join('')+'</div>';
+    '<div class="legend">'+series.map(function(c){ return '<span><i style="background:'+c[1]+'"></i>'+c[0]+'</span>'; }).join('')+
+    (money?'<span>'+CUR+'</span>':'')+'</div>';
 }
 
 function render(){
   if(!DATA) return;
   if(isAdmin() && !(DATA.meta.demo&&DATA.meta.demo.active)){
     $('#app').innerHTML='<div class="card"><h3>Partner preview</h3><p class="note">Switch the demo on to preview this: OWH Properties sheet → <b>The Hub</b> menu → <b>Demo mode — turn ON</b>, then reload.</p></div>'; return; }
-  var f=flatName(), rs=rows();
+  var f=flatName();
   $('#rib').innerHTML=authWho()+' · '+esc(f);
-  if(!rs.length){ $('#app').innerHTML='<div class="card"><span class="muted">No history yet.</span></div>'; return; }
+  if(!allMonths().length){ $('#app').innerHTML='<div class="card"><span class="muted">No history yet.</span></div>'; return; }
 
+  var ms=inRange(R.hist), rs=ms.map(rowFor).filter(Boolean);
   var anyOpen=rs.some(function(r){ return r.open; });
   var pct=(rs[rs.length-1]||{}).pct||0;
+  var keys=usedCostKeys(ms);
+
   var h='';
   if(DATA.meta.demo&&DATA.meta.demo.active) h+='<div class="demo"><b>Sample.</b> Real figures from a running apartment, on the terms we are discussing.</div>';
   h+='<p class="h1">'+esc(f)+' <span class="sub">· history &amp; statistics</span></p>';
 
-  h+='<div class="split">';
-  /* months across the columns, per the mock-up */
-  h+='<div class="card"><h3>Your history — all months</h3><div class="wrap"><table class="d">'+
-     '<tr><th>Line</th>'+rs.map(function(r){ return '<th class="r">'+monShort(r.m)+(r.open?'*':'')+'</th>'; }).join('')+'</tr>';
-  var line=function(lbl,pick,cls){
-    return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+lbl+'</td>'+
-      rs.map(function(r){ var v=pick(r); return '<td class="r'+(v<0?' neg':'')+'">'+fmt(v)+'</td>'; }).join('')+'</tr>';
+  /* ---- history table ---- */
+  h+='<div class="card"><div class="chead"><h3>Your history — all months</h3>'+
+     '<div class="rowbtns">'+timeSeg('hist')+
+     seg([['USD','USD'],['EGP','EGP']],CUR,'setCur')+'</div></div>';
+  h+='<div class="wrap"><table class="d"><thead><tr><th>Line</th>'+
+     ms.map(function(m){ var r=rowFor(m); return '<th>'+monShort(m)+(r&&r.open?'*':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
+
+  var line=function(lbl,pick,cls,click){
+    return '<tr'+(cls?' class="'+cls+'"':'')+(click?' onclick="toggle(\''+click+'\')"':'')+'><td>'+lbl+'</td>'+
+      rs.map(function(r){ var v=pick(r); return '<td class="'+(v<0?'neg':'')+'">'+fmt(v)+'</td>'; }).join('')+'</tr>';
   };
-  h+=line('Revenue',function(r){return r.rev;});
-  h+=line('Costs',function(r){return r.costs;});
-  h+=line('Fee '+Math.round(pct*100)+'%',function(r){return r.fee;});
-  h+=line('Net',function(r){return r.net;},'tot');
-  h+='</table></div>';
-  h+='<div style="margin-top:8px;display:flex;gap:7px;align-items:center"><button class="btn" onclick="csv()">Export CSV</button>'+
-     '<span class="seg" style="margin-left:auto"><button class="'+(CUR==='USD'?'on':'')+'" onclick="setCur(\'USD\')">USD</button>'+
-     '<button class="'+(CUR==='EGP'?'on':'')+'" onclick="setCur(\'EGP\')">EGP</button></span></div>';
+  h+=line('Total revenue '+(OPEN.rev?'▾':'▸'),function(r){return r.rev;},'head drillable','rev');
+  if(OPEN.rev){
+    h+=line('earnings',function(r){return r.earn;},'sub');
+    h+=line('other revenue',function(r){return r.other;},'sub');
+  }
+  h+=line('Costs '+(OPEN.cost?'▾':'▸'),function(r){return r.costs;},'head drillable','cost');
+  if(OPEN.cost){
+    keys.forEach(function(k){
+      h+='<tr class="sub"><td>'+(LABEL[k]||k)+'</td>'+
+         ms.map(function(m){ return '<td>'+fmt(costCell(m,k))+'</td>'; }).join('')+'</tr>';
+    });
+  }
+  h+=line('Management fee — '+Math.round(pct*100)+'%',function(r){return r.fee;});
+  h+=line('Net to you',function(r){return r.net;},'tot');
+  h+='</tbody></table></div>';
+  h+='<div class="rowbtns" style="margin-top:9px"><button class="btn" onclick="csv()">Export CSV</button></div>';
   h+='<p class="note">All figures '+CUR+', each month converted at that month\'s own rate'+
-     (anyOpen?' · * still open, may change until the month is closed':'')+
-     '. The column adds up: Net = Revenue − Costs − Fee.</p></div>';
+     (anyOpen?' · <b>*</b> still open, may change until the month is closed':'')+
+     '. Tap <b>Total revenue</b> to split it into earnings and other revenue, or <b>Costs</b> to see the categories. '+
+     'The column adds up: Net = Total revenue − Costs − Fee.</p></div>';
 
-  h+='<div class="card"><h3>Your flat — occupancy &amp; ADR</h3>'+occChart()+'</div>';
-  h+='</div>';
+  /* ---- occupancy & ADR ---- */
+  h+='<div class="card"><div class="chead"><h3>Your flat — occupancy &amp; ADR</h3>'+timeSeg('occ')+'</div>'+
+     '<div class="csub">bars = share of nights booked · line = average nightly rate, earnings ÷ nights</div>'+
+     occChart()+'</div>';
 
-  h+='<div class="card"><h3>Your flat — stays by channel</h3>'+chanChart()+'</div>';
+  /* ---- by channel ---- */
+  var lbl={revenue:'revenue',stays:'stays',nights:'nights',net:'net profit'}[CHAN];
+  h+='<div class="card"><div class="chead"><h3>Your flat — '+lbl+' by month</h3>'+
+     '<div class="rowbtns">'+seg([['revenue','Revenue'],['stays','Stays'],['nights','Nights'],['net','Net profit']],CHAN,'setChan')+
+     timeSeg('chan')+'</div></div>'+
+     '<div class="csub">'+(CHAN==='net'
+        ? 'what you were paid after costs and the management share — a month total, not something any one channel earns'
+        : 'split by the channel each booking came through')+'</div>'+
+     chanChart()+'</div>';
 
   $('#app').innerHTML=h;
 }
