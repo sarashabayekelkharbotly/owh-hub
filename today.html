@@ -80,7 +80,8 @@ a.tab{font-size:11px;color:var(--red);text-decoration:none;font-weight:700}
 
 var D=null, DAYMS=86400000, STAYS=[];
 var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-var fmt=function(n){return (n<0?'-':'')+Math.abs(Math.round(n)).toLocaleString('en-US');};
+// every call site is money (earnings / values), so 2 decimals — small figures were rounding to "0"
+var fmt=function(n){return (n<0?'-':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
 var pct=function(n){return (isFinite(n)?Math.round(n*100):0)+'%';};
 var $=function(s){return document.querySelector(s);};
 var day=function(s){return new Date((s||'').slice(0,10)+'T00:00:00');};
