@@ -36,9 +36,7 @@ var AUTH_ON_LOGIN = null;
  * Role is taken from the server's response, so editing localStorage cannot widen access — and the
  * backend scopes the data by session regardless, so this is presentation, not the security boundary. */
 var AUTH_ROLE = 'admin';
-/* Set to 'partner.html' once Screen 6 exists. While empty, a partner sees an explanation instead of
- * being redirected to a page that isn't built yet. */
-var AUTH_PARTNER_HOME = '';
+var AUTH_PARTNER_HOME = 'partner.html';   // Screen 6 — where a partner always lands
 var AUTH_ADMIN_HOME   = 'today.html';
 
 /* ---------- the one call every screen uses ---------- */
