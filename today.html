@@ -69,6 +69,7 @@ a.tab{font-size:11px;color:var(--red);text-decoration:none;font-weight:700}
     <a class="tab" href="close.html"><span class="ti">📑</span>Close</a>
     <a class="tab" href="stats.html"><span class="ti">📊</span>Stats</a>
     <a class="tab" href="internet.html"><span class="ti">📶</span>Net</a>
+    <a class="tab" href="partner.html" id="demoTab" style="display:none"><span class="ti">🤝</span>Demo</a>
   </nav>
 </div>
 
@@ -92,7 +93,11 @@ function fetchOnce(){ return api('props_get_all').then(function(j){ if(!j||!j.ok
 function cache(){ try{return JSON.parse(localStorage.getItem('owh_today'));}catch(e){return null;} }
 function showErr(e){ if(D)return; $('#app').innerHTML='<div class="err">Couldn\'t reach the endpoint.<br><span class="muted">'+(e&&e.message||'')+'</span></div>'; }
 var ALERTS=null;
-function onData(j,fromCache){ D=j.data; D._gen=j.generatedAt; STAYS=mergeStays(D.stays); try{ if(!fromCache)localStorage.setItem('owh_today',JSON.stringify(j)); }catch(e){} render(); if(!fromCache)fetchAlerts(); }
+function onData(j,fromCache){ D=j.data; D._gen=j.generatedAt; STAYS=mergeStays(D.stays); try{ if(!fromCache)localStorage.setItem('owh_today',JSON.stringify(j)); }catch(e){} render(); demoTab(); if(!fromCache)fetchAlerts(); }
+/* The Demo tab exists only while demo mode is switched on — the switch itself is the on/off signal,
+   so there is nothing extra to remember to hide before or after a partner meeting. The demo flat is
+   never in this screen's data either way; this is only a way in. */
+function demoTab(){ var t=document.getElementById('demoTab'); if(t) t.style.display=(D.meta.demo&&D.meta.demo.on)?'':'none'; }
 /* light read-only alerts (WeShare pending confirmations) — fetched after the main render so the load stays fast */
 function fetchAlerts(){ api('props_alerts').then(function(j){ if(j&&j.ok){ ALERTS=j; render(); } }).catch(function(){}); }
 /* run the whole pipeline on demand (month-close / snapshot) */
