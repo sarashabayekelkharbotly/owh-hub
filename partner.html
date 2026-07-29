@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Hub · Your numbers</title>
+<link rel="icon" href="hub-logo.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+:root{--blush:#f9f0f0;--red:#cc5f5f;--ink:#1a1a1a;--soft:#6b6b6b;--white:#fff;--line:#ecdede;--grey:#f6f2f2;--g:#3a7d4d;--greentint:#e4efe7;
+--d-air:#e0798a;--d-book:#4a7fb5;--d-dir:#6f9a76}
+*{box-sizing:border-box}
+body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink);font-variant-numeric:tabular-nums;padding:0 0 40px}
+.frame{max-width:460px;margin:16px auto;background:var(--white);border:1px solid var(--line);border-radius:20px;box-shadow:0 5px 24px rgba(0,0,0,.10);overflow:hidden}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:11px 15px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:15px;white-space:nowrap;flex:none}
+.brand .logo{width:26px;height:26px;border-radius:6px;flex:none}
+.brand .bs{font-weight:600;font-size:11.5px;color:var(--soft);border-left:1px solid var(--line);padding-left:7px}
+.rib{font-size:10px;color:#4c4040;text-align:right;line-height:1.5}
+.body{padding:13px;background:var(--blush)}
+.h1{font-size:18px;font-weight:700;margin:0 0 9px}
+.h1 .sub{font-size:12px;font-weight:400;color:var(--soft)}
+.kpis{width:100%;border-collapse:separate;border-spacing:6px 0}
+.kpis td{background:var(--white);border:1px solid var(--line);border-radius:11px;padding:8px 10px;width:50%;vertical-align:top}
+.kpi-l{font-size:10px;color:var(--soft)}
+.kpi-v{font-size:20px;font-weight:700;line-height:1.1;margin:1px 0}
+.kpi-s{font-size:10px;color:var(--soft)}
+.card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:9px}
+.card h3{margin:0 0 7px;font-size:13px;font-weight:700}
+.pill{font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:20px}
+.pa{background:#efe4d4;color:#8a6420}.pf{background:var(--greentint);color:var(--g)}
+table.d{width:100%;border-collapse:collapse;font-size:12px}
+table.d th,table.d td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}
+table.d th{font-size:9.5px;color:var(--soft);font-weight:700}
+table.d .r{text-align:right}table.d .c{text-align:center}
+table.d tr.tot td{font-weight:700}
+table.d tr.net td{font-weight:700;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink)}
+.g{color:var(--g)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.d-air{background:var(--d-air)}.d-book{background:var(--d-book)}.d-dir{background:var(--d-dir)}
+.drillable{cursor:pointer}.drillable:hover{background:#faf5f5}
+.drill{background:#fbf7f7;border:1px solid var(--line);border-radius:8px;margin:2px 0 4px}
+.drill table{width:100%;border-collapse:collapse;font-size:10.5px}
+.drill td{padding:2px 7px;border:0;color:#5a4d4d}
+.drill tr.foot td{font-weight:700;color:var(--soft);font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;padding-top:5px}
+.note{font-size:10px;color:var(--soft);line-height:1.55;margin:7px 0 0}
+.muted{color:var(--soft);font-size:11px}
+.err{background:#f6e3e3;border:1px solid #e6b9b9;border-radius:10px;padding:12px;font-size:13px}
+.demo{background:#efe9f5;border:1px solid #d9cbe8;border-radius:10px;padding:7px 11px;font-size:10.5px;color:#5c4a72;margin-bottom:9px}
+select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:var(--white)}
+.ctl{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:9px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-left:auto}
+.seg button{font-family:inherit;font-size:12px;font-weight:600;border:0;background:var(--white);color:var(--soft);padding:5px 11px;cursor:pointer}
+.seg button.on{background:var(--red);color:#fff}
+.tabbar{display:flex;background:var(--white);border-top:1px solid var(--line)}
+.tabbar .tab{flex:1;text-align:center;padding:7px 2px 8px;font-size:10px;color:var(--soft);text-decoration:none;font-weight:600;border-top:2px solid transparent}
+.tabbar .tab .ti{display:block;font-size:17px;line-height:1.15;margin-bottom:1px}
+.tabbar .tab.active{color:var(--red);border-top-color:var(--red)}
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="topbar">
+    <div class="brand"><img class="logo" src="hub-logo.png" alt="The Hub"><span class="bn">The Hub</span><span class="bs">Your numbers</span></div>
+    <div class="rib" id="rib"></div>
+  </div>
+  <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
+  <nav class="tabbar">
+    <a class="tab active" href="partner.html"><span class="ti">📄</span>This month</a>
+    <a class="tab" href="partner-history.html"><span class="ti">📊</span>History</a>
+  </nav>
+</div>
+
+<script src="auth.js"></script>
+<script>
+/* SCREEN 6 — Partner, this month. Built to the mock-up (OWH_final_2.html §6):
+   4 KPIs · the month's stays · statement with this month beside last month · drill-down per cost line.
+   The wall is enforced on the SERVER — a partner session returns only their flat, rent stripped, the
+   internal split nulled, every open month forced to in-progress. This page never holds what it must
+   not show. Costs stay in EGP and revenue in USD, exactly as the sheet holds them and as the close
+   screen displays them — converting would invent precision the sheet doesn't have. */
+AUTH_ROLE = 'partner';
+
+var DATA=null, MONTH=null, OPEN={}, CUR='USD';
+try{ CUR=localStorage.getItem('owh_cur')||'USD'; }catch(e){}          // the choice sticks between visits
+
+/* ---- one currency, everywhere ----------------------------------------------------------------
+   The sheet holds revenue in USD and costs in EGP, each month converted at THAT month's rate. Using
+   today's rate on a cost paid in February would quietly restate a closed month, so instead we recover
+   the month's own rate from its own numbers: the P&L's Net already has the EGP costs converted, so
+   (EGP costs) ÷ (their USD value) gives back exactly the rate the sheet used. No rate is hardcoded
+   and none is guessed — if a month has no EGP costs to divide by, we fall back to the current rate. */
+function fxNow(){ return (DATA.meta.fx&&DATA.meta.fx.current)||1; }
+function rateFor(r){
+  if(!r) return fxNow();
+  var egp=0, usd=0;
+  (r.costs||[]).forEach(function(c){ if(!c.amount) return; if(c.currency==='EGP') egp+=c.amount; else usd+=c.amount; });
+  var allCostsUsd=r.revenue.total-r.net, egpAsUsd=allCostsUsd-usd;
+  return (egp>0 && egpAsUsd>0.01) ? egp/egpAsUsd : fxNow();
+}
+function conv(v,cur,r){ if(v==null||!isFinite(v)) return null; if(CUR===cur) return v;
+  var rate=rateFor(r); return CUR==='USD' ? v/rate : v*rate; }
+function sym(){ return CUR==='USD' ? '$' : 'EGP '; }
+function setCur(c){ CUR=c; try{ localStorage.setItem('owh_cur',c); }catch(e){} render(); }
+var $=function(s){return document.querySelector(s);};
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function esc(s){return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
+function fmt(n){ if(n==null||!isFinite(n)) return '—'; return (n<0?'−':'')+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function fmt2(n){ if(n==null||!isFinite(n)) return '—'; return (n<0?'−':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function monLabel(ym){ var p=(ym||'').split('-'); return p.length===2 ? MON[(+p[1])-1]+' '+p[0] : ym; }
+function monShort(ym){ var p=(ym||'').split('-'); return p.length===2 ? MON[(+p[1])-1] : ym; }
+function dayLabel(d){ var m=(d||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (+m[3])+' '+MON[(+m[2])-1] : (d||''); }
+
+function boot(){ fetchOnce().then(onData).catch(function(e){ if(e&&e.message==='AUTH')return;
+  setTimeout(function(){ fetchOnce().then(onData).catch(function(e2){ if(e2&&e2.message==='AUTH')return; showErr(e2); }); },800); }); }
+/* An admin on a partner screen can only mean previewing the demo — scope='demo' returns the
+   identical payload the demo partner gets, never a rosier one. */
+function fetchOnce(){ return api('props_get_all', isAdmin()?{scope:'demo'}:null)
+  .then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
+function isAdmin(){ return !!(ME && ME.role==='admin'); }
+function showErr(e){ if(DATA)return; $('#app').innerHTML='<div class="err">Couldn\'t load your numbers.<br><span class="muted">'+esc(e&&e.message||'')+'</span></div>'; }
+function onData(j){ DATA=j.data; DATA._gen=j.generatedAt; if(j.me) ME=j.me; initMonth(); render(); }
+
+function myFlat(){ return (ME&&ME.flat) || (DATA.meta.flatsOrder&&DATA.meta.flatsOrder[0]) || ''; }
+function flatName(){ var f=myFlat(), m=(DATA.flats||[]).filter(function(x){return x.id===f;})[0]; return (m&&m.name)||f; }
+function monthsAvailable(){ var f=myFlat(); return DATA.pnl&&DATA.pnl[f] ? Object.keys(DATA.pnl[f]).sort() : []; }
+function initMonth(){ var ms=monthsAvailable(); if(!MONTH||ms.indexOf(MONTH)<0) MONTH=ms.length?ms[ms.length-1]:null; }
+function recFor(m){ var f=myFlat(); return (DATA.pnl&&DATA.pnl[f]&&DATA.pnl[f][m])||null; }
+function prevMonth(){ var ms=monthsAvailable(), i=ms.indexOf(MONTH); return i>0?ms[i-1]:null; }
+function daysIn(ym){ return new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate(); }
+
+/* ---- the month's stays (mock-up: Guest · In · Out · N · Channel · Paid) ---- */
+function staysIn(ym){
+  var f=myFlat();
+  return (DATA.stays||[]).filter(function(s){
+    var st=(s.status||'').toLowerCase();
+    if(s.flat!==f || s.portal==='Blocked') return false;
+    if(st.indexOf('cancel')>-1||st.indexOf('block')>-1) return false;
+    if(!s.checkIn||!s.checkOut) return false;
+    return s.checkIn.slice(0,7)<=ym && s.checkOut.slice(0,7)>=ym;      // any stay touching the month
+  }).sort(function(a,b){ return a.checkIn<b.checkIn?-1:1; });
+}
+function nightsIn(ym){                      // nights that actually fall inside the month
+  var n=0, lo=new Date(ym+'-01T00:00:00'), hi=new Date(+ym.slice(0,4), +ym.slice(5,7), 1);
+  staysIn(ym).forEach(function(s){
+    var ci=new Date(s.checkIn.slice(0,10)+'T00:00:00'), co=new Date(s.checkOut.slice(0,10)+'T00:00:00');
+    for(var d=new Date(Math.max(ci,lo)); d<co && d<hi; d.setDate(d.getDate()+1)) n++;
+  });
+  return n;
+}
+function dotFor(p){ var s=(p||'').toLowerCase();
+  return s.indexOf('airbnb')>-1?'d-air':(s.indexOf('booking')>-1?'d-book':'d-dir'); }
+
+/* ---- cost lines, in the mock-up's order ---- */
+var ORDER=['cleaning-labor','laundry','supplies','electricity','tv-phone-internet','water','heat-gas','maintenance','compound-maintenance','opsmanager','services-contingency','contingency','gifts-contingency','general-contingency','subscription'];
+var LABEL={'cleaning-labor':'cleaning','laundry':'laundry','supplies':'supplies','electricity':'electricity','tv-phone-internet':'internet',
+  'water':'water','heat-gas':'gas','maintenance':'maintenance','compound-maintenance':'compound','opsmanager':'operations',
+  'services-contingency':'services','contingency':'contingency','gifts-contingency':'contingency','general-contingency':'contingency','subscription':'booking software'};
+var CATMAP={'electricity':'__electricity','subscription':'__subscription','laundry':'laundry','supplies':'supplies','cleaning-labor':'cleaning-labor','opsmanager':'opsManager','services-contingency':'Services','maintenance':'Maintenance','tv-phone-internet':'TV/Phone/Internet','water':'Water','heat-gas':'Heat/gas','compound-maintenance':'compound maintenance','contingency':'contingency','gifts-contingency':'Gifts','general-contingency':'General'};
+function costKeys(a,b){
+  var seen={}, keys=[];
+  [a,b].forEach(function(r){ if(!r)return; (r.costs||[]).forEach(function(c){ if(c.amount) seen[c.key]=1; }); });
+  ORDER.forEach(function(k){ if(seen[k]){ keys.push(k); delete seen[k]; } });
+  for(var k in seen) keys.push(k);                     // anything new in the sheet still appears
+  return keys;
+}
+function amt(r,key){ if(!r) return null; var c=(r.costs||[]).filter(function(x){return x.key===key;})[0]; return c?c.amount:null; }
+function curOf(r,key){ if(!r) return null; var c=(r.costs||[]).filter(function(x){return x.key===key;})[0]; return c?c.currency:null; }
+
+function txFor(ym,key){ var cat=CATMAP[key]; if(!cat) return [];
+  return (DATA.tx||[]).filter(function(t){ return t.flat===myFlat() && t.ym===ym && t.cat===cat; }); }
+function toggleDrill(k){ OPEN[k]=!OPEN[k]; render(); }
+function drillBlock(key){
+  var out='', pm=prevMonth();
+  [[MONTH,'THIS MONTH'],[pm,'PREVIOUS MONTH']].forEach(function(pair){
+    var ym=pair[0]; if(!ym) return;
+    var list=txFor(ym,key); if(!list.length) return;
+    var rr=recFor(ym);
+    var sum=list.reduce(function(a,t){ return a+(conv(t.amount,t.currency,rr)||0); },0);
+    out+='<tr class="foot"><td colspan="3">'+monLabel(ym).toUpperCase()+' — '+list.length+' entr'+(list.length===1?'y':'ies')+
+         ' · '+fmt(sum/list.length)+' each → '+fmt(sum)+'</td></tr>';
+    list.forEach(function(t){
+      out+='<tr><td style="white-space:nowrap">'+dayLabel(t.date)+'</td><td>'+esc(t.desc||'—')+'</td><td style="text-align:right">'+fmt(conv(t.amount,t.currency,rr))+'</td></tr>';
+    });
+  });
+  return out ? '<tr><td colspan="3" style="padding:2px 4px"><div class="drill"><table>'+out+'</table></div></td></tr>' : '';
+}
+
+function render(){
+  if(!DATA) return;
+  if(isAdmin() && !(DATA.meta.demo&&DATA.meta.demo.active)){
+    $('#app').innerHTML='<div class="card"><h3>Partner preview</h3><p class="note">This is the partner\'s view of a flat. To preview it: OWH Properties sheet → <b>The Hub</b> menu → <b>Demo mode — turn ON</b>, then reload.</p></div>'; return; }
+  var f=flatName(), r=recFor(MONTH), pm=prevMonth(), pr=recFor(pm), ms=monthsAvailable();
+  $('#rib').innerHTML=authWho()+' · '+esc(f);
+  if(!r){ $('#app').innerHTML='<div class="card"><span class="muted">No numbers for this month yet.</span></div>'; return; }
+
+  var pv=r.partnerView||{}, isFinal=(r.status==='final'), pct=pv.managementFeePct||0;
+  var h='';
+  if(DATA.meta.demo&&DATA.meta.demo.active) h+='<div class="demo"><b>Sample.</b> Real figures from a running apartment, on the terms we are discussing.</div>';
+
+  h+='<p class="h1">'+esc(f)+' <span class="sub">· your numbers</span></p>';
+
+  /* KPIs — paid to date counts only closed months, so nothing provisional is ever claimed as banked */
+  var paidToDate=0, closed=0;
+  ms.forEach(function(m){ var x=recFor(m);                       // each month at its OWN rate, then summed
+    if(x&&x.status==='final'){ paidToDate+=conv((x.partnerView&&x.partnerView.netPayout)||0,'USD',x)||0; closed++; } });
+  var nts=nightsIn(MONTH), occ=nts/daysIn(MONTH), adr=nts?conv(r.revenue.earnings,'USD',r)/nts:0;
+  h+='<table class="kpis"><tr>'+
+     '<td><div class="kpi-l">Paid to you, to date</div><div class="kpi-v">'+sym()+fmt(paidToDate)+'</div><div class="kpi-s">'+closed+' closed month'+(closed===1?'':'s')+'</div></td>'+
+     '<td><div class="kpi-l">This month net</div><div class="kpi-v">'+sym()+fmt(conv(pv.netPayout!=null?pv.netPayout:r.net,'USD',r))+'</div><div class="kpi-s">'+monLabel(MONTH)+', '+(isFinal?'final':'in progress')+'</div></td>'+
+     '</tr></table>'+
+     '<table class="kpis" style="margin-top:6px"><tr>'+
+     '<td><div class="kpi-l">Occupancy</div><div class="kpi-v">'+Math.round(occ*100)+'%</div><div class="kpi-s">this month</div></td>'+
+     '<td><div class="kpi-l">Avg nightly</div><div class="kpi-v">'+sym()+fmt2(adr)+'</div><div class="kpi-s">after discounts</div></td>'+
+     '</tr></table>';
+
+  h+='<div class="ctl">';
+  if(ms.length>1) h+='<select onchange="MONTH=this.value;OPEN={};render()">'+
+     ms.slice().reverse().map(function(m){ return '<option value="'+m+'"'+(m===MONTH?' selected':'')+'>'+monLabel(m)+'</option>'; }).join('')+'</select>';
+  h+='<span class="seg"><button class="'+(CUR==='USD'?'on':'')+'" onclick="setCur(\'USD\')">USD</button>'+
+     '<button class="'+(CUR==='EGP'?'on':'')+'" onclick="setCur(\'EGP\')">EGP</button></span></div>';
+
+  /* ---- the month's stays ---- */
+  var st=staysIn(MONTH);
+  h+='<div class="card"><h3>'+monLabel(MONTH)+' stays <span class="pill '+(isFinal?'pf':'pa')+'" style="float:right">'+(isFinal?'final':'in progress')+'</span></h3>';
+  if(!st.length) h+='<p class="note" style="margin:0">No stays recorded for this month.</p>';
+  else{
+    h+='<table class="d"><tr><th>Guest</th><th>In</th><th>Out</th><th class="c">N</th><th>Channel</th><th class="r">Paid</th></tr>';
+    st.forEach(function(s){
+      h+='<tr><td>'+esc(s.guest||'—')+'</td><td style="white-space:nowrap">'+dayLabel(s.checkIn)+'</td><td style="white-space:nowrap">'+dayLabel(s.checkOut)+'</td>'+
+         '<td class="c">'+(s.nights||'')+'</td><td style="white-space:nowrap"><span class="dot '+dotFor(s.portal)+'"></span>'+esc(s.portal||'Direct')+'</td>'+
+         '<td class="r">'+sym()+fmt(conv(s.allIn,'USD',r))+'</td></tr>';
+    });
+    h+='</table>';
+  }
+  h+='</div>';
+
+  /* ---- statement, this month beside last ---- */
+  h+='<div class="card"><h3>Statement — '+monShort(MONTH)+(pm?' vs '+monShort(pm):'')+'</h3><table class="d">'+
+     '<tr><th>Line</th><th class="r">'+monShort(MONTH)+'</th>'+(pm?'<th class="r">'+monShort(pm)+'</th>':'')+'</tr>';
+  h+='<tr class="tot"><td>Guest payments</td><td class="r">'+fmt(conv(r.revenue.total,'USD',r))+'</td>'+
+     (pm?'<td class="r">'+fmt(pr?conv(pr.revenue.total,'USD',pr):null)+'</td>':'')+'</tr>';
+
+  costKeys(r,pr).forEach(function(k){
+    var open=!!OPEN[k], canDrill=!!CATMAP[k];
+    var cu=curOf(r,k)||curOf(pr,k)||'EGP';
+    h+='<tr'+(canDrill?' class="drillable" onclick="toggleDrill(\''+k+'\')"':'')+'><td>'+(LABEL[k]||k)+(canDrill?' '+(open?'▾':'▸'):'')+'</td>'+
+       '<td class="r">'+fmt(conv(amt(r,k),cu,r))+'</td>'+(pm?'<td class="r">'+fmt(conv(amt(pr,k),cu,pr))+'</td>':'')+'</tr>';
+    if(open) h+=drillBlock(k);
+  });
+
+  h+='<tr><td>management fee — '+Math.round(pct*100)+'%</td><td class="r">'+fmt(conv(pv.managementFee,'USD',r))+'</td>'+
+     (pm?'<td class="r">'+fmt(pr&&pr.partnerView?conv(pr.partnerView.managementFee,'USD',pr):null)+'</td>':'')+'</tr>';
+  h+='<tr class="net"><td>Your net payout</td><td class="r g">'+fmt(conv(pv.netPayout!=null?pv.netPayout:r.net,'USD',r))+'</td>'+
+     (pm?'<td class="r">'+fmt(pr?conv(pr.partnerView?pr.partnerView.netPayout:pr.net,'USD',pr):null)+'</td>':'')+'</tr>';
+  h+='</table>';
+  h+='<p class="note">Tap a cost line to see what it is made of — date, description, amount. '+
+     'Everything is shown in <b>'+CUR+'</b>, each month converted at that month\'s own rate ('+
+     fmt(rateFor(r))+' EGP/USD for '+monLabel(MONTH)+'), so a closed month never changes when the rate moves.'+
+     (isFinal?'':' This month is still open, so figures can change until it is closed.')+'</p></div>';
+
+  $('#app').innerHTML=h;
+}
+
+AUTH_ON_LOGIN = boot; if (authGuard()) boot();
+</script>
+</body>
+</html>

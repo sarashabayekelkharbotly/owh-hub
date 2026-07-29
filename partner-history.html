@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Hub · History &amp; statistics</title>
+<link rel="icon" href="hub-logo.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+:root{--blush:#f9f0f0;--red:#cc5f5f;--ink:#1a1a1a;--soft:#6b6b6b;--white:#fff;--line:#ecdede;--grey:#f6f2f2;--g:#3a7d4d;--greentint:#e4efe7;
+--d-air:#e0798a;--d-book:#4a7fb5;--d-dir:#6f9a76;--adr:#8a6fa8}
+*{box-sizing:border-box}
+body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink);font-variant-numeric:tabular-nums;padding:0 0 40px}
+.frame{max-width:1000px;margin:16px auto;background:var(--white);border:1px solid var(--line);border-radius:20px;box-shadow:0 5px 24px rgba(0,0,0,.10);overflow:hidden}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:11px 15px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:15px;white-space:nowrap;flex:none}
+.brand .logo{width:26px;height:26px;border-radius:6px;flex:none}
+.brand .bs{font-weight:600;font-size:11.5px;color:var(--soft);border-left:1px solid var(--line);padding-left:7px}
+.rib{font-size:10px;color:#4c4040;text-align:right;line-height:1.5}
+.body{padding:13px;background:var(--blush)}
+.h1{font-size:18px;font-weight:700;margin:0 0 9px}
+.h1 .sub{font-size:12px;font-weight:400;color:var(--soft)}
+.split{display:grid;grid-template-columns:1.35fr 1fr;gap:9px}
+.card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:9px}
+.card h3{margin:0 0 7px;font-size:13px;font-weight:700}
+.wrap{overflow-x:auto}
+table.d{width:100%;border-collapse:collapse;font-size:12px}
+table.d th,table.d td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.d th{font-size:9.5px;color:var(--soft);font-weight:700}
+table.d .r{text-align:right}
+table.d tr.tot td{font-weight:700;border-top:2px solid var(--ink)}
+.g{color:var(--g)}.neg{color:var(--red)}
+.btn{border:1px solid var(--line);background:var(--white);color:var(--ink);font-family:inherit;font-weight:700;font-size:12px;border-radius:9px;padding:7px 13px;cursor:pointer}
+.btn:hover{background:var(--grey)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{font-family:inherit;font-size:12px;font-weight:600;border:0;background:var(--white);color:var(--soft);padding:6px 12px;cursor:pointer}
+.seg button.on{background:var(--red);color:#fff}
+.chart{width:100%;height:200px}
+.legend{font-size:10px;color:var(--soft);margin-top:5px}
+.sw{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;margin:0 4px 0 10px}
+.legend .sw:first-child{margin-left:0}
+.note{font-size:10px;color:var(--soft);line-height:1.55;margin:7px 0 0}
+.muted{color:var(--soft);font-size:11px}
+.err{background:#f6e3e3;border:1px solid #e6b9b9;border-radius:10px;padding:12px;font-size:13px}
+.demo{background:#efe9f5;border:1px solid #d9cbe8;border-radius:10px;padding:7px 11px;font-size:10.5px;color:#5c4a72;margin-bottom:9px}
+.tabbar{display:flex;background:var(--white);border-top:1px solid var(--line)}
+.tabbar .tab{flex:1;text-align:center;padding:7px 2px 8px;font-size:10px;color:var(--soft);text-decoration:none;font-weight:600;border-top:2px solid transparent}
+.tabbar .tab .ti{display:block;font-size:17px;line-height:1.15;margin-bottom:1px}
+.tabbar .tab.active{color:var(--red);border-top-color:var(--red)}
+@media(max-width:720px){.split{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="topbar">
+    <div class="brand"><img class="logo" src="hub-logo.png" alt="The Hub"><span class="bn">The Hub</span><span class="bs">History &amp; statistics</span></div>
+    <div class="rib" id="rib"></div>
+  </div>
+  <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
+  <nav class="tabbar">
+    <a class="tab" href="partner.html"><span class="ti">📄</span>This month</a>
+    <a class="tab active" href="partner-history.html"><span class="ti">📊</span>History</a>
+  </nav>
+</div>
+
+<script src="auth.js"></script>
+<script>
+/* SCREEN 7 — Partner, history & statistics. Built to the mock-up (OWH_final_2.html §7):
+   months across the columns, Export CSV, occupancy & ADR, stays by channel. Same server-side wall
+   as Screen 6. Everything here is USD so the columns reconcile — Net = Revenue − Costs − Fee — which
+   is the one place a partner will check the arithmetic themselves. */
+AUTH_ROLE = 'partner';
+
+var DATA=null, CUR='USD';
+try{ CUR=localStorage.getItem('owh_cur')||'USD'; }catch(e){}    // shared with the statement screen
+
+/* Each month converted at ITS OWN rate, recovered from the sheet's own figures — see the long note
+   in partner.html. Converting a closed month at today's rate would silently restate it. */
+function fxNow(){ return (DATA.meta.fx&&DATA.meta.fx.current)||1; }
+function rateFor(r){
+  if(!r) return fxNow();
+  var egp=0, usd=0;
+  (r.costs||[]).forEach(function(c){ if(!c.amount) return; if(c.currency==='EGP') egp+=c.amount; else usd+=c.amount; });
+  var allCostsUsd=r.revenue.total-r.net, egpAsUsd=allCostsUsd-usd;
+  return (egp>0 && egpAsUsd>0.01) ? egp/egpAsUsd : fxNow();
+}
+function cv(v,rate){ if(v==null||!isFinite(v)) return null; return CUR==='USD' ? v : v*rate; }   // pnl values are USD
+function sym(){ return CUR==='USD' ? '$' : 'EGP '; }
+function setCur(c){ CUR=c; try{ localStorage.setItem('owh_cur',c); }catch(e){} render(); }
+var $=function(s){return document.querySelector(s);};
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function esc(s){return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
+function fmt(n){ if(n==null||!isFinite(n)) return '—'; return (n<0?'−':'')+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function fmt2(n){ if(n==null||!isFinite(n)) return '—'; return (n<0?'−':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function monShort(ym){ var p=(ym||'').split('-'); return p.length===2 ? MON[(+p[1])-1] : ym; }
+function monLabel(ym){ var p=(ym||'').split('-'); return p.length===2 ? MON[(+p[1])-1]+' '+p[0] : ym; }
+
+function boot(){ fetchOnce().then(onData).catch(function(e){ if(e&&e.message==='AUTH')return;
+  setTimeout(function(){ fetchOnce().then(onData).catch(function(e2){ if(e2&&e2.message==='AUTH')return; showErr(e2); }); },800); }); }
+function fetchOnce(){ return api('props_get_all', isAdmin()?{scope:'demo'}:null)
+  .then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
+function isAdmin(){ return !!(ME && ME.role==='admin'); }
+function showErr(e){ if(DATA)return; $('#app').innerHTML='<div class="err">Couldn\'t load your history.<br><span class="muted">'+esc(e&&e.message||'')+'</span></div>'; }
+function onData(j){ DATA=j.data; if(j.me) ME=j.me; render(); }
+
+function myFlat(){ return (ME&&ME.flat) || (DATA.meta.flatsOrder&&DATA.meta.flatsOrder[0]) || ''; }
+function flatName(){ var f=myFlat(), m=(DATA.flats||[]).filter(function(x){return x.id===f;})[0]; return (m&&m.name)||f; }
+function months(){ var f=myFlat(); return DATA.pnl&&DATA.pnl[f] ? Object.keys(DATA.pnl[f]).sort() : []; }
+function daysIn(ym){ return new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate(); }
+
+function rows(){
+  var f=myFlat();
+  return months().map(function(m){
+    var r=DATA.pnl[f][m], pv=r.partnerView||{};
+    var rate=rateFor(r);
+    return { m:m, rate:rate,
+             rev:cv(r.revenue.total,rate), earn:cv(r.revenue.earnings||0,rate), costs:cv(r.revenue.total-r.net,rate),
+             fee:cv(pv.managementFee||0,rate), net:cv(pv.netPayout!=null?pv.netPayout:r.net,rate),
+             pct:pv.managementFeePct||0, open:(r.status!=='final') };
+  });
+}
+
+/* ---- their flat's own stays ---- */
+function liveStays(){
+  var f=myFlat();
+  return (DATA.stays||[]).filter(function(s){
+    var st=(s.status||'').toLowerCase();
+    return s.flat===f && s.portal!=='Blocked' && st.indexOf('cancel')<0 && st.indexOf('block')<0 && s.checkIn && s.checkOut;
+  });
+}
+function nightsByMonth(){
+  var out={};
+  liveStays().forEach(function(s){
+    var ci=new Date(s.checkIn.slice(0,10)+'T00:00:00'), co=new Date(s.checkOut.slice(0,10)+'T00:00:00');
+    for(var d=new Date(ci); d<co; d.setDate(d.getDate()+1)){
+      var k=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2);
+      out[k]=(out[k]||0)+1;
+    }
+  });
+  return out;
+}
+function chKey(p){ var s=(p||'').toLowerCase();
+  return s.indexOf('airbnb')>-1?'Airbnb':(s.indexOf('booking')>-1?'Booking':'Direct'); }
+var CH=[['Airbnb','var(--d-air)'],['Booking','var(--d-book)'],['Direct','var(--d-dir)']];
+function staysByChannel(){                 // count of stays per channel per month, keyed on check-out
+  var ms=months(), out={};
+  ms.forEach(function(m){ out[m]={Airbnb:0,Booking:0,Direct:0}; });
+  liveStays().forEach(function(s){
+    var ym=(s.checkOut||'').slice(0,7);
+    if(out[ym]) out[ym][chKey(s.portal)]++;
+  });
+  return out;
+}
+
+function csv(){
+  var rs=rows(), ms=rs.map(function(r){return r.m;});
+  var line=function(lbl,pick){ return [lbl].concat(rs.map(function(r){ return pick(r).toFixed(2); })).join(','); };
+  var out=[['Line'].concat(ms.map(function(m){ return monLabel(m); })).join(',')];
+  out.push(line('Revenue ('+CUR+')',function(r){return r.rev;}));
+  out.push(line('Costs ('+CUR+')',function(r){return r.costs;}));
+  out.push(line('Management fee ('+CUR+')',function(r){return r.fee;}));
+  out.push(line('Net to you ('+CUR+')',function(r){return r.net;}));
+  out.push(['Status'].concat(rs.map(function(r){ return r.open?'in progress':'final'; })).join(','));
+  var blob=new Blob([out.join('\n')],{type:'text/csv;charset=utf-8;'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=flatName().replace(/\s+/g,'-')+'-history-'+(ms[0]||'')+'-to-'+(ms[ms.length-1]||'')+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+/* ---- occupancy bars + ADR line, one SVG, no library ---- */
+function occChart(){
+  var ms=months(), nb=nightsByMonth(), rs=rows();
+  if(!ms.length) return '';
+  var w=520,h=200,pl=30,pr=34,pt=12,pb=26, iw=(w-pl-pr)/ms.length;
+  var adrMax=1;
+  var pts=ms.map(function(m,i){
+    var n=nb[m]||0, occ=n/daysIn(m), rr=rs[i], adr=n?rr.earn/n:0;
+    if(adr>adrMax) adrMax=adr;
+    return {m:m,occ:occ,adr:adr,n:n};
+  });
+  var bars=pts.map(function(p,i){
+    var bh=(h-pt-pb)*Math.min(p.occ,1), x=pl+i*iw+iw*0.22, bw=iw*0.56;
+    return '<rect x="'+x+'" y="'+(h-pb-bh)+'" width="'+bw+'" height="'+bh+'" rx="2" fill="#cc5f5f" opacity=".8"></rect>'+
+           '<text x="'+(x+bw/2)+'" y="'+(h-pb+11)+'" font-size="8.5" text-anchor="middle" fill="#6b6b6b">'+monShort(p.m)+'</text>';
+  }).join('');
+  var line=pts.map(function(p,i){
+    return (i?'L':'M')+(pl+i*iw+iw/2)+','+(h-pb-(h-pt-pb)*(p.adr/adrMax));
+  }).join(' ');
+  var dots=pts.map(function(p,i){
+    return '<circle cx="'+(pl+i*iw+iw/2)+'" cy="'+(h-pb-(h-pt-pb)*(p.adr/adrMax))+'" r="2.5" fill="var(--adr)"></circle>';
+  }).join('');
+  return '<svg class="chart" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="xMidYMid meet">'+
+    '<line x1="'+pl+'" y1="'+(h-pb)+'" x2="'+(w-pr)+'" y2="'+(h-pb)+'" stroke="#ecdede"></line>'+
+    '<text x="4" y="'+(pt+8)+'" font-size="8.5" fill="#6b6b6b">100%</text>'+
+    '<text x="'+(w-pr+4)+'" y="'+(pt+8)+'" font-size="8.5" fill="var(--adr)">'+sym()+fmt(adrMax)+'</text>'+
+    bars+'<path d="'+line+'" fill="none" stroke="var(--adr)" stroke-width="1.8"></path>'+dots+'</svg>'+
+    '<div class="legend"><span class="sw" style="background:#cc5f5f"></span>occupancy'+
+    '<span class="sw" style="background:var(--adr)"></span>average nightly rate</div>';
+}
+
+/* ---- stays by channel, stacked per month ---- */
+function chanChart(){
+  var ms=months(), sc=staysByChannel();
+  if(!ms.length) return '';
+  var w=940,h=190,pl=26,pr=12,pt=12,pb=26, iw=(w-pl-pr)/ms.length;
+  var max=1;
+  ms.forEach(function(m){ var t=CH.reduce(function(a,c){ return a+sc[m][c[0]]; },0); if(t>max)max=t; });
+  var body=ms.map(function(m,i){
+    var y=h-pb, x=pl+i*iw+iw*0.2, bw=iw*0.6, out='';
+    CH.forEach(function(c){
+      var v=sc[m][c[0]]; if(!v) return;
+      var bh=(h-pt-pb)*(v/max); y-=bh;
+      out+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" fill="'+c[1]+'" opacity=".85"><title>'+monLabel(m)+' · '+c[0]+' · '+v+' stays</title></rect>';
+    });
+    var tot=CH.reduce(function(a,c){ return a+sc[m][c[0]]; },0);
+    if(tot) out+='<text x="'+(x+bw/2)+'" y="'+(y-3)+'" font-size="8.5" text-anchor="middle" fill="#6b6b6b">'+tot+'</text>';
+    out+='<text x="'+(x+bw/2)+'" y="'+(h-pb+11)+'" font-size="8.5" text-anchor="middle" fill="#6b6b6b">'+monShort(m)+'</text>';
+    return out;
+  }).join('');
+  return '<svg class="chart" style="height:190px" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="xMidYMid meet">'+
+    '<line x1="'+pl+'" y1="'+(h-pb)+'" x2="'+(w-pr)+'" y2="'+(h-pb)+'" stroke="#ecdede"></line>'+body+'</svg>'+
+    '<div class="legend">'+CH.map(function(c){ return '<span class="sw" style="background:'+c[1]+'"></span>'+c[0]; }).join('')+'</div>';
+}
+
+function render(){
+  if(!DATA) return;
+  if(isAdmin() && !(DATA.meta.demo&&DATA.meta.demo.active)){
+    $('#app').innerHTML='<div class="card"><h3>Partner preview</h3><p class="note">Switch the demo on to preview this: OWH Properties sheet → <b>The Hub</b> menu → <b>Demo mode — turn ON</b>, then reload.</p></div>'; return; }
+  var f=flatName(), rs=rows();
+  $('#rib').innerHTML=authWho()+' · '+esc(f);
+  if(!rs.length){ $('#app').innerHTML='<div class="card"><span class="muted">No history yet.</span></div>'; return; }
+
+  var anyOpen=rs.some(function(r){ return r.open; });
+  var pct=(rs[rs.length-1]||{}).pct||0;
+  var h='';
+  if(DATA.meta.demo&&DATA.meta.demo.active) h+='<div class="demo"><b>Sample.</b> Real figures from a running apartment, on the terms we are discussing.</div>';
+  h+='<p class="h1">'+esc(f)+' <span class="sub">· history &amp; statistics</span></p>';
+
+  h+='<div class="split">';
+  /* months across the columns, per the mock-up */
+  h+='<div class="card"><h3>Your history — all months</h3><div class="wrap"><table class="d">'+
+     '<tr><th>Line</th>'+rs.map(function(r){ return '<th class="r">'+monShort(r.m)+(r.open?'*':'')+'</th>'; }).join('')+'</tr>';
+  var line=function(lbl,pick,cls){
+    return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+lbl+'</td>'+
+      rs.map(function(r){ var v=pick(r); return '<td class="r'+(v<0?' neg':'')+'">'+fmt(v)+'</td>'; }).join('')+'</tr>';
+  };
+  h+=line('Revenue',function(r){return r.rev;});
+  h+=line('Costs',function(r){return r.costs;});
+  h+=line('Fee '+Math.round(pct*100)+'%',function(r){return r.fee;});
+  h+=line('Net',function(r){return r.net;},'tot');
+  h+='</table></div>';
+  h+='<div style="margin-top:8px;display:flex;gap:7px;align-items:center"><button class="btn" onclick="csv()">Export CSV</button>'+
+     '<span class="seg" style="margin-left:auto"><button class="'+(CUR==='USD'?'on':'')+'" onclick="setCur(\'USD\')">USD</button>'+
+     '<button class="'+(CUR==='EGP'?'on':'')+'" onclick="setCur(\'EGP\')">EGP</button></span></div>';
+  h+='<p class="note">All figures '+CUR+', each month converted at that month\'s own rate'+
+     (anyOpen?' · * still open, may change until the month is closed':'')+
+     '. The column adds up: Net = Revenue − Costs − Fee.</p></div>';
+
+  h+='<div class="card"><h3>Your flat — occupancy &amp; ADR</h3>'+occChart()+'</div>';
+  h+='</div>';
+
+  h+='<div class="card"><h3>Your flat — stays by channel</h3>'+chanChart()+'</div>';
+
+  $('#app').innerHTML=h;
+}
+
+AUTH_ON_LOGIN = boot; if (authGuard()) boot();
+</script>
+</body>
+</html>
