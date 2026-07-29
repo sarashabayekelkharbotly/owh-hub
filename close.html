@@ -127,7 +127,36 @@ var CATMAP={'electricity':'__electricity','subscription':'__subscription','laund
 function esc(s){return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
 function dday(d){d=(d||'').toString();var m=d.match(/^\d{4}-\d{2}-(\d{2})/);return m?m[1]:'';}
 function trunc(s,n){s=(s||'').toString();return s.length>n?s.slice(0,n-1)+'…':s;}
-function txFor(flat,ym,key){var cat=CATMAP[key];if(!cat)return [];return (DATA.tx||[]).filter(function(t){return t.flat===flat&&t.ym===ym&&t.cat===cat;});}
+/* Costs bought for every apartment (WeShare Apartment = "To allocate") are filed against the
+   pseudo-flat "(portfolio)" and allocated across flats by the SHEET, so a plain flat filter drops
+   them and the drill-down stops matching the line above it. July 2026: 1,817.04 EGP of supplies sat
+   in the pool, so 17A's line read 687.93 while this list showed only the 291.00 booked directly —
+   which reads as "the entries never arrived".
+   This flat's proportion is derived, never assumed: (its cost line − what was booked directly) is
+   what came out of the pool, over the pool itself. Each pooled row is then shown at that share. */
+var POOL_FLAT='(portfolio)';
+function costLineOf(flat,ym,key){
+  var r=(DATA.pnl[flat]||{})[ym]; if(!r) return null;
+  var hit=null; (r.costs||[]).forEach(function(c){ if(c.key===key) hit=c.amount; });
+  return hit;
+}
+function txFor(flat,ym,key){
+  var cat=CATMAP[key]; if(!cat) return [];
+  var own=(DATA.tx||[]).filter(function(t){return t.flat===flat&&t.ym===ym&&t.cat===cat;});
+  var pool=(DATA.tx||[]).filter(function(t){return t.flat===POOL_FLAT&&t.ym===ym&&t.cat===cat;});
+  if(!pool.length) return own;
+  var poolTot=pool.reduce(function(a,t){return a+(t.amount||0);},0); if(!poolTot) return own;
+  var line=costLineOf(flat,ym,key); if(line==null) return own;
+  var fromPool=line-own.reduce(function(a,t){return a+(t.amount||0);},0);
+  if(fromPool<=0) return own;
+  var share=fromPool/poolTot;
+  return own.concat(pool.map(function(t){
+    var c={}; for(var k in t) c[k]=t[k];
+    c.amount=Math.round((t.amount||0)*share*100)/100;
+    c.desc=(t.desc||'')+' · shared ('+Math.round(share*100)+'% to '+flat+')';
+    return c;
+  }));
+}
 function toggleDrill(id){OPEN[id]=!OPEN[id];render();}
 function drillRows(key){
   var list=txFor(FLAT,MONTH,key);
