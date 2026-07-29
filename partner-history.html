@@ -211,30 +211,40 @@ function csv(){
 function occChart(){
   var ms=inRange(R.occ);
   if(!ms.length) return '<div class="muted">No data in range.</div>';
-  var w=980,h=230,pl=34,pr=44,pt=16,pb=28, iw=(w-pl-pr)/ms.length, adrMax=1;
+  var w=980,h=250,pl=52,pr=62,pt=26,pb=30, iw=(w-pl-pr)/ms.length, adrMax=1, ih=h-pt-pb;
   var pts=ms.map(function(m){
     var r=recFor(m), n=nightsIn(m), adr=n?cv((r&&r.revenue.earnings)||0,rateFor(r))/n:0;
     if(adr>adrMax) adrMax=adr;
     return {m:m, occ:n/daysIn(m), adr:adr, n:n};
   });
+  var ny=function(f){ return h-pb-ih*f; };                       // 0..1 -> y
+  /* Both axes labelled: occupancy on the left, the nightly rate on the right, each in its own
+     colour so a glance at the chart says which scale belongs to which series. */
+  var grid='', ticks=[0,0.25,0.5,0.75,1];
+  ticks.forEach(function(f){
+    grid+='<line x1="'+pl+'" y1="'+ny(f)+'" x2="'+(w-pr)+'" y2="'+ny(f)+'" stroke="#f2e8e8"></line>'+
+      '<text x="'+(pl-7)+'" y="'+(ny(f)+3)+'" font-size="9" text-anchor="end" fill="var(--occ)">'+Math.round(f*100)+'%</text>'+
+      '<text x="'+(w-pr+7)+'" y="'+(ny(f)+3)+'" font-size="9" fill="var(--adr)">'+sym()+fmt(adrMax*f)+'</text>';
+  });
   var bars=pts.map(function(p,i){
-    var bh=(h-pt-pb)*Math.min(p.occ,1), x=pl+i*iw+iw*0.24, bw=Math.max(iw*0.52,3);
+    var bh=ih*Math.min(p.occ,1), x=pl+i*iw+iw*0.24, bw=Math.max(iw*0.52,3);
     return '<rect x="'+x+'" y="'+(h-pb-bh)+'" width="'+bw+'" height="'+bh+'" rx="2" fill="var(--occ)" opacity=".8">'+
-           '<title>'+monLabel(p.m)+' · '+Math.round(p.occ*100)+'% · '+p.n+' nights</title></rect>'+
-           '<text x="'+(x+bw/2)+'" y="'+(h-pb+12)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+monShort(p.m)+'</text>';
+           '<title>'+monLabel(p.m)+' · '+Math.round(p.occ*100)+'% occupied · '+p.n+' nights</title></rect>'+
+           '<text x="'+(x+bw/2)+'" y="'+(h-pb+13)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+monShort(p.m)+'</text>';
   }).join('');
-  var line=pts.map(function(p,i){ return (i?'L':'M')+(pl+i*iw+iw/2)+','+(h-pb-(h-pt-pb)*(p.adr/adrMax)); }).join(' ');
+  var line=pts.map(function(p,i){ return (i?'L':'M')+(pl+i*iw+iw/2)+','+ny(p.adr/adrMax); }).join(' ');
   var circles=pts.map(function(p,i){
-    return '<circle cx="'+(pl+i*iw+iw/2)+'" cy="'+(h-pb-(h-pt-pb)*(p.adr/adrMax))+'" r="2.6" fill="var(--adr)">'+
+    return '<circle cx="'+(pl+i*iw+iw/2)+'" cy="'+ny(p.adr/adrMax)+'" r="2.6" fill="var(--adr)">'+
            '<title>'+monLabel(p.m)+' · '+sym()+fmt2(p.adr)+' a night</title></circle>';
   }).join('');
-  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:230px" preserveAspectRatio="xMidYMid meet">'+
-    '<line x1="'+pl+'" y1="'+(h-pb)+'" x2="'+(w-pr)+'" y2="'+(h-pb)+'" stroke="#ecdede"></line>'+
-    '<text x="4" y="'+(pt+6)+'" font-size="9" fill="var(--occ)">100%</text>'+
-    '<text x="'+(w-pr+5)+'" y="'+(pt+6)+'" font-size="9" fill="var(--adr)">'+sym()+fmt(adrMax)+'</text>'+
+  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:250px" preserveAspectRatio="xMidYMid meet">'+
+    grid+
+    '<text x="'+pl+'" y="13" font-size="10" font-weight="700" fill="var(--occ)" text-anchor="start">bars · occupancy %</text>'+
+    '<text x="'+(w-pr)+'" y="13" font-size="10" font-weight="700" fill="var(--adr)" text-anchor="end">line · nightly rate ('+CUR+')</text>'+
+    '<line x1="'+pl+'" y1="'+(h-pb)+'" x2="'+(w-pr)+'" y2="'+(h-pb)+'" stroke="#e0d0d0"></line>'+
     bars+'<path d="'+line+'" fill="none" stroke="var(--adr)" stroke-width="1.9"></path>'+circles+'</svg>'+
-    '<div class="legend"><span><i style="background:var(--occ)"></i>occupancy %</span>'+
-    '<span><i style="background:var(--adr)"></i>average nightly rate</span></div>';
+    '<div class="legend"><span><i style="background:var(--occ)"></i>occupancy % — share of the month\'s nights booked</span>'+
+    '<span><i style="background:var(--adr)"></i>ADR — earnings ÷ nights, in '+CUR+'</span></div>';
 }
 
 /* ---- the bottom chart: revenue / stays / nights by channel, or net (which no channel owns) ---- */
@@ -258,25 +268,36 @@ function chanChart(){
   if(!ms.length) return '<div class="muted">No data in range.</div>';
   var data=chanData(ms), series=(CHAN==='net')?[['Net','var(--g)']]:CH;
   var money=(CHAN==='revenue'||CHAN==='net');
-  var w=980,h=225,pl=30,pr=14,pt=20,pb=28, iw=(w-pl-pr)/ms.length, max=1;
+  var unit={revenue:CUR,net:CUR,stays:'bookings',nights:'nights'}[CHAN];
+  var w=980,h=245,pl=54,pr=16,pt=26,pb=30, iw=(w-pl-pr)/ms.length, max=1, ih=h-pt-pb;
   ms.forEach(function(m){ var t=series.reduce(function(a,c){ return a+(data[m][c[0]]||0); },0); if(t>max)max=t; });
+  var ny=function(f){ return h-pb-ih*f; };
+  var grid='';                                    // a labelled scale, so the bars can be read not just compared
+  [0,0.5,1].forEach(function(f){
+    grid+='<line x1="'+pl+'" y1="'+ny(f)+'" x2="'+(w-pr)+'" y2="'+ny(f)+'" stroke="#f2e8e8"></line>'+
+      '<text x="'+(pl-7)+'" y="'+(ny(f)+3)+'" font-size="9" text-anchor="end" fill="#6b6b6b">'+
+      (money?sym():'')+fmt(max*f)+'</text>';
+  });
   var body=ms.map(function(m,i){
     var y=h-pb, x=pl+i*iw+iw*0.22, bw=Math.max(iw*0.56,3), out='';
     series.forEach(function(c){
       var v=data[m][c[0]]||0; if(v<=0) return;
-      var bh=(h-pt-pb)*(v/max); y-=bh;
+      var bh=ih*(v/max); y-=bh;
       out+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" fill="'+c[1]+'" opacity=".88">'+
-           '<title>'+monLabel(m)+' · '+c[0]+' · '+(money?sym()+fmt(v):fmt(v))+'</title></rect>';
+           '<title>'+monLabel(m)+' · '+c[0]+' · '+(money?sym()+fmt(v):fmt(v)+' '+unit)+'</title></rect>';
     });
     var tot=series.reduce(function(a,c){ return a+(data[m][c[0]]||0); },0);
     if(tot>0) out+='<text x="'+(x+bw/2)+'" y="'+(y-4)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+fmt(tot)+'</text>';
-    out+='<text x="'+(x+bw/2)+'" y="'+(h-pb+12)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+monShort(m)+'</text>';
+    out+='<text x="'+(x+bw/2)+'" y="'+(h-pb+13)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+monShort(m)+'</text>';
     return out;
   }).join('');
-  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:225px" preserveAspectRatio="xMidYMid meet">'+
-    '<line x1="'+pl+'" y1="'+(h-pb)+'" x2="'+(w-pr)+'" y2="'+(h-pb)+'" stroke="#ecdede"></line>'+body+'</svg>'+
+  var title={revenue:'revenue',net:'net paid to you',stays:'bookings completed',nights:'nights booked'}[CHAN];
+  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:245px" preserveAspectRatio="xMidYMid meet">'+
+    grid+
+    '<text x="'+pl+'" y="13" font-size="10" font-weight="700" fill="#6b6b6b">'+title+' per month'+(money?' ('+CUR+')':' ('+unit+')')+'</text>'+
+    '<line x1="'+pl+'" y1="'+(h-pb)+'" x2="'+(w-pr)+'" y2="'+(h-pb)+'" stroke="#e0d0d0"></line>'+body+'</svg>'+
     '<div class="legend">'+series.map(function(c){ return '<span><i style="background:'+c[1]+'"></i>'+c[0]+'</span>'; }).join('')+
-    (money?'<span>'+CUR+'</span>':'')+'</div>';
+    '<span>figures above each bar are the month total</span></div>';
 }
 
 function render(){
