@@ -34,6 +34,8 @@ table.d th,table.d td{text-align:left;padding:4px 6px;border-bottom:1px solid va
 table.d th{font-size:9.5px;color:var(--soft);font-weight:700}
 table.d .r{text-align:right}table.d .c{text-align:center}
 table.d tr.tot td{font-weight:700}
+table.d tr.subrow td{color:#7a6a6a;font-size:11px;background:#fbf7f7}
+table.d tr.subrow td:first-child{padding-left:18px}
 table.d tr.net td{font-weight:700;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink)}
 .g{color:var(--g)}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle}
@@ -140,13 +142,28 @@ function staysIn(ym){
     return s.checkIn.slice(0,7)<=ym && s.checkOut.slice(0,7)>=ym;      // any stay touching the month
   }).sort(function(a,b){ return a.checkIn<b.checkIn?-1:1; });
 }
-function nightsIn(ym){                      // nights that actually fall inside the month
-  var n=0, lo=new Date(ym+'-01T00:00:00'), hi=new Date(+ym.slice(0,4), +ym.slice(5,7), 1);
-  staysIn(ym).forEach(function(s){
-    var ci=new Date(s.checkIn.slice(0,10)+'T00:00:00'), co=new Date(s.checkOut.slice(0,10)+'T00:00:00');
-    for(var d=new Date(Math.max(ci,lo)); d<co && d<hi; d.setDate(d.getDate()+1)) n++;
-  });
+/* Nights of ONE stay that fall inside the month. A stay running 3 Jun → 19 Jul belongs to both
+   months, and the P&L recognises each month's share separately — so the screen must too. */
+function nightsOf(s,ym){
+  var lo=new Date(ym+'-01T00:00:00'), hi=new Date(+ym.slice(0,4), +ym.slice(5,7), 1), n=0;
+  var ci=new Date(s.checkIn.slice(0,10)+'T00:00:00'), co=new Date(s.checkOut.slice(0,10)+'T00:00:00');
+  for(var d=new Date(Math.max(ci,lo)); d<co && d<hi; d.setDate(d.getDate()+1)) n++;
   return n;
+}
+function nightsIn(ym){ return staysIn(ym).reduce(function(a,s){ return a+nightsOf(s,ym); },0); }
+/* This month's share of a stay's value, apportioned by nights — the same basis the sheet uses, so
+   the column adds up to the revenue line instead of overstating it by the part earned elsewhere. */
+function earnedIn(s,ym){ var tot=s.nights||nightsOf(s,ym)||1; return (s.allIn||0)*nightsOf(s,ym)/tot; }
+
+/* Cost descriptions are our internal working notes. A partner wants "what was this", not our
+   reasoning — so drop bracketed asides and keep the opening clause. */
+function shortDesc(t){
+  var s=(t||'').replace(/\([^)]*\)/g,' ').replace(/\s+/g,' ').trim();
+  if(s.length>52){
+    var cut=s.slice(0,52), b=Math.max(cut.lastIndexOf(', '), cut.lastIndexOf(' — '), cut.lastIndexOf('; '));
+    s=(b>18 ? cut.slice(0,b) : cut.replace(/\s+\S*$/,''))+'…';
+  }
+  return s||'—';
 }
 function dotFor(p){ var s=(p||'').toLowerCase();
   return s.indexOf('airbnb')>-1?'d-air':(s.indexOf('booking')>-1?'d-book':'d-dir'); }
@@ -177,10 +194,10 @@ function drillBlock(key){
     var list=txFor(ym,key); if(!list.length) return;
     var rr=recFor(ym);
     var sum=list.reduce(function(a,t){ return a+(conv(t.amount,t.currency,rr)||0); },0);
-    out+='<tr class="foot"><td colspan="3">'+monLabel(ym).toUpperCase()+' — '+list.length+' entr'+(list.length===1?'y':'ies')+
-         ' · '+fmt(sum/list.length)+' each → '+fmt(sum)+'</td></tr>';
+    out+='<tr class="foot"><td colspan="3">'+monLabel(ym).toUpperCase()+' — '+
+         (list.length===1 ? fmt(sum) : list.length+' entries · '+fmt(sum/list.length)+' each → '+fmt(sum))+'</td></tr>';
     list.forEach(function(t){
-      out+='<tr><td style="white-space:nowrap">'+dayLabel(t.date)+'</td><td>'+esc(t.desc||'—')+'</td><td style="text-align:right">'+fmt(conv(t.amount,t.currency,rr))+'</td></tr>';
+      out+='<tr><td style="white-space:nowrap">'+dayLabel(t.date)+'</td><td>'+esc(shortDesc(t.desc))+'</td><td style="text-align:right">'+fmt(conv(t.amount,t.currency,rr))+'</td></tr>';
     });
   });
   return out ? '<tr><td colspan="3" style="padding:2px 4px"><div class="drill"><table>'+out+'</table></div></td></tr>' : '';
@@ -225,21 +242,35 @@ function render(){
   h+='<div class="card"><h3>'+monLabel(MONTH)+' stays <span class="pill '+(isFinal?'pf':'pa')+'" style="float:right">'+(isFinal?'final':'in progress')+'</span></h3>';
   if(!st.length) h+='<p class="note" style="margin:0">No stays recorded for this month.</p>';
   else{
-    h+='<table class="d"><tr><th>Guest</th><th>In</th><th>Out</th><th class="c">N</th><th>Channel</th><th class="r">Paid</th></tr>';
+    var spans=false;
+    h+='<table class="d"><tr><th>Guest</th><th>In</th><th>Out</th><th class="c">N in '+monShort(MONTH)+'</th><th>Channel</th><th class="r">Earnings</th></tr>';
     st.forEach(function(s){
+      var nm=nightsOf(s,MONTH); if(nm!==(s.nights||nm)) spans=true;
       h+='<tr><td>'+esc(s.guest||'—')+'</td><td style="white-space:nowrap">'+dayLabel(s.checkIn)+'</td><td style="white-space:nowrap">'+dayLabel(s.checkOut)+'</td>'+
-         '<td class="c">'+(s.nights||'')+'</td><td style="white-space:nowrap"><span class="dot '+dotFor(s.portal)+'"></span>'+esc(s.portal||'Direct')+'</td>'+
-         '<td class="r">'+sym()+fmt(conv(s.allIn,'USD',r))+'</td></tr>';
+         '<td class="c">'+nm+'</td><td style="white-space:nowrap"><span class="dot '+dotFor(s.portal)+'"></span>'+esc(s.portal||'Direct')+'</td>'+
+         '<td class="r">'+sym()+fmt(conv(earnedIn(s,MONTH),'USD',r))+'</td></tr>';
     });
     h+='</table>';
+    if(spans) h+='<p class="note" style="margin-top:5px">A stay crossing into another month is counted here only for the nights inside '+
+       monLabel(MONTH)+', so this column adds up to the revenue below.</p>';
   }
   h+='</div>';
 
   /* ---- statement, this month beside last ---- */
   h+='<div class="card"><h3>Statement — '+monShort(MONTH)+(pm?' vs '+monShort(pm):'')+'</h3><table class="d">'+
      '<tr><th>Line</th><th class="r">'+monShort(MONTH)+'</th>'+(pm?'<th class="r">'+monShort(pm)+'</th>':'')+'</tr>';
-  h+='<tr class="tot"><td>Guest payments</td><td class="r">'+fmt(conv(r.revenue.total,'USD',r))+'</td>'+
+  /* Total revenue = earnings + other, so it splits open the same way the cost lines do — a partner
+     should never have to guess which of the two a number is. */
+  var revOpen=!!OPEN['__rev'];
+  h+='<tr class="tot drillable" onclick="toggleDrill(\'__rev\')"><td>Total revenue '+(revOpen?'▾':'▸')+'</td>'+
+     '<td class="r">'+fmt(conv(r.revenue.total,'USD',r))+'</td>'+
      (pm?'<td class="r">'+fmt(pr?conv(pr.revenue.total,'USD',pr):null)+'</td>':'')+'</tr>';
+  if(revOpen){
+    h+='<tr class="subrow"><td>earnings</td><td class="r">'+fmt(conv(r.revenue.earnings,'USD',r))+'</td>'+
+       (pm?'<td class="r">'+fmt(pr?conv(pr.revenue.earnings,'USD',pr):null)+'</td>':'')+'</tr>';
+    h+='<tr class="subrow"><td>other revenue</td><td class="r">'+fmt(conv(r.revenue.other,'USD',r))+'</td>'+
+       (pm?'<td class="r">'+fmt(pr?conv(pr.revenue.other,'USD',pr):null)+'</td>':'')+'</tr>';
+  }
 
   costKeys(r,pr).forEach(function(k){
     var open=!!OPEN[k], canDrill=!!CATMAP[k];
