@@ -304,7 +304,7 @@ function cleanPlan(s){
 }
 // NEXT ACTION mirrors the Week screen's CONFIRMED schedule — cleans (D.cleans) + open repairs (D.repairs) —
 // NOT an independent recalculation. Whatever you set/edit in Week is the source of truth shown here.
-function cleanTypeLabel(t){ t=(t||'').toLowerCase(); return t==='checkout'?'Check-out clean':t==='midstay'?'Mid-stay clean':t==='weekly'?'Weekly clean':t==='revision'?'Revision clean':'Clean'; }
+function cleanTypeLabel(t){ t=(t||'').toLowerCase(); return t==='checkout'?'Check-out clean':t==='midstay'?'Mid-stay clean':t==='weekly'?'Weekly clean':t==='revision'?'Revision clean':t==='codechange'?'Code change':'Clean'; }
 function nextSched(flat,asOf){
   var best=null;
   (D.cleans||[]).forEach(function(c){ if(c.flat!==flat||!c.date)return; var d=day(c.date); if(d>=asOf&&(!best||d<best.d)) best={d:d,label:cleanTypeLabel(c.type)+' '+dmon(c.date)}; });
@@ -383,7 +383,7 @@ function needs(cm,pmY){
       Math.round(d.perMonth).toLocaleString()+'/mo); '+d.closedMonths.length+' closed month'+(d.closedMonths.length>1?'s':'')+' accrued '+
       Math.round(d.accrued).toLocaleString()+', so you '+(over?'over':'under')+'-accrued by <b>'+diff.toLocaleString()+'</b>.<br>'+
       'In the sheet: <b>Electricity — apply new bills</b> puts the whole difference in '+esc(d.postTo||'the current month')+
-      ', or <b>Electricity — rebuild a flat from WeShare</b> restates the closed months (they will be marked).'+
+      ', or <b>Electricity — restate one bill</b> spreads it over '+d.covers.replace('..',' → ')+' only (closed months get marked).'+
       (d.key?dismissBtn([d.key]):'')});
   });
   /* prepaid (8A): open months are corrected automatically by the sync; a CLOSED month disagreeing
