@@ -231,6 +231,10 @@ function renderReview(){
     var pc=prev?(prev.costs.find(function(x){return x.key===c.key;})||{}):{};
     var id=FLAT+'|'+MONTH+'|'+c.key, canDrill=!!CATMAP[c.key], open=!!OPEN[id];
     var lbl=(canDrill?'<span class="tri">'+(open?'▾':'▸')+'</span>':'<span class="tri"></span>')+c.label.replace(/\s*\((EGP|USD)\)/,'');
+    /* §5.2e — a closed month changed by a rebuild carries "[restated ...]" in its source text; say so
+       on the line itself, not only inside the drill-down, so a moved figure can't pass unnoticed. */
+    if(txFor(FLAT,MONTH,c.key).some(function(t){return /\[restated /i.test(t.desc||'');}))
+      lbl+=' <span class="badge b-open" title="a rebuild changed this month — the drill-down shows the old figure">restated</span>';
     rows+='<tr'+(canDrill?' class="drillable" onclick="toggleDrill(\''+id+'\')"':'')+'><td>'+lbl+'</td><td>'+m(toCur(c.amount,c.currency))+'</td><td class="prevcol">'+m(pc.amount==null?null:toCur(pc.amount,c.currency))+'</td></tr>';
     if(open) rows+=drillRows(c.key);
   });
