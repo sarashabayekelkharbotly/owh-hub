@@ -194,9 +194,12 @@ function mergeWeek(ws){
   var props=proposeWeek(ws);
   if(!confirmed.length) return props;
   var seen={}, out=confirmed.map(function(c){ seen[ckey(c)]=1;
-    // door code is always derived from current bookings — recompute (don't trust the stored value, which can go
-    // stale when bookings change or the rule changes). Re-saving on next confirm heals the sheet.
-    return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time)||'12:00', code:doorCode(c.flat,day(c.date)), inTime:hm(c.inTime), stayId:c.stayId, on:true, src:'confirmed' }; });
+    // door code is derived from current bookings — recompute so stale values heal on the next
+    // confirm. EXCEPT a hand-set code (§5.5): the 'Code edited' flag marks it, and it must stick.
+    return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time)||'12:00',
+             code: (c.codeEdited&&(c.code||'').trim()) ? c.code : doorCode(c.flat,day(c.date)),
+             codeEdited: !!c.codeEdited,
+             inTime:hm(c.inTime), stayId:c.stayId, on:true, src:'confirmed' }; });
   props.forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=false; out.push(p); } });
   out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
   return out;
@@ -247,7 +250,23 @@ function buildRow(f,days){
 }
 
 /* ---------- render ---------- */
-var TYPES=['checkout','revision','midstay','weekly','custom'];
+var TYPES=['checkout','revision','midstay','weekly','custom','codechange'];
+
+/* §5.5 lock-code rule. The lockbox code = the check-in date (codeOf) and is physically set by Emad
+   during a visit. A checkout clean within 2 days of the next arrival already sets it; a longer gap
+   gets the proposed ci−1 revision, which now CARRIES the code. 'codechange' is the standalone
+   trip for when no visit covers an arrival — addable by hand, and the WhatsApp emits a derived
+   safety-net line for any still-uncovered arrival (see waSection). */
+function coveringVisit(flat,ci){                  // the ON visit (either week) that will set this arrival's code
+  var lists=[cleans||[],cleans2||[]], hit=null;
+  lists.forEach(function(L){ L.forEach(function(c){
+    if(!c.on||c.flat!==flat) return;
+    var dd=day(c.date), diff=(ci-dd)/DAYMS;
+    if(diff>=0&&diff<=2&&(!hit||dd>day(hit.date))) hit=c;
+  }); });
+  return hit;
+}
+function arrivalCode(flat,ci){ var v=coveringVisit(flat,ci); return v?v.code:codeOf(ci); }
 var DAY_AR=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 /* Flat names as written in the ARABIC WhatsApp message. Only names containing real English words
    need an entry — 8A / 17A / 28A / 17B are apartment codes, not words, and read the same in Arabic.
@@ -300,17 +319,22 @@ function render(){
         var cls='stay'+(alt%2?' alt':''); alt++;
         var arrive=day(seg.stay.checkIn).getTime()===days[seg.di].getTime();   // check-in is this segment's first day
         var cell='<div class="gname">'+esc(seg.stay.guest||'')+' ('+(seg.stay.guests||1)+')</div>';
-        if(arrive) cell+='<div class="gsub">in '+esc(short(seg.stay.guest))+'</div>';
+        // §5.5: the check-in cell shows the code the arriving guest will use (the covering visit's, hand-edits included)
+        if(arrive) cell+='<div class="gsub">in '+esc(short(seg.stay.guest))+'</div>'+
+                         '<div class="code">'+esc(arrivalCode(f,day(seg.stay.checkIn)))+'</div>';
         h+='<td class="'+cls+'" colspan="'+seg.span+'">'+cell+'</td>';
       } else if(seg.kind==='clean'){
         var pri=seg.list.length?primaryClean(seg.list):null, c=pri?pri.c:null, faded=c&&!c.on;
-        var typeCls=c?(c.type==='revision'?'revision':(c.type==='midstay'||c.type==='weekly'?'midstay':'')):'';
-        var typeLbl=c?(c.type==='revision'?'revision':(c.type==='midstay'?'mid-stay':(c.type==='weekly'?'weekly':''))):'';
+        var typeCls=c?(c.type==='revision'||c.type==='codechange'?'revision':(c.type==='midstay'||c.type==='weekly'?'midstay':'')):'';
+        var typeLbl=c?(c.type==='revision'?'revision':(c.type==='codechange'?'code change':(c.type==='midstay'?'mid-stay':(c.type==='weekly'?'weekly':'')))):'';
         var cell='';
         if(seg.out) cell+='<div class="gsub">out '+esc(short(seg.out.guest))+'</div>';
         if(c){ cell+='<div class="ct">'+hm(c.time)+'</div>';
           if(c.type==='checkout') cell+='<div class="code">'+esc(c.code)+'</div>';
-          else if(typeLbl) cell+='<div class="clbl">'+typeLbl+'</div>'; }
+          else if(typeLbl) cell+='<div class="clbl">'+typeLbl+'</div>';
+          // §5.5: a visit that sets tomorrow's arrival code shows that code, not just the label
+          if(c.type!=='checkout'&&nextCheckIn(f,day(c.date))&&(nextCheckIn(f,day(c.date))-day(c.date))/DAYMS<=2)
+            cell+='<div class="code">'+esc(c.code)+'</div>'; }
         else cell+='<div class="ct soft">out</div>';
         if(seg.inn) cell+='<div class="gsub">in '+esc(short(seg.inn.guest))+' '+inTimeFor(f,ymd(days[seg.di]))+'</div>';
         h+='<td class="clean'+(typeCls?' '+typeCls:'')+(faded?' faded':'')+'"'+(c?' onclick="tog('+pri.idx+')"':'')+'>'+cell+'</td>';
@@ -326,7 +350,7 @@ function render(){
   h+='</tbody></table></div>';
   h+='<div class="legend">'+
      '<span class="sw" style="background:var(--occ)"></span>occupied &nbsp;<span class="sw" style="background:var(--clean)"></span>check-out &nbsp;<span class="sw" style="background:var(--mid)"></span>mid-stay &nbsp;<span class="sw" style="background:var(--rev)"></span>revision &nbsp;<span class="sw" style="background:var(--rep)"></span>repair &nbsp;<span class="sw" style="background:var(--long)"></span>long-let'+
-     ' · (n)=guests · check-out cells show the code · tap a cleaning cell to remove it · edit cleans in the list below</div></div>';
+     ' · (n)=guests · check-out and pre-arrival cells show the code, check-in cells show the code the guest will use · a hand-edited code (✎) sticks · tap a cleaning cell to remove it · edit cleans in the list below</div></div>';
 
   /* --- editable list --- */
   h+='<div class="card"><h3>Cleans this week<span class="rt">'+cleans.filter(function(c){return c.on;}).length+' selected'+(dirty?' · <span class="badge dirty">unsaved</span>':'')+'</span></h3>';
@@ -338,7 +362,8 @@ function render(){
        '<td><select onchange="edit('+idx+',\'flat\',this.value)">'+airbnbFlats().map(function(f){return '<option'+(f===c.flat?' selected':'')+'>'+esc(f)+'</option>';}).join('')+'</select></td>'+
        '<td><select onchange="edit('+idx+',\'type\',this.value)">'+TYPES.map(function(t){return '<option'+(t===c.type?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+(c.src==='new'?' <span class="badge b-warn">new</span>':'')+'</td>'+
        '<td><input type="time" value="'+hm(c.time)+'" onchange="edit('+idx+',\'time\',this.value)"></td>'+
-       '<td><input class="codei" value="'+esc(c.code)+'" maxlength="4" onchange="edit('+idx+',\'code\',this.value)"></td>'+
+       '<td><input class="codei" value="'+esc(c.code)+'" maxlength="4" onchange="edit('+idx+',\'code\',this.value)" '+
+         (c.codeEdited?'style="border-color:#8a6fa8" title="hand-set — will not be recomputed"':'')+'>'+(c.codeEdited?'<span title="hand-set">✎</span>':'')+'</td>'+
        '<td>'+(hasIn?'<input type="time" value="'+(hm(c.inTime)||DEFAULT_IN)+'" onchange="edit('+idx+',\'inTime\',this.value)">':'<span class="muted">—</span>')+'</td>'+
        '<td><span class="rm" onclick="tog('+idx+')">'+(c.on?'✕':'↩')+'</span></td></tr>';
   });
@@ -373,9 +398,10 @@ function render(){
 function tog(i){ cleans[i].on=!cleans[i].on; dirty=true; render(); }
 function edit(i,field,v){
   var c=cleans[i]; c[field]=v;
+  if(field==='code') c.codeEdited=true;                    // §5.5: a hand-set code sticks from now on
   if(field==='date'||field==='flat'||field==='type'){
     var d=day(c.date);
-    c.code=doorCode(c.flat,d);
+    if(!c.codeEdited) c.code=doorCode(c.flat,d);
     if(c.type!=='checkout') c.inTime='';
     else if(sameDayIn(c.flat,c.date)) c.inTime=c.inTime||DEFAULT_IN;
     else c.inTime='';
@@ -397,13 +423,33 @@ function addClean(){
    code only on check-out; same-day arrival appends دخول ضيف ---------- */
 function isStayClean(c){ return c.type==='midstay'||c.type==='weekly'||(c.type==='custom'&&occStayOn(c.flat,day(c.date))); }
 function waLine(c){
+  // §5.5: the standalone code-change trip — approved wording, no cleaning implied
+  if(c.type==='codechange')
+    return '• شقة '+flatAr(c.flat)+': تغيير كود الباب إلى '+c.code+' — دخول ضيف غدا\n';
   var label = isStayClean(c) ? 'نظافة اثناء وجود ضيف'
             : c.type==='checkout' ? 'تنظيف خروج'
             : c.type==='revision' ? 'إعادة' : 'تنظيف إضافي';
   var t='• شقة '+flatAr(c.flat)+': '+label+' الساعة '+hmAr(c.time);
   if(c.type==='checkout') t+=' — كود الباب '+c.code;
+  // §5.5: any non-checkout visit that covers an arrival within 2 days carries the code change too
+  else{ var n=nextCheckIn(c.flat,day(c.date));
+        if(n&&(n-day(c.date))/DAYMS<=2) t+=' — تغيير كود الباب إلى '+c.code; }
   if(c.inTime) t+=' — دخول ضيف الساعة '+hmAr(c.inTime);
   return t+'\n';
+}
+/* §5.5 safety net: an arrival TOMORROW with no ON visit in the 2 days before it means nobody is
+   scheduled to set the guest's code — emit the code-change line anyway, derived at message time so
+   toggling a revision off can never silently drop the arrival's code. */
+function waCodeFallback(d){
+  var out='', k1=addD(d,1);
+  airbnbFlats().forEach(function(f){
+    STAYS.forEach(function(s){
+      if(s.flat!==f||day(s.checkIn).getTime()!==k1.getTime()) return;
+      if(coveringVisit(f,k1)) return;
+      out+='• شقة '+flatAr(f)+': تغيير كود الباب إلى '+arrivalCode(f,k1)+' — دخول ضيف غدا\n';
+    });
+  });
+  return out;
 }
 function waSection(ws,list){
   var days=[]; for(var i=0;i<7;i++)days.push(addD(ws,i));
@@ -414,7 +460,8 @@ function waSection(ws,list){
   var perDay=[];
   days.forEach(function(d){
     var k=ymd(d), dayCleans=on.filter(function(c){return c.date===k;}), dayReps=reps.filter(function(r){return r.date===k;});
-    if(!dayCleans.length&&!dayReps.length){ perDay.push(null); return; }
+    var fallback=waCodeFallback(d);                                    // §5.5 — uncovered arrival tomorrow
+    if(!dayCleans.length&&!dayReps.length&&!fallback){ perDay.push(null); return; }
     /* Everything on one day is ordered BY TIME — cleans and repairs interleaved, not cleans
        first then repairs. hm() gives zero-padded HH:MM so a plain string sort is correct;
        an entry with no time sorts last (99:99) rather than jumping to the top. */
@@ -426,7 +473,7 @@ function waSection(ws,list){
       items.push({ at: hm(r.time) || '99:99', line: line+'\n' });
     });
     items.sort(function(a,b){ return a.at<b.at?-1:(a.at>b.at?1:0); });
-    perDay.push({ d: d, lines: items.map(function(it){ return it.line; }).join('') });
+    perDay.push({ d: d, lines: items.map(function(it){ return it.line; }).join('')+fallback });
   });
 
   var firstI=-1, lastI=-1;
@@ -497,7 +544,7 @@ function confirmWeek(){
   var btn=document.getElementById('confirmBtn'); btn.disabled=true;
   document.getElementById('cmsg').textContent='saving…';
   var payload=cleans.filter(function(c){return c.on;}).map(function(c){
-    return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code, inTime:hm(c.inTime), stayId:c.stayId }; });
+    return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code, codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId }; });
   api('props_confirm_cleans',{user:(ME&&ME.user)||'',week:ymd(weekStart),cleans:JSON.stringify(payload)}).then(function(j){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
     document.getElementById('cmsg').textContent='saved ✓ ('+j.result.count+' cleans)';
