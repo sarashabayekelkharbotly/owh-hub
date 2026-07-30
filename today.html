@@ -101,6 +101,9 @@ function onData(j,fromCache){ D=j.data; D._gen=j.generatedAt; STAYS=mergeStays(D
 function demoTab(){ var t=document.getElementById('demoTab'); if(t) t.style.display=(D.meta.demo&&D.meta.demo.on)?'':'none'; }
 /* light read-only alerts (WeShare pending confirmations) — fetched after the main render so the load stays fast */
 function fetchAlerts(){ api('props_alerts').then(function(j){ if(j&&j.ok){ ALERTS=j; render(); } }).catch(function(){}); }
+/* "seen, not fixing" — permanently hides these exact alert keys; a NEW mismatch or bill reappears */
+function dismissElec(keys){ api('props_dismiss_elec',{keys:keys}).then(function(j){ if(j&&j.ok) fetchAlerts(); }).catch(function(){}); }
+function dismissBtn(keys){ return ' <a href="#" onclick=\'dismissElec('+JSON.stringify(keys)+');return false\' style="font-weight:700;white-space:nowrap">✕ dismiss</a>'; }
 /* run the whole pipeline on demand (month-close / snapshot) */
 function syncAll(){
   var btn=document.getElementById('syncAllBtn'); if(btn){ btn.disabled=true; btn.textContent='⏳ syncing…'; }
@@ -380,16 +383,31 @@ function needs(cm,pmY){
       Math.round(d.perMonth).toLocaleString()+'/mo); '+d.closedMonths.length+' closed month'+(d.closedMonths.length>1?'s':'')+' accrued '+
       Math.round(d.accrued).toLocaleString()+', so you '+(over?'over':'under')+'-accrued by <b>'+diff.toLocaleString()+'</b>.<br>'+
       'In the sheet: <b>Electricity — apply new bills</b> puts the whole difference in '+esc(d.postTo||'the current month')+
-      ', or <b>Electricity — rebuild a flat from WeShare</b> restates the closed months (they will be marked).'});
+      ', or <b>Electricity — rebuild a flat from WeShare</b> restates the closed months (they will be marked).'+
+      (d.key?dismissBtn([d.key]):'')});
   });
   /* prepaid (8A): open months are corrected automatically by the sync; a CLOSED month disagreeing
-     with the recharges is only ever reported — fixing it is a restatement, which is Sarah's call */
-  if(ALERTS && ALERTS.elecPrepaid && ALERTS.elecPrepaid.length) ALERTS.elecPrepaid.forEach(function(x){
-    items.unshift({t:'warn',txt:'<b>⚡ '+esc(x.flat)+' '+esc(x.month)+' (closed) doesn\'t match its recharges.</b> '+
+     with the recharges is only ever reported — fixing it is a restatement, which is Sarah's call.
+     More than two become ONE summary line: a dozen identical warnings drown the alerts that need
+     acting on today, and the full list is a menu click away. */
+  if(ALERTS && ALERTS.elecPrepaid && ALERTS.elecPrepaid.length){
+    var EP=ALERTS.elecPrepaid;
+    var one=function(x){ return '<b>⚡ '+esc(x.flat)+' '+esc(x.month)+' (closed) doesn\'t match its recharges.</b> '+
       'Booked '+Math.round(x.booked).toLocaleString()+' EGP; the recharges paid that month say '+Math.round(x.derived).toLocaleString()+
       (x.payments&&x.payments.length?' ('+x.payments.map(esc).join(', ')+')':' (none were paid)')+
-      '. Fix by hand in Electricity detail if you want the closed month corrected — the sync never restates it.'});
-  });
+      '. Fix by hand in Electricity detail if you want the closed month corrected — the sync never restates it.'+
+      (x.key?dismissBtn([x.key]):''); };
+    if(EP.length<=2) EP.forEach(function(x){ items.unshift({t:'warn',txt:one(x)}); });
+    else{
+      var last=EP.slice().sort(function(a,b){return a.month<b.month?1:-1;})[0];
+      var allKeys=EP.map(function(x){return x.key;}).filter(Boolean);
+      items.unshift({t:'warn',txt:'<b>⚡ '+EP.length+' closed months of '+esc(last.flat)+' don\'t match their recharges</b> '+
+        '(hand-mirrored before the sync existed). Most recent: '+esc(last.month)+' — booked '+Math.round(last.booked).toLocaleString()+
+        ', recharges say '+Math.round(last.derived).toLocaleString()+
+        '. Full list: sheet menu → <b>Electricity — sync 8A recharges</b>. The sync never restates closed months.'+
+        (allKeys.length?dismissBtn(allKeys).replace('✕ dismiss','✕ dismiss all '+allKeys.length):'')});
+    }
+  }
   // Thursday-6pm reminder: confirm the Week schedule + send the WhatsApp (shows Thu-eve & Fri until the upcoming week is confirmed)
   (function(){ var nd=new Date(), dow=nd.getDay();
     if((dow===4&&nd.getHours()>=18)||dow===5){
