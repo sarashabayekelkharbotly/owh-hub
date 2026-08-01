@@ -1,0 +1,12 @@
+{
+  "name": "The Hub — Our Welcome Home",
+  "short_name": "The Hub",
+  "start_url": "today.html",
+  "display": "standalone",
+  "background_color": "#f9f0f0",
+  "theme_color": "#f9f0f0",
+  "icons": [
+    { "src": "hub-logo.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "hub-logo.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
