@@ -386,28 +386,18 @@ function needs(cm,pmY){
       ', or <b>Electricity — restate one bill</b> spreads it over '+d.covers.replace('..',' → ')+' only (closed months get marked).'+
       (d.key?dismissBtn([d.key]):'')});
   });
-  /* prepaid (8A): open months are corrected automatically by the sync; a CLOSED month disagreeing
-     with the recharges is only ever reported — fixing it is a restatement, which is Sarah's call.
-     More than two become ONE summary line: a dozen identical warnings drown the alerts that need
-     acting on today, and the full list is a menu click away. */
-  if(ALERTS && ALERTS.elecPrepaid && ALERTS.elecPrepaid.length){
-    var EP=ALERTS.elecPrepaid;
-    var one=function(x){ return '<b>⚡ '+esc(x.flat)+' '+esc(x.month)+' (closed) doesn\'t match its recharges.</b> '+
-      'Booked '+Math.round(x.booked).toLocaleString()+' EGP; the recharges paid that month say '+Math.round(x.derived).toLocaleString()+
-      (x.payments&&x.payments.length?' ('+x.payments.map(esc).join(', ')+')':' (none were paid)')+
-      '. Fix by hand in Electricity detail if you want the closed month corrected — the sync never restates it.'+
-      (x.key?dismissBtn([x.key]):''); };
-    if(EP.length<=2) EP.forEach(function(x){ items.unshift({t:'warn',txt:one(x)}); });
-    else{
-      var last=EP.slice().sort(function(a,b){return a.month<b.month?1:-1;})[0];
-      var allKeys=EP.map(function(x){return x.key;}).filter(Boolean);
-      items.unshift({t:'warn',txt:'<b>⚡ '+EP.length+' closed months of '+esc(last.flat)+' don\'t match their recharges</b> '+
-        '(hand-mirrored before the sync existed). Most recent: '+esc(last.month)+' — booked '+Math.round(last.booked).toLocaleString()+
-        ', recharges say '+Math.round(last.derived).toLocaleString()+
-        '. Full list: sheet menu → <b>Electricity — sync 8A recharges</b>. The sync never restates closed months.'+
-        (allKeys.length?dismissBtn(allKeys).replace('✕ dismiss','✕ dismiss all '+allKeys.length):'')});
-    }
+  /* ⚡ 8A card depletion (§7 ①): fires when the projection says the card dies before the next
+     check-out or within 7 days. Sarah gets it because she pays the recharges. */
+  if(ALERTS && ALERTS.meter8a && ALERTS.meter8a.alert){
+    var m8=ALERTS.meter8a;
+    items.unshift({t:'warn',txt:'<b>⚡ 8A prepaid card is running out.</b> ~'+fmt(m8.projectedBalance)+' EGP left, burning ~'+
+      fmt(m8.ratePerDay)+'/day → empty ~<b>'+esc(m8.depletion)+'</b>'+
+      (m8.nextCheckout&&m8.depletion<=m8.nextCheckout?' — <b>before the next check-out ('+esc(m8.nextCheckout)+')</b>. Recharge and log it in WeShare as usual.':'. Recharge soon.')+
+      (m8.readAgoDays>3?' <span class="soft">(last reading '+m8.readAgoDays+' days old)</span>':'')});
   }
+  /* 8A closed-month mismatch alert RETIRED (2026-08-01): the recharge reader auto-corrects open
+     months before they close, so new mismatches cannot form. Sheet menu → "Electricity — sync 8A
+     recharges" keeps the historical report. */
   // Thursday-6pm reminder: confirm the Week schedule + send the WhatsApp (shows Thu-eve & Fri until the upcoming week is confirmed)
   (function(){ var nd=new Date(), dow=nd.getDay();
     if((dow===4&&nd.getHours()>=18)||dow===5){
