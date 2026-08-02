@@ -216,7 +216,7 @@ function bookedAfterConfirm(){
 
 /* ---------- fetch ---------- */
 function boot(){ fetchOnce().then(onData).catch(function(){ setTimeout(function(){ fetchOnce().then(onData).catch(function(e){ showErr(e); }); },800); }); }
-function fetchOnce(){ return api('props_get_all').then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
+function fetchOnce(){ return api('props_get_all',{scope:'live'}).then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
 function onData(j){ D=j.data; STAYS=mergeStays(D.stays); if(!weekStart)weekStart=defaultWeek(); loadWeek(); render();
   document.getElementById('rib').innerHTML='data <b>'+new Date().toTimeString().slice(0,5)+'</b>'; }
 function showErr(e){ document.getElementById('app').innerHTML='<div class="err"><b>Couldn\'t load.</b> '+esc(e.message||e)+'</div>'; }
