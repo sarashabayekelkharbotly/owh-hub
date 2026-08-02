@@ -97,7 +97,7 @@ var dmon=function(s){var d=day(s);return d.getDate()+' '+MON[d.getMonth()];};
 
 /* fetch: one silent retry, stale-while-revalidate */
 function boot(){ fetchOnce().then(onData).catch(function(e){ if(e&&e.message==='AUTH')return; setTimeout(function(){ fetchOnce().then(onData).catch(function(e2){ if(e2&&e2.message==='AUTH')return; if(!D){var c=cache();c?onData(c,true):showErr(e2);} }); },800); }); }
-function fetchOnce(){ return api('props_get_all').then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); if(j.me){ ME=j.me; try{localStorage.setItem('owh_me',JSON.stringify(ME));}catch(e){} } return j; }); }
+function fetchOnce(){ return api('props_get_all',{scope:'live'}).then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); if(j.me){ ME=j.me; try{localStorage.setItem('owh_me',JSON.stringify(ME));}catch(e){} } return j; }); }
 function cache(){ try{return JSON.parse(localStorage.getItem('owh_today'));}catch(e){return null;} }
 function showErr(e){ if(D)return; $('#app').innerHTML='<div class="err">Couldn\'t reach the endpoint.<br><span class="muted">'+(e&&e.message||'')+'</span></div>'; }
 var ALERTS=null;
