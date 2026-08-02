@@ -40,13 +40,32 @@ var AUTH_PARTNER_HOME = 'partner.html';   // Screen 6 — where a partner always
 var AUTH_ADMIN_HOME   = 'today.html';
 
 /* ---------- the one call every screen uses ---------- */
+/* SCREEN-SWITCH CACHE (perf, 2026-08-02): every screen fetches the same props_get_all payload, so
+   navigating Today → Week → Close used to pay a full 3-6s server build each time. Reads are served
+   from sessionStorage for 90 seconds; ANY other call (a write, a sync) clears the cache, so acting
+   on data always refetches fresh. Per-tab, wiped when the tab closes, never survives logout
+   (authClear also clears sessionStorage). */
+var PGA_TTL = 90000;
+function pgaKey(body) { return 'owh_pga|' + body.fn + '|' + (body.scope || ''); }
 function api(fn, extra) {
   var body = { fn: fn };
   if (extra) for (var k in extra) body[k] = extra[k];
   if (SID) body.sid = SID;                     // 'sid' is fine in a body; never in a URL
+  if (fn === 'props_get_all') {
+    try {
+      var c = JSON.parse(sessionStorage.getItem(pgaKey(body)) || 'null');
+      if (c && Date.now() - c.t < PGA_TTL) return Promise.resolve(c.j);
+    } catch (e) {}
+  } else if (fn !== 'props_alerts' && fn !== 'validate') {
+    // a write or a sync — what the screens show next must be rebuilt, not replayed
+    try { for (var i = sessionStorage.length - 1; i >= 0; i--) { var sk = sessionStorage.key(i); if (sk && sk.indexOf('owh_pga|') === 0) sessionStorage.removeItem(sk); } } catch (e) {}
+  }
   return fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
     .then(function (r) { return r.json(); })
     .then(function (j) {
+      if (fn === 'props_get_all' && j && j.ok) {
+        try { sessionStorage.setItem(pgaKey(body), JSON.stringify({ t: Date.now(), j: j })); } catch (e) {}
+      }
       if (j && j.ok === false && j.code === 'AUTH') {          // token missing/expired/revoked
         authClear(); authShowForm('Your session expired — please sign in again.');
         throw new Error('AUTH');                                // screens ignore this one (form is already up)
@@ -70,6 +89,11 @@ function authClear() {
     var kill = [];
     for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf('owh_') === 0) kill.push(k); }
     for (var j = 0; j < kill.length; j++) localStorage.removeItem(kill[j]);
+  } catch (e) {}
+  try {  // the navigation cache must not survive a sign-out either
+    var kill2 = [];
+    for (var i2 = 0; i2 < sessionStorage.length; i2++) { var k2 = sessionStorage.key(i2); if (k2 && k2.indexOf('owh_pga|') === 0) kill2.push(k2); }
+    for (var j2 = 0; j2 < kill2.length; j2++) sessionStorage.removeItem(kill2[j2]);
   } catch (e) {}
 }
 
