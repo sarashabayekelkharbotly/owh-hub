@@ -68,7 +68,9 @@ body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink)
 /* CONFIG (ENDPOINT + session) lives in auth.js */
 var GRACE_HOURS = 24;   // open ticket flips to overdue this long after its scheduled time
 
-var TRADES = ['سباك','كهربائي','فني تكييف','نجار','منجد','أخرى'];
+/* fallback only — the live list comes from the 'Repair trades' tab (v86), which Emad's app can
+   extend, so a trade he adds shows up here too */
+var TRADES = ['سباك','كهربائي','فني تكييف','نجار','منجد','جنايني','أخرى'];
 
 var D=null;
 function day(s){ return new Date(String(s).slice(0,10)+'T00:00:00'); }
@@ -83,8 +85,8 @@ function isOverdue(r){
 }
 
 function boot(){ fetchOnce().then(onData).catch(function(){ setTimeout(function(){ fetchOnce().then(onData).catch(showErr); },800); }); }
-function fetchOnce(){ return api('props_get_all').then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
-function onData(j){ D=j.data; render(); document.getElementById('rib').innerHTML='data <b>'+new Date().toTimeString().slice(0,5)+'</b>'; }
+function fetchOnce(){ return api('props_get_all',{scope:'live'}).then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
+function onData(j){ D=j.data; if(D.repairTrades&&D.repairTrades.length)TRADES=D.repairTrades; render(); document.getElementById('rib').innerHTML='data <b>'+new Date().toTimeString().slice(0,5)+'</b>'; }
 function showErr(e){ document.getElementById('app').innerHTML='<div class="err"><b>Couldn\'t load.</b> '+esc(e.message||e)+'</div>'; }
 
 function render(){
