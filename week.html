@@ -37,6 +37,9 @@ table.grid{width:100%;border-collapse:collapse;font-size:11.5px;min-width:800px;
 .grid td.stay{background:var(--occ)}
 .grid td.stay.alt{background:var(--occ2)}
 .grid td.clean{background:var(--clean);cursor:pointer}
+/* two cleaners on one day (2026-08-04, e.g. جيني then أمل's revision) — its own loud colour */
+.grid td.clean.multi{background:#ffd58f;cursor:default}
+.grid td.clean.multi .mrow{font-size:10px;font-weight:700;line-height:1.5;white-space:nowrap}
 .grid td.clean.faded{background:repeating-linear-gradient(45deg,#faf0f0,#faf0f0 5px,#f5dede 5px,#f5dede 10px);opacity:.7}
 .grid td.clean.midstay{background:var(--mid)}
 .grid td.clean.revision{background:var(--rev)}
@@ -200,10 +203,14 @@ function mergeWeek(ws){
   var seen={}, out=confirmed.map(function(c){ seen[ckey(c)]=1;
     // door code is derived from current bookings — recompute so stale values heal on the next
     // confirm. EXCEPT a hand-set code (§5.5): the 'Code edited' flag marks it, and it must stick.
+    /* inTime heals like the door code (bug 2026-08-04, the 6-Aug turnover): a booking that landed
+       AFTER the week was confirmed left the stored inTime empty, so the WhatsApp never said the
+       guest arrives the same day — while a clean confirmed after the booking (7-Aug 17A) did. */
+    var healIn = hm(c.inTime) || ((c.type==='checkout'&&sameDayIn(c.flat,c.date)) ? DEFAULT_IN : '');
     return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time)||'12:00',
              code: (c.codeEdited&&(c.code||'').trim()) ? c.code : doorCode(c.flat,day(c.date)),
              codeEdited: !!c.codeEdited,
-             inTime:hm(c.inTime), stayId:c.stayId, on:true, src:'confirmed', cleaner:c.cleaner||'amal' }; });
+             inTime:healIn, stayId:c.stayId, on:true, src:'confirmed', cleaner:c.cleaner||'amal' }; });
   props.forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=false; out.push(p); } });
   out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
   return out;
@@ -328,6 +335,21 @@ function render(){
                          '<div class="code">'+esc(arrivalCode(f,day(seg.stay.checkIn)))+'</div>';
         h+='<td class="'+cls+'" colspan="'+seg.span+'">'+cell+'</td>';
       } else if(seg.kind==='clean'){
+        var actives=seg.list.filter(function(x){return x.c.on;});
+        /* TWO cleanings on one day (2026-08-04: جيني cleans, أمل follows for a revision) — the cell
+           lists both, time-sorted with the cleaner named, in its own colour so it can't be misread
+           as a single visit. Editing happens in the list below (tap-to-toggle is ambiguous here). */
+        if(actives.length>1){
+          var mcell='';
+          if(seg.out) mcell+='<div class="gsub">out '+esc(short(seg.out.guest))+'</div>';
+          actives.slice().sort(function(a,b){return (hm(a.c.time)||'99:99')<(hm(b.c.time)||'99:99')?-1:1;})
+            .forEach(function(x){ var cc=x.c;
+              mcell+='<div class="mrow">'+hm(cc.time)+' '+CLEANER_LBL[cc.cleaner||'amal']+
+                     (cc.type==='checkout'?' · '+esc(cc.code):(cc.type==='revision'?' · إعادة':''))+'</div>'; });
+          if(seg.inn) mcell+='<div class="gsub">in '+esc(short(seg.inn.guest))+' '+inTimeFor(f,ymd(days[seg.di]))+'</div>';
+          h+='<td class="clean multi">'+mcell+'</td>';
+          return;
+        }
         var pri=seg.list.length?primaryClean(seg.list):null, c=pri?pri.c:null, faded=c&&!c.on;
         var typeCls=c?(c.type==='revision'||c.type==='codechange'?'revision':(c.type==='midstay'||c.type==='weekly'?'midstay':'')):'';
         var typeLbl=c?(c.type==='revision'?'revision':(c.type==='codechange'?'code change':(c.type==='midstay'?'mid-stay':(c.type==='weekly'?'weekly':'')))):'';
@@ -354,7 +376,7 @@ function render(){
   longLets().forEach(function(f){ h+='<tr><td class="flat soft">'+esc(f)+'</td><td class="longlet" colspan="7">long-let</td></tr>'; });
   h+='</tbody></table></div>';
   h+='<div class="legend">'+
-     '<span class="sw" style="background:var(--occ)"></span>occupied &nbsp;<span class="sw" style="background:var(--clean)"></span>check-out &nbsp;<span class="sw" style="background:var(--mid)"></span>mid-stay &nbsp;<span class="sw" style="background:var(--rev)"></span>revision &nbsp;<span class="sw" style="background:var(--rep)"></span>repair &nbsp;<span class="sw" style="background:var(--long)"></span>long-let'+
+     '<span class="sw" style="background:var(--occ)"></span>occupied &nbsp;<span class="sw" style="background:var(--clean)"></span>check-out &nbsp;<span class="sw" style="background:var(--mid)"></span>mid-stay &nbsp;<span class="sw" style="background:var(--rev)"></span>revision &nbsp;<span class="sw" style="background:#ffd58f"></span>2 cleanings &nbsp;<span class="sw" style="background:var(--rep)"></span>repair &nbsp;<span class="sw" style="background:var(--long)"></span>long-let'+
      ' · (n)=guests · check-out and pre-arrival cells show the code, check-in cells show the code the guest will use · a hand-edited code (✎) sticks · tap a cleaning cell to remove it · edit cleans in the list below</div></div>';
 
   /* --- editable list --- */
@@ -596,7 +618,10 @@ function confirmWeek(){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
     DRAFT_AT=null;
     var jy=j.result&&j.result.jinny;
-    document.getElementById('cmsg').textContent='confirmed ✓ ('+j.result.count+' cleans'+(jy&&jy.created.length?' · '+jy.created.length+' جيني → WeShare':'')+')';
+    // no telegram for jinny money (2026-08-04) — this line + WeShare's pending list are the record
+    document.getElementById('cmsg').textContent='confirmed ✓ ('+j.result.count+' cleans'+
+      (jy&&jy.created.length?' · '+jy.created.length+' جيني → WeShare pending':'')+
+      (jy&&jy.locked.length?' · ⚠️ '+jy.locked.length+' cancelled جيني already confirmed in WeShare — fix there by hand':'')+')';
     return fetchOnce().then(onData);
   }).catch(function(e){ btn.disabled=false; document.getElementById('cmsg').textContent='failed: '+ (e.message||e); });
 }
