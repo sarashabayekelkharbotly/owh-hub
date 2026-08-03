@@ -605,7 +605,20 @@ function loadDraft(){
     if(!(j&&j.ok&&j.draft&&j.draft.cleans&&j.draft.cleans.length)) return;
     var confAt=weekConfirmed();
     if(confAt && new Date(j.draft.savedAt) <= new Date(confAt)) return;   // an older draft never beats a newer confirm
-    cleans=j.draft.cleans.map(function(c){ c.on=(c.on!==false); c.cleaner=c.cleaner||'amal'; return c; });
+    /* A restored draft heals + merges like a normal load (bug 2026-08-04: a draft froze the state
+       from BEFORE a booking landed — empty guest-in times and missing proposal cleans survived
+       every Regenerate, because the draft replaced the healed list verbatim). Hand-set codes and
+       everything the draft says stay; only derived facts refresh, and new bookings' proposed
+       cleans appear as off-by-default 'new' rows, exactly like mergeWeek. */
+    cleans=j.draft.cleans.map(function(c){
+      c.on=(c.on!==false); c.cleaner=c.cleaner||'amal';
+      if(!c.codeEdited && (c.src!=='manual')) c.code=doorCode(c.flat,day(c.date));
+      if(!hm(c.inTime) && c.type==='checkout' && sameDayIn(c.flat,c.date)) c.inTime=DEFAULT_IN;
+      return c;
+    });
+    var seen={}; cleans.forEach(function(c){ seen[ckey(c)]=1; });
+    proposeWeek(weekStart).forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=false; cleans.push(p); } });
+    cleans.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
     DRAFT_AT=j.draft.savedAt; dirty=false; render();
   }).catch(function(){});
 }
