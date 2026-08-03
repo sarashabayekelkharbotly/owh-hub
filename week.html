@@ -167,8 +167,12 @@ function cleanPlan(s){ var N=s.nights||0; if(N<=12||!s.checkIn)return []; var ci
 function mk(flat,d,type,s){
   var k=ymd(d), inn=(type==='checkout')?sameDayIn(flat,k):null;
   return { date:k, flat:flat, type:type, time:'12:00', code:doorCode(flat,d),
-           inTime: inn?DEFAULT_IN:'', stayId:s?s.id:'', on:true, src:'auto' };
+           inTime: inn?DEFAULT_IN:'', stayId:s?s.id:'', on:true, src:'auto', cleaner:'amal' };
 }
+/* who cleans (2026-08-03): أمل = in-house (salary, no per-session row) · جيني = paid per session →
+   confirming writes a pending WeShare row per جيني session (payer default Sarah) */
+var CLEANERS=['amal','jinny','both'];
+var CLEANER_LBL={ amal:'أمل', jinny:'جيني', both:'أمل + جيني' };
 function proposeWeek(ws){
   var we=addD(ws,7), out=[];
   function inWk(d){ return d>=ws && d<we; }
@@ -199,7 +203,7 @@ function mergeWeek(ws){
     return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time)||'12:00',
              code: (c.codeEdited&&(c.code||'').trim()) ? c.code : doorCode(c.flat,day(c.date)),
              codeEdited: !!c.codeEdited,
-             inTime:hm(c.inTime), stayId:c.stayId, on:true, src:'confirmed' }; });
+             inTime:hm(c.inTime), stayId:c.stayId, on:true, src:'confirmed', cleaner:c.cleaner||'amal' }; });
   props.forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=false; out.push(p); } });
   out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
   return out;
@@ -217,7 +221,7 @@ function bookedAfterConfirm(){
 /* ---------- fetch ---------- */
 function boot(){ fetchOnce().then(onData).catch(function(){ setTimeout(function(){ fetchOnce().then(onData).catch(function(e){ showErr(e); }); },800); }); }
 function fetchOnce(){ return api('props_get_all',{scope:'live'}).then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
-function onData(j){ D=j.data; STAYS=mergeStays(D.stays); if(!weekStart)weekStart=defaultWeek(); loadWeek(); render();
+function onData(j){ D=j.data; STAYS=mergeStays(D.stays); if(!weekStart)weekStart=defaultWeek(); loadWeek(); render(); loadDraft();
   document.getElementById('rib').innerHTML='data <b>'+new Date().toTimeString().slice(0,5)+'</b>'; }
 function showErr(e){ document.getElementById('app').innerHTML='<div class="err"><b>Couldn\'t load.</b> '+esc(e.message||e)+'</div>'; }
 
@@ -330,6 +334,7 @@ function render(){
         var cell='';
         if(seg.out) cell+='<div class="gsub">out '+esc(short(seg.out.guest))+'</div>';
         if(c){ cell+='<div class="ct">'+hm(c.time)+'</div>';
+          if((c.cleaner||'amal')!=='amal') cell+='<div class="clbl" style="color:#b8860b;font-weight:800">'+(c.cleaner==='both'?'أمل+جيني':'جيني')+'</div>';
           if(c.type==='checkout') cell+='<div class="code">'+esc(c.code)+'</div>';
           else if(typeLbl) cell+='<div class="clbl">'+typeLbl+'</div>';
           // §5.5: a visit that sets tomorrow's arrival code shows that code, not just the label
@@ -354,7 +359,7 @@ function render(){
 
   /* --- editable list --- */
   h+='<div class="card"><h3>Cleans this week<span class="rt">'+cleans.filter(function(c){return c.on;}).length+' selected'+(dirty?' · <span class="badge dirty">unsaved</span>':'')+'</span></h3>';
-  h+='<table class="list"><thead><tr><th>Day</th><th>Flat</th><th>Type</th><th>Time</th><th>Code</th><th>Guest in</th><th></th></tr></thead><tbody>';
+  h+='<table class="list"><thead><tr><th>Day</th><th>Flat</th><th>Type</th><th>Time</th><th>Cleaner</th><th>Code</th><th>Guest in</th><th></th></tr></thead><tbody>';
   cleans.forEach(function(c,idx){
     var hasIn=!!sameDayIn(c.flat,c.date);
     h+='<tr style="'+(c.on?'':'opacity:.45')+'">'+
@@ -362,6 +367,8 @@ function render(){
        '<td><select onchange="edit('+idx+',\'flat\',this.value)">'+airbnbFlats().map(function(f){return '<option'+(f===c.flat?' selected':'')+'>'+esc(f)+'</option>';}).join('')+'</select></td>'+
        '<td><select onchange="edit('+idx+',\'type\',this.value)">'+TYPES.map(function(t){return '<option'+(t===c.type?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+(c.src==='new'?' <span class="badge b-warn">new</span>':'')+'</td>'+
        '<td><input type="time" value="'+hm(c.time)+'" onchange="edit('+idx+',\'time\',this.value)"></td>'+
+       '<td><select onchange="edit('+idx+',\'cleaner\',this.value)"'+((c.cleaner||'amal')!=='amal'?' style="border-color:#b8860b;font-weight:700"':'')+'>'+
+         CLEANERS.map(function(cl){return '<option value="'+cl+'"'+(cl===(c.cleaner||'amal')?' selected':'')+'>'+CLEANER_LBL[cl]+'</option>';}).join('')+'</select></td>'+
        '<td><input class="codei" value="'+esc(c.code)+'" maxlength="4" onchange="edit('+idx+',\'code\',this.value)" '+
          (c.codeEdited?'style="border-color:#8a6fa8" title="hand-set — will not be recomputed"':'')+'>'+(c.codeEdited?'<span title="hand-set">✎</span>':'')+'</td>'+
        '<td>'+(hasIn?'<input type="time" value="'+(hm(c.inTime)||DEFAULT_IN)+'" onchange="edit('+idx+',\'inTime\',this.value)">':'<span class="muted">—</span>')+'</td>'+
@@ -381,11 +388,16 @@ function render(){
   h+='<div class="btnrow"><button class="btn sec" onclick="regenWa()">↻ Regenerate</button><button class="btn sec" onclick="copyWa()">📋 Copy</button>'+
      '<span class="muted">covers '+dm(days[0])+' → '+dm(addD(ws,13))+' · your edits and notes are kept per week and follow you between weeks — only Regenerate rebuilds</span> <span class="muted" id="wamsg"></span></div></div>';
 
-  /* --- confirm/save --- */
-  h+='<div class="card"><div class="btnrow"><button class="btn" id="confirmBtn" onclick="confirmWeek()">✓ Save &amp; confirm this week ('+cleans.filter(function(c){return c.on;}).length+' cleans)</button>'+
+  /* --- save draft / confirm (split 2026-08-03: switching weeks auto-saves a draft; only CONFIRM
+         alerts the group, reaches Emad, and books the جيني sessions in WeShare) --- */
+  var jyN=cleans.filter(function(c){return c.on&&(c.cleaner==='jinny'||c.cleaner==='both');}).length;
+  h+='<div class="card"><div class="btnrow">'+
+     '<button class="btn sec" id="draftBtn" onclick="saveDraftBtn()">💾 Save draft</button>'+
+     '<button class="btn" id="confirmBtn" onclick="confirmWeek()">✓ Confirm week ('+cleans.filter(function(c){return c.on;}).length+' cleans'+(jyN?' · جيني '+jyN:'')+')</button>'+
      (confAt?'<span class="badge b-ok">confirmed '+new Date(confAt).toLocaleDateString()+'</span>':'<span class="badge b-warn">not confirmed</span>')+
+     (DRAFT_AT&&!dirty?'<span class="badge dirty">draft saved</span>':'')+
      '<span class="muted" id="cmsg"></span></div>'+
-     '<div class="legend">Saving writes this week to the sheet (Cleaning schedule tab) — drives per-visit cleaning cost. Review &amp; save week 1, then ›&nbsp;go to week 2 and save it, then copy the two-week WhatsApp.</div></div>';
+     '<div class="legend">Drafts are yours alone — no alert, nothing reaches Emad, no WeShare rows; switching weeks saves one automatically. <b>Confirm</b> writes the sheet, alerts the group, and books each جيني session in WeShare as pending (payer defaults Sarah — confirm the final price there). Elapsed days of the current week are kept as history and never rewritten.</div></div>';
 
   document.getElementById('app').innerHTML=h;
   /* Fill the WhatsApp box AFTER the HTML is in place, rather than inlining the text in the markup:
@@ -414,7 +426,7 @@ function addClean(){
       ty=document.getElementById('addType').value, t=document.getElementById('addTime').value||'12:00';
   var inn=(ty==='checkout')?sameDayIn(f,d):null, inTime='';
   if(inn){ inTime=prompt('Same-day check-in ('+(inn.guest||'guest')+') — what time does the guest arrive?',DEFAULT_IN)||DEFAULT_IN; }
-  cleans.push({ date:d, flat:f, type:ty, time:t, code:doorCode(f,day(d)), inTime:inTime, stayId:inn?inn.id:'', on:true, src:'manual' });
+  cleans.push({ date:d, flat:f, type:ty, time:t, code:doorCode(f,day(d)), inTime:inTime, stayId:inn?inn.id:'', on:true, src:'manual', cleaner:'amal' });
   cleans.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
   dirty=true; render();
 }
@@ -430,6 +442,7 @@ function waLine(c){
             : c.type==='checkout' ? 'تنظيف خروج'
             : c.type==='revision' ? 'إعادة' : 'تنظيف إضافي';
   var t='• شقة '+flatAr(c.flat)+': '+label+' الساعة '+hmAr(c.time);
+  t+=' — النظافة: '+CLEANER_LBL[c.cleaner||'amal'];               // من ينظف — أمل / جيني / الاثنين (2026-08-03)
   if(c.type==='checkout') t+=' — كود الباب '+c.code;
   // §5.5: any non-checkout visit that covers an arrival within 2 days carries the code change too
   else{ var n=nextCheckIn(c.flat,day(c.date));
@@ -451,15 +464,24 @@ function waCodeFallback(d){
   });
   return out;
 }
+/* Every line starts with an invisible RIGHT-TO-LEFT MARK: WhatsApp aligns each line by its first
+   strong character, so a line starting with "8A" flips to the left while Arabic lines sit right —
+   the zigzag Sarah saw. The mark sits BEFORE the *bold* asterisk, so formatting is untouched. */
+function waRtl(t){ return t.split('\n').map(function(l){ return l?'‏'+l.replace(/^‏+/,''):l; }).join('\n'); }
 function waSection(ws,list){
   var days=[]; for(var i=0;i<7;i++)days.push(addD(ws,i));
+  var todayW=ymd(day(new Date().toISOString()));
   var on=list.filter(function(c){return c.on;}), reps=openRepairs();
   /* Pass 1 — gather each day's lines. Done BEFORE the title so the title can name the first and
      last day that actually has work: a heading reading "من السبت … إلى الجمعة" when nothing happens
      until Monday and nothing after Wednesday just confuses the reader. */
   var perDay=[];
   days.forEach(function(d){
-    var k=ymd(d), dayCleans=on.filter(function(c){return c.date===k;}), dayReps=reps.filter(function(r){return r.date===k;});
+    var k=ymd(d);
+    /* mid-week regenerate (2026-08-03): elapsed days are history, not instructions — the message
+       starts from today and the title follows (the sheet keeps the past rows untouched) */
+    if(k<todayW){ perDay.push(null); return; }
+    var dayCleans=on.filter(function(c){return c.date===k;}), dayReps=reps.filter(function(r){return r.date===k;});
     var fallback=waCodeFallback(d);                                    // §5.5 — uncovered arrival tomorrow
     if(!dayCleans.length&&!dayReps.length&&!fallback){ perDay.push(null); return; }
     /* Everything on one day is ordered BY TIME — cleans and repairs interleaved, not cleans
@@ -480,8 +502,8 @@ function waSection(ws,list){
   for(var i=0;i<7;i++) if(perDay[i]){ if(firstI<0) firstI=i; lastI=i; }
 
   // nothing scheduled → keep the full Sat→Fri span so the reader still knows which week it is
-  if(firstI<0) return '*جدول النظافة — من '+DAY_AR[days[0].getDay()]+' '+dm(days[0])+
-                      ' إلى '+DAY_AR[days[6].getDay()]+' '+dm(days[6])+'*\nلا توجد نظافة مجدولة.\n';
+  if(firstI<0) return waRtl('*جدول النظافة — من '+DAY_AR[days[0].getDay()]+' '+dm(days[0])+
+                      ' إلى '+DAY_AR[days[6].getDay()]+' '+dm(days[6])+'*\nلا توجد نظافة مجدولة.\n');
 
   var t='*جدول النظافة — من '+DAY_AR[days[firstI].getDay()]+' '+dm(days[firstI])+
         ' إلى '+DAY_AR[days[lastI].getDay()]+' '+dm(days[lastI])+'*\n';
@@ -489,7 +511,7 @@ function waSection(ws,list){
     if(!perDay[j]) continue;
     t+='*'+DAY_AR[perDay[j].d.getDay()]+' '+dm(perDay[j].d)+':*\n'+perDay[j].lines;
   }
-  return t;
+  return waRtl(t);
 }
 
 /* ---------- WhatsApp edits are KEPT, per week ----------
@@ -540,20 +562,51 @@ function copyWa(){
   if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(ta.value).then(function(){done(true);},function(){ done(document.execCommand('copy')); }); }
   else done(document.execCommand('copy'));
 }
+/* ---------- drafts (2026-08-03): the full editing state, server-side per week ---------- */
+var DRAFT_AT=null;
+function draftPayload(){
+  return cleans.map(function(c){ return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code,
+    codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal', on:!!c.on, src:c.src }; });
+}
+function saveDraft(){
+  return api('props_save_draft',{user:(ME&&ME.user)||'',week:ymd(weekStart),cleans:JSON.stringify(draftPayload())})
+    .then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); DRAFT_AT=new Date().toISOString(); dirty=false; });
+}
+function saveDraftBtn(){
+  document.getElementById('cmsg').textContent='saving draft…';
+  saveDraft().then(function(){ render(); document.getElementById('cmsg').textContent='draft saved ✓ (no alerts sent)'; })
+    .catch(function(e){ document.getElementById('cmsg').textContent='draft failed: '+(e.message||e); });
+}
+function loadDraft(){
+  DRAFT_AT=null;
+  api('props_get_draft',{week:ymd(weekStart)}).then(function(j){
+    if(!(j&&j.ok&&j.draft&&j.draft.cleans&&j.draft.cleans.length)) return;
+    var confAt=weekConfirmed();
+    if(confAt && new Date(j.draft.savedAt) <= new Date(confAt)) return;   // an older draft never beats a newer confirm
+    cleans=j.draft.cleans.map(function(c){ c.on=(c.on!==false); c.cleaner=c.cleaner||'amal'; return c; });
+    DRAFT_AT=j.draft.savedAt; dirty=false; render();
+  }).catch(function(){});
+}
 function confirmWeek(){
   var btn=document.getElementById('confirmBtn'); btn.disabled=true;
-  document.getElementById('cmsg').textContent='saving…';
+  document.getElementById('cmsg').textContent='confirming…';
   var payload=cleans.filter(function(c){return c.on;}).map(function(c){
-    return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code, codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId }; });
+    return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code, codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal' }; });
   api('props_confirm_cleans',{user:(ME&&ME.user)||'',week:ymd(weekStart),cleans:JSON.stringify(payload)}).then(function(j){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
-    document.getElementById('cmsg').textContent='saved ✓ ('+j.result.count+' cleans)';
+    DRAFT_AT=null;
+    var jy=j.result&&j.result.jinny;
+    document.getElementById('cmsg').textContent='confirmed ✓ ('+j.result.count+' cleans'+(jy&&jy.created.length?' · '+jy.created.length+' جيني → WeShare':'')+')';
     return fetchOnce().then(onData);
   }).catch(function(e){ btn.disabled=false; document.getElementById('cmsg').textContent='failed: '+ (e.message||e); });
 }
-function guardNav(go){ if(dirty && !confirm('You have unsaved changes to this week. Leave without saving?'))return; go(); }
-document.getElementById('wprev').onclick=function(){ guardNav(function(){ weekStart=addD(weekStart,-7); loadWeek(); render(); }); };
-document.getElementById('wnext').onclick=function(){ guardNav(function(){ weekStart=addD(weekStart,7); loadWeek(); render(); }); };
+/* switching weeks silently keeps your work as a draft — no prompt, no alert (Sarah 2026-08-03) */
+function guardNav(go){
+  if(!dirty){ go(); return; }
+  saveDraft().then(go).catch(function(){ if(confirm('Draft save failed — leave anyway and lose the changes?')) go(); });
+}
+document.getElementById('wprev').onclick=function(){ guardNav(function(){ weekStart=addD(weekStart,-7); loadWeek(); render(); loadDraft(); }); };
+document.getElementById('wnext').onclick=function(){ guardNav(function(){ weekStart=addD(weekStart,7); loadWeek(); render(); loadDraft(); }); };
 
 AUTH_ON_LOGIN = boot; if (authGuard()) boot();   // signed in → load now; otherwise the sign-in form loads it
 </script>
