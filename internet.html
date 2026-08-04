@@ -382,7 +382,8 @@ function saveBundle(f){
   if(q===''){ document.getElementById('bmsg_'+f).textContent='enter quota GB'; return; }
   var cs=document.getElementById('bd_'+f).value+' '+document.getElementById('bt_'+f).value;
   var mode=document.querySelector('input[name="pay_'+f+'"]:checked').value;
-  var cash=document.getElementById('cash_'+f).value;
+  // from-balance sends NO cash at all — a value left in the (disabled) box must not become a row
+  var cash=mode==='recharge'?document.getElementById('cash_'+f).value:'';
   document.getElementById('bmsg_'+f).textContent='saving…';
   post('props_set_bundle', {flat:f, name:name, quota:q, price:p, cycleStart:cs, payMode:mode, cashAmount:cash}, 'bmsg_'+f);
 }
@@ -391,7 +392,12 @@ function post(fn, params, msgId){
   for(var k in params) body[k]=params[k];
   api(fn, body).then(function(j){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+    /* the outcome must be VISIBLE (the missing-430 lesson): say whether the cash reached WeShare */
+    var m='saved ✓';
+    if(fn==='props_set_bundle'&&j.result)
+      m=j.result.weshare?'saved ✓ — cash → WeShare pending (confirm payer there)':'saved ✓ — no cash row (from balance)';
     boot();
+    setTimeout(function(){ var el=document.getElementById(msgId); if(el) el.textContent=m; },600);
   }).catch(function(e){ document.getElementById(msgId).textContent='failed: '+(e.message||e); });
 }
 
