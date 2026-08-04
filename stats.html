@@ -69,9 +69,26 @@ table.t{width:100%;border-collapse:collapse;font-size:12px}
 /* ---------- state ---------- */
 var D=null, DAYMS=86400000, MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var scope='portfolio';
-var R={rev:'12M',cost:'12M',attr:'12M',occ:'12M',vol:'12M',chan:'12M',pay:'12M',adr:'6M',turn:'6M',rep:'12M'};
-var revSeries='earnings', costCat='all', costMonth='all', chanMode='nights', payMode='money';
+var R={rev:'12M',cost:'12M',attr:'12M',occ:'12M',nb:'12M',vol:'12M',chan:'12M',pay:'12M',adr:'6M',turn:'6M',rep:'12M'};
+var revSeries='earnings', costCat='all', costMonth='all', chanMode='nights', payMode='money', nbMode='nights';
 var adrMonth='all', turnMonth='all', repMonth='all', repMode='flat';
+/* §5.1 currency toggle (2026-08-04): ONE currency for the whole screen, chosen like the partner
+   screens and shared with them via localStorage owh_cur. Every month converts at ITS OWN derived
+   rate BEFORE summing (converting a multi-month total at one rate restates closed months). */
+var CUR=(function(){ try{ return localStorage.getItem('owh_cur')||'USD'; }catch(e){ return 'USD'; } })();
+function setCur(c){ CUR=c; try{ localStorage.setItem('owh_cur',c); }catch(e){} render(); }
+var __rates={};
+function rateFor(m){                       // EGP per USD, recovered from the month's own P&L figures
+  if(__rates[m]) return __rates[m];
+  var egp=0,usdc=0,rev=0,net=0;
+  airbnbFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p)return; rev+=p.revenue.total; net+=p.net;
+    (p.costs||[]).forEach(function(c){ if(c.currency==='USD')usdc+=c.amount; else egp+=c.amount; }); });
+  var egpInUSD=(rev-net)-usdc;
+  var r=(egp>0&&egpInUSD>0)?egp/egpInUSD:((D.meta.fx&&D.meta.fx.current)||49);
+  return (__rates[m]=r);
+}
+function disp(usd,m){ return CUR==='USD'?usd:usd*rateFor(m); }         // convert per month, then sum
+function curU(){ return CUR==='USD'?'$':''; }                          // chart unit prefix
 var TRADES=[['سباك','plumbing','#4a7fb5'],['كهربائي','electric','#d9a441'],['فني تكييف','AC','#6f9a76'],['نجار','carpentry','#b58a5a'],['منجد','upholstery','#a97fb0'],['أخرى','other','#9aa7b5']];
 function esc(s){ return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
 function isLive(s){ var st=(s.status||'').toLowerCase(); return st.indexOf('cancel')<0 && st.indexOf('block')<0; }
@@ -79,7 +96,8 @@ function fmt(n){ n=+n||0; var a=Math.abs(n); return (n<0?'-':'')+(a>=1000?Math.r
 function kf(n){ n=+n||0; var a=Math.abs(n); return (n<0?'-':'')+(a>=1000?(a/1000).toFixed(a>=10000?0:1)+'k':String(Math.round(a))); }
 /* 2 decimals: these are dollars, and small per-flat figures were rounding away to "0". `fmt` stays
    whole-number — it also formats nights and counts. */
-function money(n){ n=+n||0; return '$'+(n<0?'-':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function money(n){ n=+n||0; var s=(n<0?'-':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return CUR==='USD'?'$'+s:s+' EGP'; }
 function day(s){ return new Date(String(s).slice(0,10)+'T00:00:00'); }
 function airbnbFlats(){ return D.meta.flatsOrder.filter(function(f){ return D.targets.byFlat[f]; }); }
 function rawStays(){ return D.stays||[]; }
@@ -180,7 +198,7 @@ function occAdrChart(occRows, adrRows){ var n=occRows.length; if(!n) return '<di
   // ADR = bars, label centered inside the bar
   adrRows.forEach(function(r,i){ var bh=plotH*r.value/adrMax, x=PAD+i*gw+(gw-bw)/2, y=zeroY-bh;
     s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,bh).toFixed(1)+'" rx="2" fill="var(--c-occ)"/>';
-    if(r.value>0){ var lbl='$'+fmt(r.value);
+    if(r.value>0){ var lbl=curU()+fmt(r.value);
       if(bh>=15) s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y+bh/2+3).toFixed(1)+'" font-size="8" font-weight="700" fill="#fff" text-anchor="middle">'+lbl+'</text>';
       else s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y-3).toFixed(1)+'" font-size="8" font-weight="700" fill="#4a6a78" text-anchor="middle">'+lbl+'</text>'; } });
   // Occupancy = line (0–100% scaled to plot height)
@@ -229,28 +247,30 @@ function setRev(s){ revSeries=s; render(); } function setCat(c){ costCat=c; rend
 function setChan(m){ chanMode=m; render(); } function setPay(m){ payMode=m; render(); }
 function setAdrMonth(m){ adrMonth=m; render(); } function setTurnMonth(m){ turnMonth=m; render(); }
 function setRepMonth(m){ repMonth=m; render(); } function setRepMode(m){ repMode=m; render(); }
+function setR_nb(r){ R.nb=r; render(); } function setNb(m){ nbMode=m; render(); }
 function monthBtnsFor(ms,cur,fn){ return seg([['all','All']].concat(ms.map(function(m){return [m, MON[+m.slice(5,7)-1]+' '+m.slice(2,4)];})),cur,fn); }
 function pickMonths(rng,sel){ var ms=monthsInRange(rng); return (sel!=='all'&&ms.indexOf(sel)>=0)?[sel]:ms; }
 
 /* ---------- render ---------- */
 function render(){
   if(!allMonths().length){ document.getElementById('app').innerHTML='<div class="card muted">No months yet.</div>'; return; }
-  var h='<div class="scope"><div class="seg">'+['portfolio'].concat(airbnbFlats()).map(function(f){ return '<button class="'+(scope===f?'on':'')+'" onclick="setScope(\''+esc(f)+'\')">'+(f==='portfolio'?'Portfolio':esc(f))+'</button>'; }).join('')+'</div></div>';
-  h+=secRevenue()+secCosts()+secAttribution()+secOccAdr()+secVolumes()+secChannel()+secPay()+secAdrTable()+secTurnover()+secRepairs();
+  var h='<div class="scope" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div class="seg">'+['portfolio'].concat(airbnbFlats()).map(function(f){ return '<button class="'+(scope===f?'on':'')+'" onclick="setScope(\''+esc(f)+'\')">'+(f==='portfolio'?'Portfolio':esc(f))+'</button>'; }).join('')+'</div>'+
+    '<div class="seg">'+['USD','EGP'].map(function(c){ return '<button class="'+(CUR===c?'on':'')+'" onclick="setCur(\''+c+'\')">'+c+'</button>'; }).join('')+'</div></div>';
+  h+=secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secTurnover()+secRepairs();
   document.getElementById('app').innerHTML=h;
 }
-function sumEarn(field, rng){ var t=0; monthsInRange(rng).forEach(function(m){ scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p)return;
-  t+= field==='earnings'?p.revenue.earnings:field==='other'?p.revenue.other:field==='total'?p.revenue.total:field==='net'?p.net:(p.revenue.total-p.net); }); }); return t; }
+function sumEarn(field, rng){ var t=0; monthsInRange(rng).forEach(function(m){ var mv=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p)return;
+  mv+= field==='earnings'?p.revenue.earnings:field==='other'?p.revenue.other:field==='total'?p.revenue.total:field==='net'?p.net:(p.revenue.total-p.net); }); t+=disp(mv,m); }); return t; }
 
 /* 1 · Revenue — line, series toggle + time toggle */
 function secRevenue(){
   var ms=monthsInRange(R.rev);
   var rows=ms.map(function(m){ var v=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p)return;
-    v+= revSeries==='earnings'?p.revenue.earnings:revSeries==='other'?p.revenue.other:revSeries==='total'?p.revenue.total:revSeries==='net'?p.net:(p.revenue.total-p.net); }); return {m:m,value:v}; });
+    v+= revSeries==='earnings'?p.revenue.earnings:revSeries==='other'?p.revenue.other:revSeries==='total'?p.revenue.total:revSeries==='net'?p.net:(p.revenue.total-p.net); }); return {m:m,value:disp(v,m)}; });
   var col=revSeries==='net'?'var(--c-net)':revSeries==='costs'?'var(--c-cost)':'var(--c-earn)';
-  return '<div class="card"><h3>Revenue<span class="rt">USD · '+money(sumEarn(revSeries,R.rev))+'</span></h3>'+
+  return '<div class="card"><h3>Revenue<span class="rt">'+CUR+' · '+money(sumEarn(revSeries,R.rev))+'</span></h3>'+
     '<div class="rowbtns">'+seg([['earnings','Earnings'],['other','Other'],['total','Total'],['net','Net'],['costs','Costs']],revSeries,'setRev')+timeSeg('rev')+'</div>'+
-    lineChart(rows,{color:col,unit:'$'})+'</div>';
+    lineChart(rows,{color:col,unit:curU()})+'</div>';
 }
 /* 2 · What the money goes on — stacked per-month, category + month buttons + time */
 var COST_ORDER=[['rent','rent','#e0a5a5'],['cleaning','cleaning','#b8c9d9'],['supplies','supplies','#8ab48f'],['electricity','electricity','#d9a441'],['maintenance','maintenance','#c77b7b'],['tv-phone-internet','internet','#9c86c4'],['laundry','laundry','#c98f8f'],['contingency','contingency','#b0a08e'],['opsmanager','opsMgr','#7d9c9c'],['water','water','#7fb2c9'],['heat-gas','heat/gas','#caa06a'],['subscription','subscription','#9aa7b5']];
@@ -260,16 +280,16 @@ function secCosts(){
   var ms=monthsInRange(R.cost);
   var catBtns=[['all','All']].concat(COST_ORDER.map(function(c){return [c[0],c[1]];}));
   var monBtns=[['all','All']].concat(ms.map(function(m){return [m, MON[+m.slice(5,7)-1]+' '+m.slice(2,4)];}));
-  var h='<div class="card"><h3>What the money goes on<span class="rt">USD costs by category</span></h3>'+
+  var h='<div class="card"><h3>What the money goes on<span class="rt">'+CUR+' costs by category</span></h3>'+
     '<div class="rowbtns">'+seg(catBtns,costCat,'setCat')+'</div>'+
     '<div class="rowbtns">'+seg(monBtns,costMonth,'setCostMonth')+timeSeg('cost')+'</div>';
   if(costMonth!=='all'){                                   // single month → horizontal category breakdown
-    var by=costRow(costMonth); var rows=COST_ORDER.filter(function(c){return costCat==='all'||c[0]===costCat;}).map(function(c){return {label:c[1],value:by[c[0]]||0,color:c[2]};});
-    h+=hbars(rows,{unit:'$'});
+    var by=costRow(costMonth); var rows=COST_ORDER.filter(function(c){return costCat==='all'||c[0]===costCat;}).map(function(c){return {label:c[1],value:disp(by[c[0]]||0,costMonth),color:c[2]};});
+    h+=hbars(rows,{unit:curU()});
   } else {
     var series=COST_ORDER.filter(function(c){return costCat==='all'||c[0]===costCat;}).map(function(c){return {k:c[0],color:c[2]};});
-    var rows=ms.map(function(m){ var by=costRow(m); var vals={}; series.forEach(function(se){ vals[se.k]=by[se.k]||0; }); return {m:m,vals:vals}; });
-    h+=stackedChart(rows,series,{unit:'$'});
+    var rows=ms.map(function(m){ var by=costRow(m); var vals={}; series.forEach(function(se){ vals[se.k]=disp(by[se.k]||0,m); }); return {m:m,vals:vals}; });
+    h+=stackedChart(rows,series,{unit:curU()});
     if(costCat==='all') h+='<div class="legend">'+COST_ORDER.slice(0,8).map(function(c){return '<span><i style="background:'+c[2]+'"></i>'+c[1]+'</span>';}).join('')+'</div>';
   }
   return h+'</div>';
@@ -277,21 +297,53 @@ function secCosts(){
 /* 3 · Attribution — stacked Khaled/Sarah */
 function secAttribution(){
   var ms=monthsInRange(R.attr);
-  var rows=ms.map(function(m){ var k=0,s=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(p&&p.attribution){ k+=p.attribution.khaled; s+=p.attribution.sarah; } }); return {m:m,vals:{khaled:k,sarah:s}}; });
+  var rows=ms.map(function(m){ var k=0,s=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(p&&p.attribution){ k+=p.attribution.khaled; s+=p.attribution.sarah; } }); return {m:m,vals:{khaled:disp(k,m),sarah:disp(s,m)}}; });
   var tk=0,ts=0; rows.forEach(function(r){ tk+=r.vals.khaled; ts+=r.vals.sarah; });
   return '<div class="card"><h3>Internal attribution<span class="rt">Khaled '+money(tk)+' · Sarah '+money(ts)+'</span></h3>'+
     '<div class="rowbtns">'+timeSeg('attr')+'</div>'+
-    stackedChart(rows,[{k:'khaled',color:'var(--c-khaled)'},{k:'sarah',color:'var(--c-sarah)'}],{unit:'$'})+
+    stackedChart(rows,[{k:'khaled',color:'var(--c-khaled)'},{k:'sarah',color:'var(--c-sarah)'}],{unit:curU()})+
     '<div class="legend"><span><i style="background:var(--c-khaled)"></i>Khaled</span><span><i style="background:var(--c-sarah)"></i>Sarah</span></div></div>';
 }
 /* 4 · Occupancy & ADR combined */
 function secOccAdr(){
   var ms=monthsInRange(R.occ);
   var occ=ms.map(function(m){ var o=0,a=0; scopeFlats().forEach(function(f){ a+=daysIn(m); rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))o+=overlapNights(s,m); }); }); return {m:m,value:a>0?o/a*100:0}; });
-  var adr=ms.map(function(m){ var e=0,n=0; scopeFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat===f&&isLive(s)&&monthOf(s.checkOut)===m){ e+=earningsOf(s); n+=s.nights||0; } }); }); return {m:m,value:n>0?e/n:0}; });
-  return '<div class="card"><h3>Occupancy &amp; ADR</h3><div class="csub">bars = ADR (earnings ÷ nights, USD) · line = occupancy %</div>'+
+  var adr=ms.map(function(m){ var e=0,n=0; scopeFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat===f&&isLive(s)&&monthOf(s.checkOut)===m){ e+=earningsOf(s); n+=s.nights||0; } }); }); return {m:m,value:disp(n>0?e/n:0,m)}; });
+  return '<div class="card"><h3>Occupancy &amp; ADR</h3><div class="csub">bars = ADR (earnings ÷ nights, '+CUR+') · line = occupancy %</div>'+
     '<div class="rowbtns">'+timeSeg('occ')+'</div>'+occAdrChart(occ,adr)+
-    '<div class="legend"><span><i style="background:var(--c-occ)"></i>ADR $</span><span><i style="background:var(--red)"></i>Occupancy %</span></div></div>';
+    '<div class="legend"><span><i style="background:var(--c-occ)"></i>ADR '+CUR+'</span><span><i style="background:var(--red)"></i>Occupancy %</span></div></div>';
+}
+/* 4b · Booked / blocked / free nights — with a value toggle (Sarah's request 2026-07-24, built
+   2026-08-04). Per-day truth so multi-channel blocks can't double-count and a block overlapping a
+   live stay counts as BOOKED (it's mostly Smoobu's own turnover block): a night is booked if a
+   live stay covers it, else blocked if a block covers it, else free. Value mode: booked = that
+   month's actual earnings; blocked & free = nights × that month's ADR (the opportunity cost). */
+function secNights(){
+  var ms=monthsInRange(R.nb);
+  var rows=ms.map(function(m){
+    var b=0,bl=0,fr=0,earn=0,nn=0, y=+m.slice(0,4),mo=+m.slice(5,7),dim=daysIn(m);
+    scopeFlats().forEach(function(f){
+      for(var dd=1;dd<=dim;dd++){
+        var dt=new Date(y,mo-1,dd), occ=false,blk=false;
+        (D.stays||[]).forEach(function(s){
+          if(s.flat!==f||!s.checkIn||!s.checkOut)return;
+          var st=(s.status||'').toLowerCase(); if(st.indexOf('cancel')>-1)return;
+          if(!(day(s.checkIn)<=dt&&dt<day(s.checkOut)))return;
+          if(st.indexOf('block')>-1)blk=true; else occ=true;
+        });
+        if(occ)b++; else if(blk)bl++; else fr++;
+      }
+      rawStays().forEach(function(s){ if(s.flat===f&&isLive(s)&&monthOf(s.checkOut)===m){ earn+=earningsOf(s); nn+=s.nights||0; } });
+    });
+    if(nbMode==='nights') return {m:m,vals:{booked:b,blocked:bl,free:fr}};
+    var adr=nn>0?earn/nn:0;
+    return {m:m,vals:{booked:disp(earn,m),blocked:disp(bl*adr,m),free:disp(fr*adr,m)}};
+  });
+  var NB=[{k:'booked',color:'var(--g)'},{k:'blocked',color:'#b58a5a'},{k:'free',color:'#d9c7c7'}];
+  return '<div class="card"><h3>Booked · blocked · free nights<span class="rt">'+(nbMode==='nights'?'nights':'value '+CUR+' — free/blocked at that month\'s ADR')+'</span></h3>'+
+    '<div class="rowbtns">'+seg([['nights','Nights'],['value','Value']],nbMode,'setNb')+timeSeg('nb')+'</div>'+
+    stackedChart(rows,NB,{unit:nbMode==='value'?curU():''})+
+    '<div class="legend"><span><i style="background:var(--g)"></i>booked</span><span><i style="background:#b58a5a"></i>blocked</span><span><i style="background:#d9c7c7"></i>free</span></div></div>';
 }
 /* 5 · Nights · stays · dry-clean submissions (grouped) */
 // dry-clean submissions = count of per-submission "laundry" rows in Cost line items (the same rows that drive
@@ -313,10 +365,10 @@ function secChannel(){
   var ms=monthsInRange(R.chan), groups=['Airbnb','Booking.com','Direct'];
   var rows=ms.map(function(m){ var vals={Airbnb:0,'Booking.com':0,Direct:0}; scopeFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; var g=channelGroup(s.portal); if(!g.inRev)return;
     if(chanMode==='nights'){ var n=overlapNights(s,m); if(n&&(g.group in vals))vals[g.group]+=n; }
-    else if(monthOf(s.checkOut)===m&&(g.group in vals)) vals[g.group]+=earningsOf(s); }); }); return {m:m,vals:vals}; });
-  return '<div class="card"><h3>Channel mix<span class="rt">'+(chanMode==='nights'?'nights':'revenue $')+' by channel</span></h3>'+
+    else if(monthOf(s.checkOut)===m&&(g.group in vals)) vals[g.group]+=disp(earningsOf(s),m); }); }); return {m:m,vals:vals}; });
+  return '<div class="card"><h3>Channel mix<span class="rt">'+(chanMode==='nights'?'nights':'revenue '+CUR)+' by channel</span></h3>'+
     '<div class="rowbtns">'+seg([['nights','Nights'],['revenue','Revenue']],chanMode,'setChan')+timeSeg('chan')+'</div>'+
-    stackedChart(rows,groups.map(function(g){return {k:g,color:chColor(g)};}),{unit:chanMode==='revenue'?'$':''})+
+    stackedChart(rows,groups.map(function(g){return {k:g,color:chColor(g)};}),{unit:chanMode==='revenue'?curU():''})+
     '<div class="legend">'+groups.map(function(g){return '<span><i style="background:'+chColor(g)+'"></i>'+g+'</span>';}).join('')+'</div></div>';
 }
 /* 7 · Money by account — money / nights toggle, stacked per-month */
@@ -326,60 +378,65 @@ function secPay(){
   var accs=Object.keys(accSet);
   var PC={HSBC:'#4a7fb5',Stripe:'#6f9a76',Instapay:'#d9a441',Cash:'#c98f8f','(unconfirmed)':'#bbb'};
   var rows=ms.map(function(m){ var vals={}; accs.forEach(function(a){vals[a]=0;}); scopeFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s)||!channelGroup(s.portal).inRev)return;
-    if(payMode==='money'){ if(monthOf(s.checkOut)===m)vals[accountOf(s)]+=earningsOf(s); } else { vals[accountOf(s)]+=overlapNights(s,m); } }); }); return {m:m,vals:vals}; });
-  return '<div class="card"><h3>Money by account<span class="rt">'+(payMode==='money'?'revenue $':'nights')+' by account · Test excluded</span></h3>'+
+    if(payMode==='money'){ if(monthOf(s.checkOut)===m)vals[accountOf(s)]+=disp(earningsOf(s),m); } else { vals[accountOf(s)]+=overlapNights(s,m); } }); }); return {m:m,vals:vals}; });
+  return '<div class="card"><h3>Money by account<span class="rt">'+(payMode==='money'?'revenue '+CUR:'nights')+' by account · Test excluded</span></h3>'+
     '<div class="rowbtns">'+seg([['money','Revenue'],['nights','Nights']],payMode,'setPay')+timeSeg('pay')+'</div>'+
-    stackedChart(rows,accs.map(function(a){return {k:a,color:PC[a]||'#9aa7b5'};}),{unit:payMode==='money'?'$':''})+
+    stackedChart(rows,accs.map(function(a){return {k:a,color:PC[a]||'#9aa7b5'};}),{unit:payMode==='money'?curU():''})+
     '<div class="legend">'+accs.map(function(a){return '<span><i style="background:'+(PC[a]||'#9aa7b5')+'"></i>'+esc(a)+'</span>';}).join('')+'</div></div>';
 }
 /* 8 · ADR per channel per flat (table) */
 function secAdrTable(){
   var ms=pickMonths(R.adr,adrMonth), chans=['Airbnb','Booking.com','Direct'];
-  var h='<div class="card"><h3>ADR per channel, per flat<span class="rt">USD'+(adrMonth!=='all'?' · '+MON[+adrMonth.slice(5,7)-1]+' '+adrMonth.slice(0,4):'')+'</span></h3>'+
+  var h='<div class="card"><h3>ADR per channel, per flat<span class="rt">'+CUR+(adrMonth!=='all'?' · '+MON[+adrMonth.slice(5,7)-1]+' '+adrMonth.slice(0,4):'')+'</span></h3>'+
     '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.adr),adrMonth,'setAdrMonth')+timeSeg('adr')+'</div>'+
     '<table class="t"><thead><tr><th>Flat</th>'+chans.map(function(c){return '<th>'+c+'</th>';}).join('')+'<th>Spread</th></tr></thead><tbody>';
   airbnbFlats().forEach(function(f){ var e={},n={}; rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; if(monthOf(s.checkOut)<ms[0]||monthOf(s.checkOut)>ms[ms.length-1])return;
-    var g=channelGroup(s.portal).group; e[g]=(e[g]||0)+earningsOf(s); n[g]=(n[g]||0)+(s.nights||0); });
+    var g=channelGroup(s.portal).group; e[g]=(e[g]||0)+disp(earningsOf(s),monthOf(s.checkOut)); n[g]=(n[g]||0)+(s.nights||0); });
     var adr={},vals=[]; chans.forEach(function(c){ var a=n[c]>0?e[c]/n[c]:0; adr[c]=a; if(a>0)vals.push(a); });
     var spread=vals.length>1?Math.round((Math.min.apply(null,vals)-Math.max.apply(null,vals))/Math.max.apply(null,vals)*100):0;
     h+='<tr><td>'+esc(f)+'</td>'+chans.map(function(c){return '<td>'+(adr[c]?fmt(adr[c]):'—')+'</td>';}).join('')+'<td class="'+(spread<0?'neg':'')+'">'+(vals.length>1?spread+'%':'—')+'</td></tr>'; });
   return h+'</tbody></table><div class="note">Spread = how far the weakest channel sits below the strongest.</div></div>';
 }
-/* 9 · Turnover economics (table) */
+/* 9 · Turnover economics — per DRY-CLEAN SUBMISSION (Sarah's request 2026-07-24, built 2026-08-04):
+   a 46-night stay with weekly cleans produces several submissions but only one checkout, so
+   per-stay understated the real turnover rhythm. Submissions counted from the per-submission
+   laundry rows already mirrored into the P&L (dcCount — same source as the volumes chart). */
 function secTurnover(){
   var ms=pickMonths(R.turn,turnMonth), merged=mergeStays(rawStays());
-  var h='<div class="card"><h3>Turnover economics<span class="rt">per stay'+(turnMonth!=='all'?' · '+MON[+turnMonth.slice(5,7)-1]+' '+turnMonth.slice(0,4):'')+'</span></h3>'+
+  var h='<div class="card"><h3>Turnover economics<span class="rt">per dry-clean submission'+(turnMonth!=='all'?' · '+MON[+turnMonth.slice(5,7)-1]+' '+turnMonth.slice(0,4):'')+'</span></h3>'+
     '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.turn),turnMonth,'setTurnMonth')+timeSeg('turn')+'</div>'+
-    '<table class="t"><thead><tr><th>Flat</th><th>Length</th><th>Laundry/stay</th><th>Cleaning/stay</th><th>Turnover/stay</th><th>Turnover/night</th></tr></thead><tbody>';
+    '<table class="t"><thead><tr><th>Flat</th><th>Stays</th><th>Subs</th><th>Laundry/sub</th><th>Cleaning/sub</th><th>Turnover/sub</th><th>Turnover/night</th></tr></thead><tbody>';
   airbnbFlats().forEach(function(f){ var stays=merged.filter(function(s){ return s.flat===f&&monthOf(s.checkOut)>=ms[0]&&monthOf(s.checkOut)<=ms[ms.length-1]; });
-    var nS=stays.length, nights=stays.reduce(function(a,s){return a+(s.nights||0);},0), laun=0,clean=0;
-    ms.forEach(function(m){ var c=costsUSD(f,m); laun+=c.by['laundry']||0; clean+=(c.by['cleaning-labor']||0)+(c.by['cleaning']||0); });
-    var los=nS>0?nights/nS:0,lps=nS>0?laun/nS:0,cps=nS>0?clean/nS:0,tps=lps+cps,tpn=los>0?tps/los:0;
-    h+='<tr><td>'+esc(f)+'</td><td>'+(los?los.toFixed(1):'—')+'</td><td>'+money(lps)+'</td><td>'+money(cps)+'</td><td>'+money(tps)+'</td><td>'+money(tpn)+'</td></tr>'; });
-  return h+'</tbody></table><div class="note">Turnover/night = turnover/stay ÷ length — a 30-night and a 3-night stay carry the same one turnover.</div></div>';
+    var nS=stays.length, nights=stays.reduce(function(a,s){return a+(s.nights||0);},0), laun=0,clean=0,subs=0;
+    ms.forEach(function(m){ var c=costsUSD(f,m); laun+=disp(c.by['laundry']||0,m); clean+=disp((c.by['cleaning-labor']||0)+(c.by['cleaning']||0),m); subs+=dcCount(f,m); });
+    var lps=subs>0?laun/subs:0,cps=subs>0?clean/subs:0,tps=lps+cps,tpn=nights>0?(laun+clean)/nights:0;
+    h+='<tr><td>'+esc(f)+'</td><td>'+(nS||'—')+'</td><td>'+(subs||'—')+'</td><td>'+money(lps)+'</td><td>'+money(cps)+'</td><td>'+money(tps)+'</td><td>'+money(tpn)+'</td></tr>'; });
+  return h+'</tbody></table><div class="note">A submission = one dry-clean drop-off (mid-stay cleans included) — the real turnover unit. Turnover/night spreads the same cost over occupied nights.</div></div>';
 }
 /* 10 · Repairs — stacked by flat × trade category (or by category), month + time buttons */
 function tradeLabel(t){ var m=TRADES.filter(function(x){return x[0]===t;})[0]; return m?m[1]:(t||'other'); }
 function secRepairs(){
   var ms=pickMonths(R.rep,repMonth);
   var closed=(D.repairs||[]).filter(function(r){ return r.status==='closed'&&r.closedDate&&ms.indexOf(monthOf(r.closedDate))>=0; });
-  var tot=closed.reduce(function(a,r){return a+(r.cost||0);},0);
+  // repairs START in EGP, so the toggle converts them UP: each repair at its own closed-month rate
+  function repVal(r){ return CUR==='EGP'?(r.cost||0):(r.cost||0)/rateFor(monthOf(r.closedDate)); }
+  var tot=closed.reduce(function(a,r){return a+repVal(r);},0);
   var series=TRADES.map(function(t){ return {k:t[0],label:t[1],color:t[2]}; });
   var chart;
   if(!closed.length){
     chart='<div class="muted">No closed repairs in range — log WeShare-backed ones in the Repairs tab (Status=closed + Closed date + Cost).</div>';
   } else if(repMode==='cat'){                                   // bars = trade category
-    var byCat={}; closed.forEach(function(r){ byCat[r.trade]=(byCat[r.trade]||0)+(r.cost||0); });
+    var byCat={}; closed.forEach(function(r){ byCat[r.trade]=(byCat[r.trade]||0)+repVal(r); });
     var hrows=TRADES.map(function(t){ return {label:t[1],value:byCat[t[0]]||0,color:t[2]}; });
-    chart=hbars(hrows,{fmt:function(v){return fmt(v)+' EGP';}});
+    chart=hbars(hrows,{fmt:function(v){return fmt(v)+' '+(CUR==='USD'?'USD':'EGP');}});
   } else {                                                      // bars = flat, stacked by trade
     var rows=airbnbFlats().concat(['17B']).map(function(f){ var vals={},nn=0; series.forEach(function(se){vals[se.k]=0;});
-      closed.forEach(function(r){ if(r.flat===f){ vals[r.trade]=(vals[r.trade]||0)+(r.cost||0); nn++; } });
+      closed.forEach(function(r){ if(r.flat===f){ vals[r.trade]=(vals[r.trade]||0)+repVal(r); nn++; } });
       return {label:f,vals:vals,n:nn}; }).filter(function(row){ return row.n>0; });
     chart=stackedCat(rows,series,{unit:''});
   }
-  return '<div class="card"><h3>Repairs<span class="rt">'+closed.length+' closed · '+fmt(tot)+' EGP'+(repMonth!=='all'?' · '+MON[+repMonth.slice(5,7)-1]+' '+repMonth.slice(0,4):'')+'</span></h3>'+
-    '<div class="csub">EGP by flat &amp; trade — analysis of Maintenance already in the P&amp;L, not added to totals</div>'+
+  return '<div class="card"><h3>Repairs<span class="rt">'+closed.length+' closed · '+fmt(tot)+' '+(CUR==='USD'?'USD':'EGP')+(repMonth!=='all'?' · '+MON[+repMonth.slice(5,7)-1]+' '+repMonth.slice(0,4):'')+'</span></h3>'+
+    '<div class="csub">'+(CUR==='USD'?'USD':'EGP')+' by flat &amp; trade — analysis of Maintenance already in the P&amp;L, not added to totals</div>'+
     '<div class="rowbtns">'+seg([['flat','By flat'],['cat','By category']],repMode,'setRepMode')+'</div>'+
     '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.rep),repMonth,'setRepMonth')+timeSeg('rep')+'</div>'+
     chart+
