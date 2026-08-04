@@ -178,10 +178,12 @@ function lineMulti(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) re
     var pts=rows.map(function(r,i){ return [cx(i), zeroY-plotH*Math.abs(r.vals[se.k]||0)/max]; });
     var d=pts.map(function(p,i){ return (i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1); }).join(' ');
     s+='<path d="'+d+'" fill="none" stroke="'+se.color+'" stroke-width="1.9"/>';
-    pts.forEach(function(p){ s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="1.8" fill="'+se.color+'"/>'; });
-    // label the line at its last point so the legend isn't the only key
+    pts.forEach(function(p,i){ s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="1.8" fill="'+se.color+'"/>'+
+      // value label per point, in the line's colour (Sarah 2026-08-04: unlabeled lines are unreadable)
+      '<text x="'+p[0].toFixed(1)+'" y="'+(p[1]-3.5).toFixed(1)+'" font-size="6.5" font-weight="700" fill="'+se.color+'" text-anchor="middle">'+kf(rows[i].vals[se.k]||0)+'</text>'; });
+    // and the flat name at the line's end so the legend isn't the only key
     var lp=pts[pts.length-1];
-    s+='<text x="'+Math.min(W-2,lp[0]+4).toFixed(1)+'" y="'+(lp[1]-3).toFixed(1)+'" font-size="7.5" font-weight="700" fill="'+se.color+'">'+esc(se.lbl||se.k)+'</text>';
+    s+='<text x="'+Math.min(W-2,lp[0]+4).toFixed(1)+'" y="'+(lp[1]+3).toFixed(1)+'" font-size="7.5" font-weight="700" fill="'+se.color+'">'+esc(se.lbl||se.k)+'</text>';
   });
   s+=xlabels(rows.map(function(r){return r.m;}), cx); return s+'</svg>';
 }
@@ -268,14 +270,18 @@ function setRepMonth(m){ repMonth=m; render(); } function setRepMode(m){ repMode
 function setR_nb(r){ R.nb=r; render(); } function setNb(m){ nbMode=m; render(); }
 function setRevMode(m){ revMode=m; render(); } function setDMode(m){ dMode=m; render(); }
 function dToggle(f){ dOpen[f]=!dOpen[f]; render(); }
+var dMA='', dMB='prev';
+function setDMA(v){ dMA=v; render(); } function setDMB(v){ dMB=v; render(); }
+// the scope + currency controls, reusable inside any card (Sarah: "I don't want to keep going up and down")
+function scopeSeg(){ return '<div class="seg">'+['portfolio'].concat(airbnbFlats()).map(function(f){ return '<button class="'+(scope===f?'on':'')+'" onclick="setScope(\''+esc(f)+'\')">'+(f==='portfolio'?'Portfolio':esc(f))+'</button>'; }).join('')+'</div>'; }
+function curSeg(){ return '<div class="seg">'+['USD','EGP'].map(function(c){ return '<button class="'+(CUR===c?'on':'')+'" onclick="setCur(\''+c+'\')">'+c+'</button>'; }).join('')+'</div>'; }
 function monthBtnsFor(ms,cur,fn){ return seg([['all','All']].concat(ms.map(function(m){return [m, MON[+m.slice(5,7)-1]+' '+m.slice(2,4)];})),cur,fn); }
 function pickMonths(rng,sel){ var ms=monthsInRange(rng); return (sel!=='all'&&ms.indexOf(sel)>=0)?[sel]:ms; }
 
 /* ---------- render ---------- */
 function render(){
   if(!allMonths().length){ document.getElementById('app').innerHTML='<div class="card muted">No months yet.</div>'; return; }
-  var h='<div class="scope" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div class="seg">'+['portfolio'].concat(airbnbFlats()).map(function(f){ return '<button class="'+(scope===f?'on':'')+'" onclick="setScope(\''+esc(f)+'\')">'+(f==='portfolio'?'Portfolio':esc(f))+'</button>'; }).join('')+'</div>'+
-    '<div class="seg">'+['USD','EGP'].map(function(c){ return '<button class="'+(CUR===c?'on':'')+'" onclick="setCur(\''+c+'\')">'+c+'</button>'; }).join('')+'</div></div>';
+  var h='<div class="scope" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+scopeSeg()+curSeg()+'</div>';
   h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secTurnover()+secRepairs();
   document.getElementById('app').innerHTML=h;
 }
@@ -288,9 +294,14 @@ function sumEarn(field, rng){ var t=0; monthsInRange(rng).forEach(function(m){ v
    revenue − net, and the category split reconciles to that identity by construction). */
 function secDelta(){
   var all=allMonths(); if(all.length<2) return '';
-  var mNow=all[all.length-1];
-  var refMs=dMode==='prev'?[all[all.length-2]]:all.slice(Math.max(0,all.length-4),all.length-1);
-  var refLbl=dMode==='prev'?(MON[+refMs[0].slice(5,7)-1]+' '+refMs[0].slice(0,4)):('avg of '+refMs.length+' prior months');
+  /* analysis month + comparison are both CHOSEN (Sarah 2026-08-04): any month vs any month,
+     or vs its previous month / the 3-month average before it. */
+  var mNow=(dMA&&all.indexOf(dMA)>-1)?dMA:all[all.length-1];
+  var idx=all.indexOf(mNow); if(idx<1) return '';
+  var refMs, refLbl;
+  if(dMB==='avg3'){ refMs=all.slice(Math.max(0,idx-3),idx); refLbl='avg of '+refMs.length+' prior months'; }
+  else if(dMB!=='prev'&&all.indexOf(dMB)>-1&&dMB!==mNow){ refMs=[dMB]; refLbl=MON[+dMB.slice(5,7)-1]+' '+dMB.slice(0,4); }
+  else { refMs=[all[idx-1]]; refLbl=MON[+refMs[0].slice(5,7)-1]+' '+refMs[0].slice(0,4); }
   var fl=D.meta.flatsOrder.filter(function(f){ return D.pnl[f]; });   // 17B included — the table must cover everything
   function agg(f,msArr){ var n=0,rev=0,net=0; msArr.forEach(function(m){ var p=pnlOf(f,m); if(!p)return; n++;
       rev+=disp(p.revenue.total,m); net+=disp(p.net,m); });
@@ -303,8 +314,18 @@ function secDelta(){
   function dc(v,goodUp){ var good=goodUp?v>=0:v<=0;
     return '<span style="color:'+(Math.abs(v)<0.005?'var(--text3)':(good?'#2e7d32':'#c62828'))+';font-weight:700">'+(v>=0?'+':'')+money(v)+'</span>'; }
   var mLbl=MON[+mNow.slice(5,7)-1]+' '+mNow.slice(0,4);
+  function mOpt(m,sel){ return '<option value="'+m+'"'+(m===sel?' selected':'')+'>'+MON[+m.slice(5,7)-1]+' '+m.slice(0,4)+'</option>'; }
+  var monthsDesc=all.slice().reverse();
   var h='<div class="card"><h3>What changed<span class="rt">'+mLbl+' vs '+refLbl+' · '+CUR+'</span></h3>'+
-    '<div class="rowbtns">'+seg([['prev','vs previous month'],['avg3','vs 3-month average']],dMode,'setDMode')+'</div>'+
+    '<div class="rowbtns" style="align-items:center;gap:6px">'+
+      '<span class="muted" style="font-size:11px">Analyse</span>'+
+      '<select onchange="setDMA(this.value)" style="font-family:inherit;font-size:11.5px;border:1px solid var(--line,#ddd);border-radius:8px;padding:3px 6px">'+monthsDesc.map(function(m){return mOpt(m,mNow);}).join('')+'</select>'+
+      '<span class="muted" style="font-size:11px">vs</span>'+
+      '<select onchange="setDMB(this.value)" style="font-family:inherit;font-size:11.5px;border:1px solid var(--line,#ddd);border-radius:8px;padding:3px 6px">'+
+        '<option value="prev"'+(dMB==='prev'?' selected':'')+'>previous month</option>'+
+        '<option value="avg3"'+(dMB==='avg3'?' selected':'')+'>3-month average</option>'+
+        monthsDesc.filter(function(m){return m!==mNow;}).map(function(m){return mOpt(m,dMB);}).join('')+'</select>'+
+      curSeg()+'</div>'+
     '<table class="t"><thead><tr><th></th><th>Revenue</th><th>Δ</th><th>Costs</th><th>Δ</th><th>Net</th><th>Δ</th></tr></thead><tbody>';
   function rowH(r,bold,click){
     return '<tr'+(click?' onclick="dToggle(\''+esc(r.f)+'\')" style="cursor:pointer"':(bold?' style="font-weight:800"':''))+'>'+
@@ -379,6 +400,7 @@ function secCosts(){
   var catBtns=[['all','All']].concat(COST_ORDER.map(function(c){return [c[0],c[1]];}));
   var monBtns=[['all','All']].concat(ms.map(function(m){return [m, MON[+m.slice(5,7)-1]+' '+m.slice(2,4)];}));
   var h='<div class="card"><h3>What the money goes on<span class="rt">'+CUR+' costs by category</span></h3>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+   // duplicated here on purpose — no scrolling back up
     '<div class="rowbtns">'+seg(catBtns,costCat,'setCat')+'</div>'+
     '<div class="rowbtns">'+seg(monBtns,costMonth,'setCostMonth')+timeSeg('cost')+'</div>';
   if(costMonth!=='all'){                                   // single month → horizontal category breakdown
