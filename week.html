@@ -272,6 +272,7 @@ function coveringVisit(flat,ci){                  // the ON visit (either week) 
   var lists=[cleans||[],cleans2||[]], hit=null;
   lists.forEach(function(L){ L.forEach(function(c){
     if(!c.on||c.flat!==flat) return;
+    if(isStayClean(c)) return;                    // in-stay cleans can't set the lock (guest is in) — 2026-08-04
     var dd=day(c.date), diff=(ci-dd)/DAYMS;
     if(diff>=0&&diff<=2&&(!hit||dd>day(hit.date))) hit=c;
   }); });
@@ -359,8 +360,8 @@ function render(){
           if((c.cleaner||'amal')!=='amal') cell+='<div class="clbl" style="color:#b8860b;font-weight:800">'+(c.cleaner==='both'?'أمل+جيني':'جيني')+'</div>';
           if(c.type==='checkout') cell+='<div class="code">'+esc(c.code)+'</div>';
           else if(typeLbl) cell+='<div class="clbl">'+typeLbl+'</div>';
-          // §5.5: a visit that sets tomorrow's arrival code shows that code, not just the label
-          if(c.type!=='checkout'&&nextCheckIn(f,day(c.date))&&(nextCheckIn(f,day(c.date))-day(c.date))/DAYMS<=2)
+          // §5.5: a visit that sets tomorrow's arrival code shows that code — in-stay cleans never do
+          if(c.type!=='checkout'&&!isStayClean(c)&&nextCheckIn(f,day(c.date))&&(nextCheckIn(f,day(c.date))-day(c.date))/DAYMS<=2)
             cell+='<div class="code">'+esc(c.code)+'</div>'; }
         else cell+='<div class="ct soft">out</div>';
         if(seg.inn) cell+='<div class="gsub">in '+esc(short(seg.inn.guest))+' '+inTimeFor(f,ymd(days[seg.di]))+'</div>';
@@ -466,8 +467,11 @@ function waLine(c){
   var t='• شقة '+flatAr(c.flat)+': '+label+' الساعة '+hmAr(c.time);
   t+=' — النظافة: '+CLEANER_LBL[c.cleaner||'amal'];               // من ينظف — أمل / جيني / الاثنين (2026-08-03)
   if(c.type==='checkout') t+=' — كود الباب '+c.code;
-  // §5.5: any non-checkout visit that covers an arrival within 2 days carries the code change too
-  else{ var n=nextCheckIn(c.flat,day(c.date));
+  /* §5.5: a non-checkout visit covers an arrival within 2 days → it carries the code change —
+     but NEVER an in-stay clean (Sarah 2026-08-04): while a guest is in, the lock keeps THEIR
+     code, so a mid-stay/custom clean can't announce a future guest's code. The uncovered
+     arrival then gets its own standalone code-change line via waCodeFallback. */
+  else if(!isStayClean(c)){ var n=nextCheckIn(c.flat,day(c.date));
         if(n&&(n-day(c.date))/DAYMS<=2) t+=' — تغيير كود الباب إلى '+c.code; }
   if(c.inTime) t+=' — دخول ضيف الساعة '+hmAr(c.inTime);
   return t+'\n';
