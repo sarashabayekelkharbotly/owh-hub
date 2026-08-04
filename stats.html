@@ -98,7 +98,8 @@ function fmt(n){ n=+n||0; var a=Math.abs(n); return (n<0?'-':'')+(a>=1000?Math.r
 function kf(n){ n=+n||0; var a=Math.abs(n); return (n<0?'-':'')+(a>=1000?(a/1000).toFixed(a>=10000?0:1)+'k':String(Math.round(a))); }
 /* 2 decimals: these are dollars, and small per-flat figures were rounding away to "0". `fmt` stays
    whole-number — it also formats nights and counts. */
-function money(n){ n=+n||0; var s=(n<0?'-':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+function money(n){ n=+n||0; var dec=CUR==='USD'?2:0;   // EGP figures are big — decimals are noise (Sarah 2026-08-04)
+  var s=(n<0?'-':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});
   return CUR==='USD'?'$'+s:s+' EGP'; }
 function day(s){ return new Date(String(s).slice(0,10)+'T00:00:00'); }
 function airbnbFlats(){ return D.meta.flatsOrder.filter(function(f){ return D.targets.byFlat[f]; }); }
@@ -165,7 +166,7 @@ function lineChart(rows, opt){ opt=opt||{}; var col=opt.color||'var(--c-earn)', 
   var pts=rows.map(function(r,i){ return [cx(i), zeroY-plotH*Math.abs(r.value)/max]; });
   var d=pts.map(function(p,i){ return (i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1); }).join(' ');
   var s=open_()+'<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2.2"/>';
-  pts.forEach(function(p,i){ s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="2.3" fill="'+col+'"/>'+
+  pts.forEach(function(p,i){ s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="2.3" fill="'+col+'"><title>'+rows[i].m+': '+(opt.unit||'')+fmt(rows[i].value)+'</title></circle>'+
     '<text x="'+p[0].toFixed(1)+'" y="'+(p[1]-5).toFixed(1)+'" font-size="8" font-weight="700" fill="#333" text-anchor="middle">'+(opt.unit||'')+kf(rows[i].value)+'</text>'; });
   s+=xlabels(rows.map(function(r){return r.m;}), cx); return s+'</svg>';
 }
@@ -178,7 +179,7 @@ function lineMulti(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) re
     var pts=rows.map(function(r,i){ return [cx(i), zeroY-plotH*Math.abs(r.vals[se.k]||0)/max]; });
     var d=pts.map(function(p,i){ return (i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1); }).join(' ');
     s+='<path d="'+d+'" fill="none" stroke="'+se.color+'" stroke-width="1.9"/>';
-    pts.forEach(function(p,i){ s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="1.8" fill="'+se.color+'"/>'+
+    pts.forEach(function(p,i){ s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="1.8" fill="'+se.color+'"><title>'+esc(se.lbl||se.k)+' · '+rows[i].m+': '+fmt(rows[i].vals[se.k]||0)+'</title></circle>'+
       // value label per point, in the line's colour (Sarah 2026-08-04: unlabeled lines are unreadable)
       '<text x="'+p[0].toFixed(1)+'" y="'+(p[1]-3.5).toFixed(1)+'" font-size="6.5" font-weight="700" fill="'+se.color+'" text-anchor="middle">'+kf(rows[i].vals[se.k]||0)+'</text>'; });
     // and the flat name at the line's end so the legend isn't the only key
@@ -193,10 +194,10 @@ function stackedChart(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n)
   var s=open_(), cx=function(i){ return PAD+i*gw+gw/2; };
   rows.forEach(function(r,i){ var x=PAD+i*gw+(gw-bw)/2, y=zeroY, tot=0;
     series.forEach(function(se){ var v=Math.abs(r.vals[se.k]||0); tot+=v; if(v<=0)return; var bh=plotH*v/max; y-=bh;
-      s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+bh.toFixed(1)+'" fill="'+se.color+'"/>';
+      // <title> = native hover tooltip — small segments are unreadable without it (Sarah 2026-08-04)
+      s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+bh.toFixed(1)+'" fill="'+se.color+'"><title>'+esc(se.lbl||se.k)+' · '+r.m+': '+(opt.unit||'')+fmt(v)+'</title></rect>';
       if(bh>13)s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y+bh/2+3).toFixed(1)+'" font-size="6.5" fill="#fff" text-anchor="middle">'+kf(v)+'</text>'; });
-    if(series.length>1)s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y-3).toFixed(1)+'" font-size="8" font-weight="700" fill="#333" text-anchor="middle">'+(opt.unit||'')+kf(tot)+'</text>';
-    else s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y-3).toFixed(1)+'" font-size="8" font-weight="700" fill="#333" text-anchor="middle">'+(opt.unit||'')+kf(tot)+'</text>';
+    s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y-3).toFixed(1)+'" font-size="8" font-weight="700" fill="#333" text-anchor="middle">'+(opt.unit||'')+kf(tot)+'</text>';
   });
   s+=xlabels(rows.map(function(r){return r.m;}), cx); return s+'</svg>';
 }
@@ -206,7 +207,7 @@ function groupedChart(rows, groups, opt){ opt=opt||{}; var n=rows.length; if(!n)
   var s=open_(), cx=function(i){ return PAD+i*gw+gw/2; };
   rows.forEach(function(r,i){ var x0=PAD+i*gw+(gw-inner)/2;
     groups.forEach(function(g,gi){ var v=Math.abs(r.vals[g.k]||0), bh=plotH*v/max, x=x0+gi*bw, y=zeroY-bh;
-      s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+(bw*0.86).toFixed(1)+'" height="'+Math.max(0,bh).toFixed(1)+'" fill="'+g.color+'"/>';
+      s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+(bw*0.86).toFixed(1)+'" height="'+Math.max(0,bh).toFixed(1)+'" fill="'+g.color+'"><title>'+esc(g.lbl||g.k)+' · '+r.m+': '+fmt(v)+'</title></rect>';
       if(v>0)s+='<text x="'+(x+bw*0.43).toFixed(1)+'" y="'+(y-2).toFixed(1)+'" font-size="6.5" fill="#555" text-anchor="middle">'+kf(v)+'</text>'; });
   });
   s+=xlabels(rows.map(function(r){return r.m;}), cx); return s+'</svg>';
@@ -217,7 +218,7 @@ function occAdrChart(occRows, adrRows){ var n=occRows.length; if(!n) return '<di
   var s=open_(), cx=function(i){ return PAD+i*gw+gw/2; };
   // ADR = bars, label centered inside the bar
   adrRows.forEach(function(r,i){ var bh=plotH*r.value/adrMax, x=PAD+i*gw+(gw-bw)/2, y=zeroY-bh;
-    s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,bh).toFixed(1)+'" rx="2" fill="var(--c-occ)"/>';
+    s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,bh).toFixed(1)+'" rx="2" fill="var(--c-occ)"><title>ADR '+r.m+': '+curU()+fmt(r.value)+' · occupancy '+Math.round(occRows[i].value)+'%</title></rect>';
     if(r.value>0){ var lbl=curU()+fmt(r.value);
       if(bh>=15) s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y+bh/2+3).toFixed(1)+'" font-size="8" font-weight="700" fill="#fff" text-anchor="middle">'+lbl+'</text>';
       else s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y-3).toFixed(1)+'" font-size="8" font-weight="700" fill="#4a6a78" text-anchor="middle">'+lbl+'</text>'; } });
@@ -236,7 +237,7 @@ function stackedCat(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) r
   var s=open_();
   rows.forEach(function(r,i){ var x=PAD+i*gw+(gw-bw)/2, y=zeroY, tot=0;
     series.forEach(function(se){ var v=Math.abs(r.vals[se.k]||0); tot+=v; if(v<=0)return; var bh=plotH*v/max; y-=bh;
-      s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+bh.toFixed(1)+'" fill="'+se.color+'"/>';
+      s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+bh.toFixed(1)+'" fill="'+se.color+'"><title>'+esc(se.label||se.k)+' · '+esc(r.label)+': '+(opt.unit||'')+fmt(v)+'</title></rect>';
       if(bh>13)s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y+bh/2+3).toFixed(1)+'" font-size="6.5" fill="#fff" text-anchor="middle">'+(opt.unit||'')+kf(v)+'</text>'; });
     s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y-3).toFixed(1)+'" font-size="8" font-weight="700" fill="#333" text-anchor="middle">'+(opt.unit||'')+kf(tot)+'</text>';
     s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(H-6)+'" font-size="8.5" fill="#555" text-anchor="middle">'+esc(r.label)+'</text>';
@@ -250,7 +251,7 @@ function hbars(rows, opt){ opt=opt||{}; var fmtV=opt.fmt||fmt, unit=opt.unit||''
   var s='<svg viewBox="0 0 '+ww+' '+(rows.length*rh+6)+'" preserveAspectRatio="xMinYMid meet">';
   rows.forEach(function(r,i){ var y=i*rh+4, w=Math.round(barW*Math.abs(r.value)/max);
     s+='<text x="0" y="'+(y+13)+'" font-size="10.5" fill="#333">'+esc(r.label)+'</text>'+
-       '<rect x="'+lblW+'" y="'+(y+3)+'" width="'+Math.max(1,w)+'" height="13" rx="3" fill="'+(r.color||'var(--c-cost)')+'"/>'+
+       '<rect x="'+lblW+'" y="'+(y+3)+'" width="'+Math.max(1,w)+'" height="13" rx="3" fill="'+(r.color||'var(--c-cost)')+'"><title>'+esc(r.label)+': '+unit+fmtV(r.value)+'</title></rect>'+
        '<text x="'+(lblW+w+5)+'" y="'+(y+13)+'" font-size="9.5" font-weight="700" fill="#333">'+unit+fmtV(r.value)+'</text>'; });
   return s+'</svg>';
 }
@@ -374,7 +375,7 @@ function secRevenue(){
   var ms=monthsInRange(R.rev);
   function serOf(p){ return revSeries==='earnings'?p.revenue.earnings:revSeries==='other'?p.revenue.other:revSeries==='total'?p.revenue.total:revSeries==='net'?p.net:(p.revenue.total-p.net); }
   var h='<div class="card"><h3>Revenue<span class="rt">'+CUR+' · '+money(sumEarn(revSeries,R.rev))+'</span></h3>'+
-    '<div class="rowbtns">'+seg([['earnings','Earnings'],['other','Other'],['total','Total'],['net','Net'],['costs','Costs']],revSeries,'setRev')+timeSeg('rev')+'</div>';
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div><div class="rowbtns">'+seg([['earnings','Earnings'],['other','Other'],['total','Total'],['net','Net'],['costs','Costs']],revSeries,'setRev')+timeSeg('rev')+'</div>';
   /* by-flat views (Sarah 2026-08-04): LINES to compare trends (the one bending down names itself),
      STACKED for composition. Portfolio scope only — a single flat has nothing to split. */
   if(scope==='portfolio') h+='<div class="rowbtns">'+seg([['total','Total'],['flats','By flat'],['stack','Stacked']],revMode,'setRevMode')+'</div>';
@@ -420,7 +421,7 @@ function secAttribution(){
   var rows=ms.map(function(m){ var k=0,s=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(p&&p.attribution){ k+=p.attribution.khaled; s+=p.attribution.sarah; } }); return {m:m,vals:{khaled:disp(k,m),sarah:disp(s,m)}}; });
   var tk=0,ts=0; rows.forEach(function(r){ tk+=r.vals.khaled; ts+=r.vals.sarah; });
   return '<div class="card"><h3>Internal attribution<span class="rt">Khaled '+money(tk)+' · Sarah '+money(ts)+'</span></h3>'+
-    '<div class="rowbtns">'+timeSeg('attr')+'</div>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div><div class="rowbtns">'+timeSeg('attr')+'</div>'+
     stackedChart(rows,[{k:'khaled',color:'var(--c-khaled)'},{k:'sarah',color:'var(--c-sarah)'}],{unit:curU()})+
     '<div class="legend"><span><i style="background:var(--c-khaled)"></i>Khaled</span><span><i style="background:var(--c-sarah)"></i>Sarah</span></div></div>';
 }
@@ -430,7 +431,7 @@ function secOccAdr(){
   var occ=ms.map(function(m){ var o=0,a=0; scopeFlats().forEach(function(f){ a+=daysIn(m); rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))o+=overlapNights(s,m); }); }); return {m:m,value:a>0?o/a*100:0}; });
   var adr=ms.map(function(m){ var e=0,n=0; scopeFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat===f&&isLive(s)&&monthOf(s.checkOut)===m){ e+=earningsOf(s); n+=s.nights||0; } }); }); return {m:m,value:disp(n>0?e/n:0,m)}; });
   return '<div class="card"><h3>Occupancy &amp; ADR</h3><div class="csub">bars = ADR (earnings ÷ nights, '+CUR+') · line = occupancy %</div>'+
-    '<div class="rowbtns">'+timeSeg('occ')+'</div>'+occAdrChart(occ,adr)+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div><div class="rowbtns">'+timeSeg('occ')+'</div>'+occAdrChart(occ,adr)+
     '<div class="legend"><span><i style="background:var(--c-occ)"></i>ADR '+CUR+'</span><span><i style="background:var(--red)"></i>Occupancy %</span></div></div>';
 }
 /* 4b · Booked / blocked / free nights — with a value toggle (Sarah's request 2026-07-24, built
@@ -461,6 +462,7 @@ function secNights(){
   });
   var NB=[{k:'booked',color:'var(--g)'},{k:'blocked',color:'#b58a5a'},{k:'free',color:'#d9c7c7'}];
   return '<div class="card"><h3>Booked · blocked · free nights<span class="rt">'+(nbMode==='nights'?'nights':'value '+CUR+' — free/blocked at that month\'s ADR')+'</span></h3>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+seg([['nights','Nights'],['value','Value']],nbMode,'setNb')+timeSeg('nb')+'</div>'+
     stackedChart(rows,NB,{unit:nbMode==='value'?curU():''})+
     '<div class="legend"><span><i style="background:var(--g)"></i>booked</span><span><i style="background:#b58a5a"></i>blocked</span><span><i style="background:#d9c7c7"></i>free</span></div></div>';
@@ -470,14 +472,16 @@ function secNights(){
 // laundry cost + supplies allocation). One row per drop-off, so the count IS the submission count.
 function dcCount(f,m){ var n=0; (D.tx||[]).forEach(function(t){ if(t.flat===f&&t.ym===m&&/laundry/i.test(t.cat))n++; }); return n; }
 function secVolumes(){
+  // nights dropped (Sarah 2026-08-04) — they live on the occupancy chart; here they dwarfed the counts
   var ms=monthsInRange(R.vol), merged=mergeStays(rawStays());
-  var rows=ms.map(function(m){ var nights=0,stays=0,dc=0; scopeFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))nights+=overlapNights(s,m); });
-    merged.forEach(function(s){ if(s.flat===f&&monthOf(s.checkOut)===m)stays++; }); dc+=dcCount(f,m); }); return {m:m,vals:{nights:nights,stays:stays,dc:dc}}; });
+  var rows=ms.map(function(m){ var stays=0,dc=0; scopeFlats().forEach(function(f){
+    merged.forEach(function(s){ if(s.flat===f&&monthOf(s.checkOut)===m)stays++; }); dc+=dcCount(f,m); }); return {m:m,vals:{stays:stays,dc:dc}}; });
   var dcTot=rows.reduce(function(a,r){return a+r.vals.dc;},0);
-  return '<div class="card"><h3>Nights · stays · dry-clean<span class="rt">stays = merged · '+dcTot+' submissions</span></h3>'+
+  return '<div class="card"><h3>Stays · dry-clean submissions<span class="rt">stays = merged · '+dcTot+' submissions</span></h3>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+timeSeg('vol')+'</div>'+
-    groupedChart(rows,[{k:'nights',color:'var(--blue)'},{k:'stays',color:'var(--red)'},{k:'dc',color:'var(--g)'}],{})+
-    '<div class="legend"><span><i style="background:var(--blue)"></i>nights</span><span><i style="background:var(--red)"></i>stays</span><span><i style="background:var(--g)"></i>dry-clean submissions</span></div></div>';
+    groupedChart(rows,[{k:'stays',lbl:'stays',color:'var(--red)'},{k:'dc',lbl:'submissions',color:'var(--g)'}],{})+
+    '<div class="legend"><span><i style="background:var(--red)"></i>stays</span><span><i style="background:var(--g)"></i>dry-clean submissions</span></div></div>';
 }
 /* 6 · Channel mix — nights / revenue toggle, stacked per-month */
 function chColor(g){ return g==='Airbnb'?'var(--ch-airbnb)':g==='Booking.com'?'var(--ch-booking)':g==='Direct'?'var(--ch-direct)':g==='Test'?'var(--ch-test)':'var(--soft)'; }
@@ -487,6 +491,7 @@ function secChannel(){
     if(chanMode==='nights'){ var n=overlapNights(s,m); if(n&&(g.group in vals))vals[g.group]+=n; }
     else if(monthOf(s.checkOut)===m&&(g.group in vals)) vals[g.group]+=disp(earningsOf(s),m); }); }); return {m:m,vals:vals}; });
   return '<div class="card"><h3>Channel mix<span class="rt">'+(chanMode==='nights'?'nights':'revenue '+CUR)+' by channel</span></h3>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+seg([['nights','Nights'],['revenue','Revenue']],chanMode,'setChan')+timeSeg('chan')+'</div>'+
     stackedChart(rows,groups.map(function(g){return {k:g,color:chColor(g)};}),{unit:chanMode==='revenue'?curU():''})+
     '<div class="legend">'+groups.map(function(g){return '<span><i style="background:'+chColor(g)+'"></i>'+g+'</span>';}).join('')+'</div></div>';
@@ -500,6 +505,7 @@ function secPay(){
   var rows=ms.map(function(m){ var vals={}; accs.forEach(function(a){vals[a]=0;}); scopeFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s)||!channelGroup(s.portal).inRev)return;
     if(payMode==='money'){ if(monthOf(s.checkOut)===m)vals[accountOf(s)]+=disp(earningsOf(s),m); } else { vals[accountOf(s)]+=overlapNights(s,m); } }); }); return {m:m,vals:vals}; });
   return '<div class="card"><h3>Money by account<span class="rt">'+(payMode==='money'?'revenue '+CUR:'nights')+' by account · Test excluded</span></h3>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+seg([['money','Revenue'],['nights','Nights']],payMode,'setPay')+timeSeg('pay')+'</div>'+
     stackedChart(rows,accs.map(function(a){return {k:a,color:PC[a]||'#9aa7b5'};}),{unit:payMode==='money'?curU():''})+
     '<div class="legend">'+accs.map(function(a){return '<span><i style="background:'+(PC[a]||'#9aa7b5')+'"></i>'+esc(a)+'</span>';}).join('')+'</div></div>';
@@ -508,14 +514,22 @@ function secPay(){
 function secAdrTable(){
   var ms=pickMonths(R.adr,adrMonth), chans=['Airbnb','Booking.com','Direct'];
   var h='<div class="card"><h3>ADR per channel, per flat<span class="rt">'+CUR+(adrMonth!=='all'?' · '+MON[+adrMonth.slice(5,7)-1]+' '+adrMonth.slice(0,4):'')+'</span></h3>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.adr),adrMonth,'setAdrMonth')+timeSeg('adr')+'</div>'+
-    '<table class="t"><thead><tr><th>Flat</th>'+chans.map(function(c){return '<th>'+c+'</th>';}).join('')+'<th>Spread</th></tr></thead><tbody>';
-  airbnbFlats().forEach(function(f){ var e={},n={}; rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; if(monthOf(s.checkOut)<ms[0]||monthOf(s.checkOut)>ms[ms.length-1])return;
-    var g=channelGroup(s.portal).group; e[g]=(e[g]||0)+disp(earningsOf(s),monthOf(s.checkOut)); n[g]=(n[g]||0)+(s.nights||0); });
+    '<table class="t"><thead><tr><th>Flat</th>'+chans.map(function(c){return '<th>'+c+'</th>';}).join('')+'<th>All</th><th>Spread</th></tr></thead><tbody>';
+  var gE={},gN={},gTE=0,gTN=0;
+  scopeFlats().forEach(function(f){ var e={},n={},tE=0,tN=0; rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; if(monthOf(s.checkOut)<ms[0]||monthOf(s.checkOut)>ms[ms.length-1])return;
+    var g=channelGroup(s.portal).group; var ev=disp(earningsOf(s),monthOf(s.checkOut));
+    e[g]=(e[g]||0)+ev; n[g]=(n[g]||0)+(s.nights||0); tE+=ev; tN+=s.nights||0;
+    gE[g]=(gE[g]||0)+ev; gN[g]=(gN[g]||0)+(s.nights||0); gTE+=ev; gTN+=s.nights||0; });
     var adr={},vals=[]; chans.forEach(function(c){ var a=n[c]>0?e[c]/n[c]:0; adr[c]=a; if(a>0)vals.push(a); });
     var spread=vals.length>1?Math.round((Math.min.apply(null,vals)-Math.max.apply(null,vals))/Math.max.apply(null,vals)*100):0;
-    h+='<tr><td>'+esc(f)+'</td>'+chans.map(function(c){return '<td>'+(adr[c]?fmt(adr[c]):'—')+'</td>';}).join('')+'<td class="'+(spread<0?'neg':'')+'">'+(vals.length>1?spread+'%':'—')+'</td></tr>'; });
-  return h+'</tbody></table><div class="note">Spread = how far the weakest channel sits below the strongest.</div></div>';
+    h+='<tr><td>'+esc(f)+'</td>'+chans.map(function(c){return '<td>'+(adr[c]?fmt(adr[c]):'—')+'</td>';}).join('')+
+       '<td style="font-weight:700">'+(tN>0?fmt(tE/tN):'—')+'</td><td class="'+(spread<0?'neg':'')+'">'+(vals.length>1?spread+'%':'—')+'</td></tr>'; });
+  // all-flats row — nights-weighted blend, so it reconciles with the rows above
+  h+='<tr style="font-weight:800"><td>All flats</td>'+chans.map(function(c){return '<td>'+(gN[c]>0?fmt(gE[c]/gN[c]):'—')+'</td>';}).join('')+
+     '<td>'+(gTN>0?fmt(gTE/gTN):'—')+'</td><td>—</td></tr>';
+  return h+'</tbody></table><div class="note">All = the flat\'s blended ADR across every channel (total earnings ÷ total nights — nights-weighted, not a simple average). Spread = (weakest − strongest) ÷ strongest: −20% means the weakest channel earns 20% less per night than the strongest.</div></div>';
 }
 /* 9 · Turnover economics — per DRY-CLEAN SUBMISSION (Sarah's request 2026-07-24, built 2026-08-04):
    a 46-night stay with weekly cleans produces several submissions but only one checkout, so
@@ -524,43 +538,57 @@ function secAdrTable(){
 function secTurnover(){
   var ms=pickMonths(R.turn,turnMonth), merged=mergeStays(rawStays());
   var h='<div class="card"><h3>Turnover economics<span class="rt">per dry-clean submission'+(turnMonth!=='all'?' · '+MON[+turnMonth.slice(5,7)-1]+' '+turnMonth.slice(0,4):'')+'</span></h3>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.turn),turnMonth,'setTurnMonth')+timeSeg('turn')+'</div>'+
     '<table class="t"><thead><tr><th>Flat</th><th>Stays</th><th>Subs</th><th>Laundry/sub</th><th>Cleaning/sub</th><th>Turnover/sub</th><th>Turnover/night</th></tr></thead><tbody>';
-  airbnbFlats().forEach(function(f){ var stays=merged.filter(function(s){ return s.flat===f&&monthOf(s.checkOut)>=ms[0]&&monthOf(s.checkOut)<=ms[ms.length-1]; });
-    var nS=stays.length, nights=stays.reduce(function(a,s){return a+(s.nights||0);},0), laun=0,clean=0,subs=0;
-    ms.forEach(function(m){ var c=costsUSD(f,m); laun+=disp(c.by['laundry']||0,m); clean+=disp((c.by['cleaning-labor']||0)+(c.by['cleaning']||0),m); subs+=dcCount(f,m); });
+  /* Turnover/night divides by OCCUPIED nights in the range (Sarah 2026-08-04) — the old per-stay
+     nights (checkout-month attribution) went to zero in months a long stay merely spanned, which
+     read as "no cost" in a fully occupied month. Stays stays checkout-based (that's what a stay
+     count means); the night denominator is occupancy-based. */
+  var T={nS:0,subs:0,laun:0,clean:0,nights:0};
+  scopeFlats().forEach(function(f){
+    var stays=merged.filter(function(s){ return s.flat===f&&monthOf(s.checkOut)>=ms[0]&&monthOf(s.checkOut)<=ms[ms.length-1]; });
+    var nS=stays.length, laun=0,clean=0,subs=0,nights=0;
+    ms.forEach(function(m){ var c=costsUSD(f,m); laun+=disp(c.by['laundry']||0,m); clean+=disp((c.by['cleaning-labor']||0)+(c.by['cleaning']||0),m); subs+=dcCount(f,m);
+      rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))nights+=overlapNights(s,m); }); });
+    T.nS+=nS; T.subs+=subs; T.laun+=laun; T.clean+=clean; T.nights+=nights;
     var lps=subs>0?laun/subs:0,cps=subs>0?clean/subs:0,tps=lps+cps,tpn=nights>0?(laun+clean)/nights:0;
     h+='<tr><td>'+esc(f)+'</td><td>'+(nS||'—')+'</td><td>'+(subs||'—')+'</td><td>'+money(lps)+'</td><td>'+money(cps)+'</td><td>'+money(tps)+'</td><td>'+money(tpn)+'</td></tr>'; });
-  return h+'</tbody></table><div class="note">A submission = one dry-clean drop-off (mid-stay cleans included) — the real turnover unit. Turnover/night spreads the same cost over occupied nights.</div></div>';
+  h+='<tr style="font-weight:800"><td>Portfolio</td><td>'+(T.nS||'—')+'</td><td>'+(T.subs||'—')+'</td>'+
+     '<td>'+money(T.subs>0?T.laun/T.subs:0)+'</td><td>'+money(T.subs>0?T.clean/T.subs:0)+'</td>'+
+     '<td>'+money(T.subs>0?(T.laun+T.clean)/T.subs:0)+'</td><td>'+money(T.nights>0?(T.laun+T.clean)/T.nights:0)+'</td></tr>';
+  return h+'</tbody></table><div class="note">A submission = one dry-clean drop-off (mid-stay cleans included) — the real turnover unit. Turnover/night = (laundry + cleaning in range) ÷ <b>occupied</b> nights, so a month inside a long stay shows its true nightly cost. Portfolio row = the same math over all flats\' sums.</div></div>';
 }
 /* 10 · Repairs — stacked by flat × trade category (or by category), month + time buttons */
 function tradeLabel(t){ var m=TRADES.filter(function(x){return x[0]===t;})[0]; return m?m[1]:(t||'other'); }
 function secRepairs(){
   var ms=pickMonths(R.rep,repMonth);
-  var closed=(D.repairs||[]).filter(function(r){ return r.status==='closed'&&r.closedDate&&ms.indexOf(monthOf(r.closedDate))>=0; });
+  var closed=(D.repairs||[]).filter(function(r){ return r.status==='closed'&&r.closedDate&&ms.indexOf(monthOf(r.closedDate))>=0&&(scope==='portfolio'||r.flat===scope); });
   // repairs START in EGP, so the toggle converts them UP: each repair at its own closed-month rate
   function repVal(r){ return CUR==='EGP'?(r.cost||0):(r.cost||0)/rateFor(monthOf(r.closedDate)); }
   var tot=closed.reduce(function(a,r){return a+repVal(r);},0);
-  var series=TRADES.map(function(t){ return {k:t[0],label:t[1],color:t[2]}; });
-  var chart;
+  /* time on the x-axis like every other chart (Sarah 2026-08-04): monthly bars by closed date,
+     stacked by TRADE or by FLAT — the toggle picks the stacking dimension. */
+  var series = repMode==='cat'
+    ? TRADES.map(function(t){ return {k:t[0],lbl:t[1],color:t[2]}; })
+    : scopeFlats().concat(scope==='portfolio'?['17B']:[]).map(function(f){ return {k:f,lbl:f==='Zayed 2000'?'Zayed':f,color:FLAT_COLORS[f]||'#999'}; });
+  var chart, legend='';
   if(!closed.length){
     chart='<div class="muted">No closed repairs in range — log WeShare-backed ones in the Repairs tab (Status=closed + Closed date + Cost).</div>';
-  } else if(repMode==='cat'){                                   // bars = trade category
-    var byCat={}; closed.forEach(function(r){ byCat[r.trade]=(byCat[r.trade]||0)+repVal(r); });
-    var hrows=TRADES.map(function(t){ return {label:t[1],value:byCat[t[0]]||0,color:t[2]}; });
-    chart=hbars(hrows,{fmt:function(v){return fmt(v)+' '+(CUR==='USD'?'USD':'EGP');}});
-  } else {                                                      // bars = flat, stacked by trade
-    var rows=airbnbFlats().concat(['17B']).map(function(f){ var vals={},nn=0; series.forEach(function(se){vals[se.k]=0;});
-      closed.forEach(function(r){ if(r.flat===f){ vals[r.trade]=(vals[r.trade]||0)+repVal(r); nn++; } });
-      return {label:f,vals:vals,n:nn}; }).filter(function(row){ return row.n>0; });
-    chart=stackedCat(rows,series,{unit:''});
+  } else {
+    var rows=ms.map(function(m){ var vals={}; series.forEach(function(se){vals[se.k]=0;});
+      closed.forEach(function(r){ if(monthOf(r.closedDate)!==m)return;
+        var k=repMode==='cat'?r.trade:r.flat; if(vals[k]!==undefined)vals[k]+=repVal(r); });
+      return {m:m,vals:vals}; });
+    chart=stackedChart(rows,series,{unit:''});
+    legend='<div class="legend">'+series.map(function(se){return '<span><i style="background:'+se.color+'"></i>'+esc(se.lbl)+'</span>';}).join('')+'</div>';
   }
   return '<div class="card"><h3>Repairs<span class="rt">'+closed.length+' closed · '+fmt(tot)+' '+(CUR==='USD'?'USD':'EGP')+(repMonth!=='all'?' · '+MON[+repMonth.slice(5,7)-1]+' '+repMonth.slice(0,4):'')+'</span></h3>'+
-    '<div class="csub">'+(CUR==='USD'?'USD':'EGP')+' by flat &amp; trade — analysis of Maintenance already in the P&amp;L, not added to totals</div>'+
-    '<div class="rowbtns">'+seg([['flat','By flat'],['cat','By category']],repMode,'setRepMode')+'</div>'+
+    '<div class="csub">'+(CUR==='USD'?'USD':'EGP')+' per month by closed date — analysis of Maintenance already in the P&amp;L, not added to totals</div>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
+    '<div class="rowbtns">'+seg([['cat','Stack by trade'],['flat','Stack by flat']],repMode,'setRepMode')+'</div>'+
     '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.rep),repMonth,'setRepMonth')+timeSeg('rep')+'</div>'+
-    chart+
-    (closed.length&&repMode==='flat'?'<div class="legend">'+TRADES.map(function(t){return '<span><i style="background:'+t[2]+'"></i>'+t[1]+'</span>';}).join('')+'</div>':'')+'</div>';
+    chart+legend+'</div>';
 }
 
 AUTH_ON_LOGIN = boot; if (authGuard()) boot();   // signed in → load now; otherwise the sign-in form loads it
