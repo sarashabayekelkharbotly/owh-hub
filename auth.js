@@ -56,7 +56,7 @@ function api(fn, extra) {
       var c = JSON.parse(sessionStorage.getItem(pgaKey(body)) || 'null');
       if (c && Date.now() - c.t < PGA_TTL) return Promise.resolve(c.j);
     } catch (e) {}
-  } else if (fn !== 'props_alerts' && fn !== 'validate' && fn.indexOf('_draft') < 0) {   // drafts never change the payload
+  } else if (fn !== 'props_alerts' && fn !== 'validate' && fn.indexOf('_draft') < 0 && fn.indexOf('phone_bill') < 0) {   // drafts + phone bills live outside the payload
     // a write or a sync — what the screens show next must be rebuilt, not replayed
     try { for (var i = sessionStorage.length - 1; i >= 0; i--) { var sk = sessionStorage.key(i); if (sk && sk.indexOf('owh_pga|') === 0) sessionStorage.removeItem(sk); } } catch (e) {}
   }
