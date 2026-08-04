@@ -206,39 +206,44 @@ function rateChip(c){
   return '<span class="fb '+(c.rateSource==='guest'?'ok':'hi')+'" title="how the GB/day rate was derived">'+(m[c.rateSource]||'')+'</span>';
 }
 function paceBadge(ratio){ return ratio<=1.0?{cls:'ok',txt:'fair'}:(ratio<=1.3?{cls:'hi',txt:'high'}:{cls:'ov',txt:'over'}); }
-/* per-guest usage: attribute consumption between consecutive readings to whoever occupied the flat then */
+/* per-guest fairness — WHOLE STAY, across cycles (Sarah 2026-08-04): a cycle boundary is a billing
+   artefact, not a behavior reset — a guest who killed one bundle and started on the next must show
+   the SUM. consumed = the netHistory attribution across every bundle; fair = Σ per stay-day of
+   (that day's bundle quota ÷ 30). Listed: stays touching the current cycle (the actionable ones),
+   worst-first. Vacant idle burn already shows in the card header as the trickle rate. */
 function guestUsage(flat){
   var b=curBundle(flat); if(!b) return [];
   var cs=pdt(b.cycleStart); if(!cs) return [];
-  var ce=new Date(cs.getTime()+30*DAYMS);                      // 30-day cycle
-  var cycleDays=(ce-cs)/DAYMS, fairDaily=cycleDays>0?b.quota/cycleDays:0, asOf=day(D.meta.asOf);
-  var reads=(D.internet.readings||[]).filter(function(x){ var d=pdt(x.at); return x.flat===flat&&d&&d>=cs; })
-    .map(function(x){ return {at:pdt(x.at), remaining:x.remaining}; }).sort(function(a,b){ return a.at-b.at; });
-  var pts=[{at:cs,remaining:b.quota}].concat(reads), by={};
-  for(var i=0;i<pts.length-1;i++){
-    var a=pts[i], z=pts[i+1], delta=Math.max(0,a.remaining-z.remaining); if(delta<=0)continue;
-    var startMs=a.at.getTime(), endMs=z.at.getTime(), total=endMs-startMs; if(total<=0)continue;
-    // split the delta across the calendar days in the interval, by whoever occupied each day (proportional)
-    var d0=new Date(a.at); d0.setHours(0,0,0,0);
-    for(var t=d0.getTime(); t<endMs; t+=DAYMS){
-      var segStart=Math.max(startMs,t), segEnd=Math.min(endMs,t+DAYMS); if(segEnd<=segStart)continue;
-      var st=curStay(flat, new Date(t+DAYMS/2)), key=st?st.id:'__v';   // STAYS are pre-merged (contiguous same-guest = one stay)
-      if(!by[key])by[key]={stay:st,consumed:0};
-      by[key].consumed += delta*(segEnd-segStart)/total;
+  var asOf=day(D.meta.asOf), ce=new Date(cs.getTime()+30*DAYMS), H=netHistory();
+  var bs=(D.internet.bundles||[]).filter(function(x){return x.flat===flat;})
+    .map(function(x){return {q:x.quota,cs:pdt(x.cycleStart)};}).filter(function(x){return x.cs;})
+    .sort(function(a,z){return a.cs-z.cs;});
+  function fairFor(d0,d1){                       // Σ quota/30 over each day of [d0,d1)
+    var tot=0;
+    for(var t=d0.getTime(); t<d1.getTime(); t+=DAYMS){
+      for(var i=bs.length-1;i>=0;i--){ if(bs[i].cs<=new Date(t+DAYMS/2)){ tot+=bs[i].q/30; break; } }
     }
+    return tot;
   }
   var out=[];
-  for(var k in by){ var u=by[k], st=u.stay, nights=0;
-    if(st){ var s0=Math.max(day(st.checkIn),cs), s1=Math.min(day(st.checkOut), asOf<ce?asOf:ce); nights=Math.max(0,Math.round((s1-s0)/DAYMS)); }
-    out.push({stay:st, guest:st?st.guest:'(vacant / between guests)', nights:nights, consumed:u.consumed, fair:fairDaily*nights, over:u.consumed-fairDaily*nights});
-  }
-  return out.filter(function(u){ return u.consumed>0.1; }).sort(function(a,b){ return b.over-a.over; });
+  STAYS.forEach(function(st){
+    if(st.flat!==flat) return;
+    var ci=day(st.checkIn), co=day(st.checkOut);
+    if(co<=cs||ci>=ce) return;                   // not touching the current cycle
+    var g=H.guest[flat+'|'+st.id];
+    if(!g||g.gb<=0.1) return;
+    var upto=asOf<co?asOf:co;
+    var nights=Math.max(0,Math.round((upto-ci)/DAYMS));
+    var fair=fairFor(ci,upto);
+    out.push({stay:st, guest:st.guest, nights:nights, consumed:g.gb, fair:fair, over:g.gb-fair});
+  });
+  return out.sort(function(a,z){ return z.over-a.over; });
 }
 
 /* ---------- fetch ---------- */
 function boot(){ fetchOnce().then(onData).catch(function(){ setTimeout(function(){ fetchOnce().then(onData).catch(showErr); },800); }); }
 function fetchOnce(){ return api('props_get_all',{scope:'live'}).then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
-function onData(j){ D=j.data; D.internet=D.internet||{bundles:[],readings:[]}; STAYS=mergeStays(D.stays); render(); document.getElementById('rib').innerHTML='data <b>'+new Date().toTimeString().slice(0,5)+'</b>'; }
+function onData(j){ D=j.data; D.internet=D.internet||{bundles:[],readings:[]}; STAYS=mergeStays(D.stays); render(); loadPhones(); document.getElementById('rib').innerHTML='data <b>'+new Date().toTimeString().slice(0,5)+'</b>'; }
 function showErr(e){ document.getElementById('app').innerHTML='<div class="err"><b>Couldn\'t load.</b> '+esc(e.message||e)+'</div>'; }
 
 function render(){
@@ -276,10 +281,10 @@ function render(){
         var pb=paceBadge(c.pace);
         h+='<div class="pace"><span class="fb '+pb.cls+'">'+pb.txt+'</span> pace '+fmtGB(c.rate)+' GB/guest-day vs fair '+fmtGB(c.fairDaily)+' ('+(Math.round(c.pace*10)/10)+'×) '+rateChip(c)+'</div>';
         h+='<div class="foot">Last reading '+fmtGB(c.remaining)+' GB at '+(c.at?dmon(c.at)+' '+c.at.toTimeString().slice(0,5):'')+' · fair = quota ÷ '+Math.round(c.cycleDays)+' cycle-days</div>';
-        // per-guest fairness — who is over their share this cycle
+        // per-guest fairness — WHOLE stay, across cycles (renewals don't reset a guest's ledger)
         var usage=guestUsage(f);
         if(usage.length){
-          h+='<div class="usage"><div class="uh">This cycle · consumed vs fair share</div>';
+          h+='<div class="usage"><div class="uh">Consumed vs fair share — whole stay, across cycles</div>';
           usage.forEach(function(u){
             if(!u.stay){ h+='<div class="ur"><span class="un">between guests (vacant)</span><span class="um" style="color:var(--soft)">'+fmtGB(u.consumed)+' GB idle</span></div>'; return; }
             var ub=paceBadge(u.fair>0?u.consumed/u.fair:9);
@@ -317,8 +322,42 @@ function render(){
        '</div></details>';
     h+='</div>';
   });
+  /* 📞 landline — all four quarterly deadlines in one place, editable (Sarah 2026-08-04) */
+  h+='<div class="card"><h3>📞 Landline — quarterly renewals<span class="rt">reminders: 2 days before + due day</span></h3><div id="phones"><span class="muted">Loading…</span></div>'+
+     '<div class="foot">Dates auto-advance 3 months after each due day. Payment = a WeShare cash entry (TV/Phone/Internet) — the P&amp;L keeps its monthly accrual, so editing the price here only changes the reminder, not the books.</div></div>';
   h+='<div class="card"><div class="foot">Remaining GB is <b>read off the WE app</b> — never a GB-used subtraction. Pace = GB per <b>occupied</b> day (the current guest\'s measured rate carries across renewals; vacant days burn only the idle trickle). <b>WeShare captures the cash</b> (a new recharge → pending row, payer editable at confirm) and <b>the P&amp;L captures the bundle price</b> via the sync mirror — never both. One day before projected depletion, the Hub bot messages Sarah &amp; Khaled.</div></div>';
   document.getElementById('app').innerHTML=h;
+  renderPhones();
+}
+
+/* ---------- 📞 landline panel: read/write the Script-Property maps via the two uncached endpoints */
+var PHONES=null;
+function loadPhones(){
+  api('props_phone_bills').then(function(j){ if(j&&j.ok){ PHONES=j.bills; renderPhones(); } }).catch(function(){});
+}
+function renderPhones(){
+  var el=document.getElementById('phones'); if(!el) return;
+  if(!PHONES){ el.innerHTML='<span class="muted">Loading…</span>'; return; }
+  var h='<div class="grid" style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:6px 10px;align-items:center;font-size:12.5px">';
+  PHONES.forEach(function(b,i){
+    var days=Math.round((new Date(b.due+'T12:00:00')-day(D.meta.asOf))/DAYMS);
+    h+='<b>'+esc(b.line)+'</b>'+
+       '<span class="muted">'+(days>=0?('due in '+days+'d'):'overdue')+'</span>'+
+       '<input type="date" id="phd'+i+'" value="'+esc(b.due)+'" style="font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:4px 6px">'+
+       '<span><input type="number" id="php'+i+'" value="'+b.price+'" step="0.1" style="width:70px;font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:4px 6px"> EGP</span>'+
+       '<button class="btn sec" onclick="savePhone('+i+')">save</button>';
+  });
+  h+='</div><div class="full"><span class="msg" id="phmsg"></span></div>';
+  el.innerHTML=h;
+}
+function savePhone(i){
+  var b=PHONES[i], d=document.getElementById('phd'+i).value, pr=document.getElementById('php'+i).value;
+  document.getElementById('phmsg').textContent='saving…';
+  api('props_set_phone_bill',{line:b.line,due:d,price:pr,user:(ME&&ME.user)||''}).then(function(j){
+    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+    PHONES=j.bills; renderPhones();
+    document.getElementById('phmsg').textContent='saved ✓ — reminder follows the new date';
+  }).catch(function(e){ document.getElementById('phmsg').textContent='failed: '+(e.message||e); });
 }
 function fmtGB(n){ n=+n||0; return n>=100?Math.round(n):(Math.round(n*10)/10); }
 
