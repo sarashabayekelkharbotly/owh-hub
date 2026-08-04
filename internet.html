@@ -338,16 +338,21 @@ function loadPhones(){
 function renderPhones(){
   var el=document.getElementById('phones'); if(!el) return;
   if(!PHONES){ el.innerHTML='<span class="muted">Loading…</span>'; return; }
-  var h='<div class="grid" style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:6px 10px;align-items:center;font-size:12.5px">';
+  var h='';
   PHONES.forEach(function(b,i){
     var days=Math.round((new Date(b.due+'T12:00:00')-day(D.meta.asOf))/DAYMS);
-    h+='<b>'+esc(b.line)+'</b>'+
-       '<span class="muted">'+(days>=0?('due in '+days+'d'):'overdue')+'</span>'+
-       '<input type="date" id="phd'+i+'" value="'+esc(b.due)+'" style="font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:4px 6px">'+
-       '<span><input type="number" id="php'+i+'" value="'+b.price+'" step="0.1" style="width:70px;font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:4px 6px"> EGP</span>'+
-       '<button class="btn sec" onclick="savePhone('+i+')">save</button>';
+    var chip=days<0?'<span style="color:var(--red);font-weight:700">overdue</span>'
+            :days<=2?'<span style="color:var(--red);font-weight:700">in '+days+'d</span>'
+            :'<span class="muted">in '+days+'d</span>';
+    h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 0;'+(i?'border-top:1px solid var(--line);':'')+'font-size:12.5px">'+
+       '<b style="min-width:88px">'+esc(b.line)+'</b>'+chip+
+       '<span style="flex:1"></span>'+
+       '<input type="date" id="phd'+i+'" value="'+esc(b.due)+'" style="font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:5px 7px">'+
+       '<span style="white-space:nowrap"><input type="number" id="php'+i+'" value="'+b.price+'" step="0.1" style="width:66px;font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:5px 7px;text-align:center"> <span class="muted">EGP</span></span>'+
+       '<button class="btn sec" onclick="savePhone('+i+')">save</button>'+
+       '</div>';
   });
-  h+='</div><div class="full"><span class="msg" id="phmsg"></span></div>';
+  h+='<div><span class="msg" id="phmsg"></span></div>';
   el.innerHTML=h;
 }
 function savePhone(i){
