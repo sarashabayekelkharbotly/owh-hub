@@ -148,6 +148,12 @@ function costsUSD(f,m){ var p=pnlOf(f,m); if(!p) return {total:0,by:{}};
 function overlapNights(s,m){ if(!s.checkIn||!s.checkOut)return 0; var y=+m.slice(0,4),mo=+m.slice(5,7),ms=new Date(y,mo-1,1),me=new Date(y,mo,1);
   var os=Math.max(day(s.checkIn),ms),oe=Math.min(day(s.checkOut),me); return Math.max(0,Math.round((oe-os)/DAYMS)); }
 function earningsOf(s){ return (s.allIn||0)-(s.other||0); }
+/* RULE C1 — a stay's revenue belongs to the months it was OCCUPIED, apportioned by nights, exactly
+   as the sheet's Revenue-by-month tab does it (and as the partner screens already did).
+   These charts used to credit a whole stay to its CHECK-OUT month, which empties every month a long
+   stay spans and inflates the one it ends in: Iman's 3 Jun → 19 Jul stay put all $1,951 into July,
+   so 17A's June read ZERO while the P&L correctly showed $1,187.70 (Sarah 2026-08-05). */
+function earnedIn(s,m){ var n=s.nights||0; return n?earningsOf(s)*overlapNights(s,m)/n:0; }
 function channelGroup(portal){ var p=portal||''; var a=(D.channelAliases||[]).filter(function(x){ return x.channel===p; })[0];
   if(a) return {group:a.group, inRev:a.inRevenue};
   var lp=p.toLowerCase(); return {group:(lp.indexOf('airbnb')>-1?'Airbnb':(lp.indexOf('book')>-1?'Booking.com':(lp.indexOf('direct')>-1?'Direct':(p||'?')))), inRev:true}; }
@@ -390,8 +396,8 @@ function secDelta(){
 }
 function occLine(f,mNow,refMs){
   function occOf(msArr){ var o=0,a=0,e=0,nn=0; msArr.forEach(function(m){ a+=daysIn(m);
-    rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; o+=overlapNights(s,m);
-      if(monthOf(s.checkOut)===m){ e+=earningsOf(s); nn+=s.nights||0; } }); });
+    rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return;
+      var on=overlapNights(s,m); o+=on; e+=earnedIn(s,m); nn+=on; }); });
     return {occ:a>0?o/a*100:0, adr:nn>0?e/nn:0, nightsAvg:o/(msArr.length||1)};
   }
   var a=occOf([mNow]), b=occOf(refMs);
@@ -464,8 +470,9 @@ function secOccAdr(){
     if(isLongLet(f)){ o+=daysIn(m); return; }
     rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))o+=overlapNights(s,m); }); }); return {m:m,value:a>0?o/a*100:0}; });
   // ADR is a per-booking rate — a long-let has no bookings, so it is not part of this average
-  var adr=ms.map(function(m){ var e=0,n=0; scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat===f&&isLive(s)&&monthOf(s.checkOut)===m){ e+=earningsOf(s); n+=s.nights||0; } }); }); return {m:m,value:disp(n>0?e/n:0,m)}; });
-  return '<div class="card"><h3>Occupancy &amp; ADR</h3><div class="csub">bars = ADR (earnings ÷ nights, '+CUR+', Airbnb flats only — a long-let has no per-night rate) · line = occupancy % (a long-let counts as fully occupied)</div>'+
+  var adr=ms.map(function(m){ var e=0,n=0; scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return;
+    e+=earnedIn(s,m); n+=overlapNights(s,m); }); }); return {m:m,value:disp(n>0?e/n:0,m)}; });
+  return '<div class="card"><h3>Occupancy &amp; ADR</h3><div class="csub">bars = ADR (earned in the month ÷ nights occupied in it, '+CUR+', Airbnb flats only — a long-let has no per-night rate) · line = occupancy % (a long-let counts as fully occupied)</div>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div><div class="rowbtns">'+timeSeg('occ')+'</div>'+occAdrChart(occ,adr)+
     '<div class="legend"><span><i style="background:var(--c-occ)"></i>ADR '+CUR+'</span><span><i style="background:var(--red)"></i>Occupancy %</span></div></div>';
 }
@@ -490,7 +497,7 @@ function secNights(){
         });
         if(occ)b++; else if(blk)bl++; else fr++;
       }
-      rawStays().forEach(function(s){ if(s.flat===f&&isLive(s)&&monthOf(s.checkOut)===m){ earn+=earningsOf(s); nn+=s.nights||0; } });
+      rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; earn+=earnedIn(s,m); nn+=overlapNights(s,m); });
     });
     if(nbMode==='nights') return {m:m,vals:{booked:b,blocked:bl,free:fr}};
     var adr=nn>0?earn/nn:0;
@@ -513,7 +520,8 @@ function secVolumes(){
   var rows=ms.map(function(m){ var stays=0,dc=0; scopeFlats().forEach(function(f){
     merged.forEach(function(s){ if(s.flat===f&&monthOf(s.checkOut)===m)stays++; }); dc+=dcCount(f,m); }); return {m:m,vals:{stays:stays,dc:dc}}; });
   var dcTot=rows.reduce(function(a,r){return a+r.vals.dc;},0);
-  return '<div class="card"><h3>Stays · dry-clean submissions<span class="rt">stays = merged · '+dcTot+' submissions</span></h3>'+
+  // counts, not money: a discrete stay cannot be apportioned, so it is counted in the month it ENDS
+  return '<div class="card"><h3>Stays · dry-clean submissions<span class="rt">stays = merged, counted at check-out · '+dcTot+' submissions</span></h3>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+timeSeg('vol')+'</div>'+
     groupedChart(rows,[{k:'stays',lbl:'stays',color:'var(--red)'},{k:'dc',lbl:'submissions',color:'var(--g)'}],{})+
@@ -525,7 +533,7 @@ function secChannel(){
   var ms=monthsInRange(R.chan), groups=['Airbnb','Booking.com','Direct'];
   var rows=ms.map(function(m){ var vals={Airbnb:0,'Booking.com':0,Direct:0}; scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; var g=channelGroup(s.portal); if(!g.inRev)return;
     if(chanMode==='nights'){ var n=overlapNights(s,m); if(n&&(g.group in vals))vals[g.group]+=n; }
-    else if(monthOf(s.checkOut)===m&&(g.group in vals)) vals[g.group]+=disp(earningsOf(s),m); }); }); return {m:m,vals:vals}; });
+    else if(g.group in vals) vals[g.group]+=disp(earnedIn(s,m),m); }); }); return {m:m,vals:vals}; });
   return '<div class="card"><h3>Channel mix<span class="rt">'+(chanMode==='nights'?'nights':'revenue '+CUR)+' by channel</span></h3>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+seg([['nights','Nights'],['revenue','Revenue']],chanMode,'setChan')+timeSeg('chan')+'</div>'+
@@ -539,7 +547,7 @@ function secPay(){
   var accs=Object.keys(accSet);
   var PC={HSBC:'#4a7fb5',Stripe:'#6f9a76',Instapay:'#d9a441',Cash:'#c98f8f','(unconfirmed)':'#bbb'};
   var rows=ms.map(function(m){ var vals={}; accs.forEach(function(a){vals[a]=0;}); scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s)||!channelGroup(s.portal).inRev)return;
-    if(payMode==='money'){ if(monthOf(s.checkOut)===m)vals[accountOf(s)]+=disp(earningsOf(s),m); } else { vals[accountOf(s)]+=overlapNights(s,m); } }); }); return {m:m,vals:vals}; });
+    if(payMode==='money'){ vals[accountOf(s)]+=disp(earnedIn(s,m),m); } else { vals[accountOf(s)]+=overlapNights(s,m); } }); }); return {m:m,vals:vals}; });
   return '<div class="card"><h3>Money by account<span class="rt">'+(payMode==='money'?'revenue '+CUR:'nights')+' by account · Test excluded</span></h3>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+seg([['money','Revenue'],['nights','Nights']],payMode,'setPay')+timeSeg('pay')+'</div>'+
@@ -554,10 +562,14 @@ function secAdrTable(){
     '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.adr),adrMonth,'setAdrMonth')+timeSeg('adr')+'</div>'+
     '<table class="t"><thead><tr><th>Flat</th>'+chans.map(function(c){return '<th>'+c+'</th>';}).join('')+'<th>All</th><th>Spread</th></tr></thead><tbody>';
   var gE={},gN={},gTE=0,gTN=0;
-  scopeStayFlats().forEach(function(f){ var e={},n={},tE=0,tN=0; rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; if(monthOf(s.checkOut)<ms[0]||monthOf(s.checkOut)>ms[ms.length-1])return;
-    var g=channelGroup(s.portal).group; var ev=disp(earningsOf(s),monthOf(s.checkOut));
-    e[g]=(e[g]||0)+ev; n[g]=(n[g]||0)+(s.nights||0); tE+=ev; tN+=s.nights||0;
-    gE[g]=(gE[g]||0)+ev; gN[g]=(gN[g]||0)+(s.nights||0); gTE+=ev; gTN+=s.nights||0; });
+  // per RULE C1: a stay counts in each month of the range by the nights it occupied there, so a stay
+  // straddling the range edge contributes only its inside part instead of all-or-nothing
+  scopeStayFlats().forEach(function(f){ var e={},n={},tE=0,tN=0; rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return;
+    var g=channelGroup(s.portal).group, ev=0, nv=0;
+    ms.forEach(function(mm){ ev+=disp(earnedIn(s,mm),mm); nv+=overlapNights(s,mm); });
+    if(!nv&&!ev)return;
+    e[g]=(e[g]||0)+ev; n[g]=(n[g]||0)+nv; tE+=ev; tN+=nv;
+    gE[g]=(gE[g]||0)+ev; gN[g]=(gN[g]||0)+nv; gTE+=ev; gTN+=nv; });
     var adr={},vals=[]; chans.forEach(function(c){ var a=n[c]>0?e[c]/n[c]:0; adr[c]=a; if(a>0)vals.push(a); });
     var spread=vals.length>1?Math.round((Math.min.apply(null,vals)-Math.max.apply(null,vals))/Math.max.apply(null,vals)*100):0;
     h+='<tr><td>'+esc(f)+'</td>'+chans.map(function(c){return '<td>'+(adr[c]?fmt(adr[c]):'—')+'</td>';}).join('')+
@@ -565,7 +577,7 @@ function secAdrTable(){
   // all-flats row — nights-weighted blend, so it reconciles with the rows above
   h+='<tr style="font-weight:800"><td>All flats</td>'+chans.map(function(c){return '<td>'+(gN[c]>0?fmt(gE[c]/gN[c]):'—')+'</td>';}).join('')+
      '<td>'+(gTN>0?fmt(gTE/gTN):'—')+'</td><td>—</td></tr>';
-  return h+'</tbody></table><div class="note">All = the flat\'s blended ADR across every channel (total earnings ÷ total nights — nights-weighted, not a simple average). Spread = (weakest − strongest) ÷ strongest: −20% means the weakest channel earns 20% less per night than the strongest.</div></div>';
+  return h+'</tbody></table><div class="note">Earnings and nights are apportioned to the months in range (RULE C1), so a stay crossing the edge counts only its part inside. All = the flat\'s blended ADR across every channel (earnings ÷ nights — nights-weighted, not a simple average). Spread = (weakest − strongest) ÷ strongest: −20% means the weakest channel earns 20% less per night than the strongest.</div></div>';
 }
 /* 9 · Turnover economics — per DRY-CLEAN SUBMISSION (Sarah's request 2026-07-24, built 2026-08-04):
    a 46-night stay with weekly cleans produces several submissions but only one checkout, so
