@@ -171,14 +171,26 @@ function xlabels(months, gwCenter){
     if(i===0||m.slice(5,7)==='01') s+='<text x="'+cx.toFixed(1)+'" y="'+(H-2)+'" font-size="7.5" font-weight="700" fill="#333" text-anchor="middle">'+m.slice(0,4)+'</text>';
   }); return s;
 }
+/* NEGATIVES MUST LOOK NEGATIVE (Sarah 2026-08-05): these charts used to plot Math.abs(), so a
+   LOSS drew an identical bar to a profit — August's −289 read as +289. Every money chart now maps
+   values onto a real scale with a zero line, so a negative sits below it and is labelled with its
+   sign. scaleOf returns that mapping; `zero` is the y of 0 and is only drawn when data goes below. */
+function scaleOf(vals, plotH, baseY){
+  var hi=Math.max.apply(null,[0].concat(vals)), lo=Math.min.apply(null,[0].concat(vals));
+  var span=(hi-lo)||1;
+  return { y:function(v){ return baseY - plotH*(v-lo)/span; }, zero:baseY - plotH*(0-lo)/span, hasNeg:lo<0 };
+}
+function zeroLine(sc){ return sc.hasNeg ? '<line x1="'+PAD+'" x2="'+(W-PAD)+'" y1="'+sc.zero.toFixed(1)+'" y2="'+sc.zero.toFixed(1)+'" stroke="#bbb" stroke-width="1" stroke-dasharray="3 3"/>' : ''; }
 function lineChart(rows, opt){ opt=opt||{}; var col=opt.color||'var(--c-earn)', n=rows.length; if(!n) return '<div class="muted">No data.</div>';
-  var max=Math.max(1,Math.max.apply(null,rows.map(function(r){return Math.abs(r.value);}))), plotH=H-TOP-BOT, zeroY=H-BOT;
+  var plotH=H-TOP-BOT, baseY=H-BOT;
+  var sc=scaleOf(rows.map(function(r){return r.value;}), plotH, baseY);
   var step=n>1?(W-2*PAD)/(n-1):0, cx=function(i){ return PAD+i*step; };
-  var pts=rows.map(function(r,i){ return [cx(i), zeroY-plotH*Math.abs(r.value)/max]; });
+  var pts=rows.map(function(r,i){ return [cx(i), sc.y(r.value)]; });
   var d=pts.map(function(p,i){ return (i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1); }).join(' ');
-  var s=open_()+'<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2.2"/>';
-  pts.forEach(function(p,i){ s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="2.3" fill="'+col+'"><title>'+rows[i].m+': '+(opt.unit||'')+fmt(rows[i].value)+'</title></circle>'+
-    '<text x="'+p[0].toFixed(1)+'" y="'+(p[1]-5).toFixed(1)+'" font-size="8" font-weight="700" fill="#333" text-anchor="middle">'+(opt.unit||'')+kf(rows[i].value)+'</text>'; });
+  var s=open_()+zeroLine(sc)+'<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2.2"/>';
+  pts.forEach(function(p,i){ var v=rows[i].value, neg=v<0;
+    s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="2.3" fill="'+(neg?'var(--red)':col)+'"><title>'+rows[i].m+': '+(opt.unit||'')+fmt(v)+'</title></circle>'+
+    '<text x="'+p[0].toFixed(1)+'" y="'+(neg?(p[1]+10):(p[1]-5)).toFixed(1)+'" font-size="8" font-weight="700" fill="'+(neg?'var(--red)':'#333')+'" text-anchor="middle">'+(v<0?'-':'')+(opt.unit||'')+kf(Math.abs(v))+'</text>'; });
   s+=xlabels(rows.map(function(r){return r.m;}), cx); return s+'</svg>';
 }
 /* several lines on one chart (2026-08-04, the by-flat trend view) — rows: [{m, vals:{key:v}}] */
@@ -200,26 +212,34 @@ function lineMulti(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) re
   s+=xlabels(rows.map(function(r){return r.m;}), cx); return s+'</svg>';
 }
 function stackedChart(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) return '<div class="muted">No data.</div>';
-  var gw=(W-2*PAD)/n, bw=Math.min(46,gw*0.6), plotH=H-TOP-BOT, zeroY=H-BOT;
-  var max=1; rows.forEach(function(r){ var t=0; series.forEach(function(se){ t+=Math.abs(r.vals[se.k]||0); }); max=Math.max(max,t); });
-  var s=open_(), cx=function(i){ return PAD+i*gw+gw/2; };
-  rows.forEach(function(r,i){ var x=PAD+i*gw+(gw-bw)/2, y=zeroY, tot=0;
-    series.forEach(function(se){ var v=Math.abs(r.vals[se.k]||0); tot+=v; if(v<=0)return; var bh=plotH*v/max; y-=bh;
+  var gw=(W-2*PAD)/n, bw=Math.min(46,gw*0.6), plotH=H-TOP-BOT, baseY=H-BOT;
+  // positives stack up from zero, negatives stack DOWN from it — a loss must not look like a gain
+  var tops=rows.map(function(r){ var t=0; series.forEach(function(se){ var v=r.vals[se.k]||0; if(v>0)t+=v; }); return t; });
+  var bots=rows.map(function(r){ var t=0; series.forEach(function(se){ var v=r.vals[se.k]||0; if(v<0)t+=v; }); return t; });
+  var sc=scaleOf(tops.concat(bots), plotH, baseY);
+  var s=open_()+zeroLine(sc), cx=function(i){ return PAD+i*gw+gw/2; };
+  rows.forEach(function(r,i){ var x=PAD+i*gw+(gw-bw)/2, yUp=sc.zero, yDn=sc.zero, tot=0;
+    series.forEach(function(se){ var v=r.vals[se.k]||0; tot+=v; if(!v)return;
+      var bh=Math.abs(sc.y(v)-sc.zero), y;
+      if(v>0){ yUp-=bh; y=yUp; } else { y=yDn; yDn+=bh; }
       // <title> = native hover tooltip — small segments are unreadable without it (Sarah 2026-08-04)
-      s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+bh.toFixed(1)+'" fill="'+se.color+'"><title>'+esc(se.lbl||se.k)+' · '+r.m+': '+(opt.unit||'')+fmt(v)+'</title></rect>';
-      if(bh>13)s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y+bh/2+3).toFixed(1)+'" font-size="6.5" fill="#fff" text-anchor="middle">'+kf(v)+'</text>'; });
-    s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y-3).toFixed(1)+'" font-size="8" font-weight="700" fill="#333" text-anchor="middle">'+(opt.unit||'')+kf(tot)+'</text>';
+      s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+bh.toFixed(1)+'" fill="'+se.color+'"'+(v<0?' opacity="0.55"':'')+'><title>'+esc(se.lbl||se.k)+' · '+r.m+': '+(opt.unit||'')+fmt(v)+'</title></rect>';
+      if(bh>13)s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y+bh/2+3).toFixed(1)+'" font-size="6.5" fill="#fff" text-anchor="middle">'+(v<0?'-':'')+kf(Math.abs(v))+'</text>'; });
+    var lblY = tot<0 ? (yDn+9) : (yUp-3);
+    s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+lblY.toFixed(1)+'" font-size="8" font-weight="700" fill="'+(tot<0?'var(--red)':'#333')+'" text-anchor="middle">'+(tot<0?'-':'')+(opt.unit||'')+kf(Math.abs(tot))+'</text>';
   });
   s+=xlabels(rows.map(function(r){return r.m;}), cx); return s+'</svg>';
 }
 function groupedChart(rows, groups, opt){ opt=opt||{}; var n=rows.length; if(!n) return '<div class="muted">No data.</div>';
-  var gw=(W-2*PAD)/n, inner=gw*0.82, bw=inner/groups.length, plotH=H-TOP-BOT, zeroY=H-BOT;
-  var max=1; rows.forEach(function(r){ groups.forEach(function(g){ max=Math.max(max,Math.abs(r.vals[g.k]||0)); }); });
-  var s=open_(), cx=function(i){ return PAD+i*gw+gw/2; };
+  var gw=(W-2*PAD)/n, inner=gw*0.82, bw=inner/groups.length, plotH=H-TOP-BOT, baseY=H-BOT;
+  var all=[]; rows.forEach(function(r){ groups.forEach(function(g){ all.push(r.vals[g.k]||0); }); });
+  var sc=scaleOf(all, plotH, baseY);
+  var s=open_()+zeroLine(sc), cx=function(i){ return PAD+i*gw+gw/2; };
   rows.forEach(function(r,i){ var x0=PAD+i*gw+(gw-inner)/2;
-    groups.forEach(function(g,gi){ var v=Math.abs(r.vals[g.k]||0), bh=plotH*v/max, x=x0+gi*bw, y=zeroY-bh;
-      s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+(bw*0.86).toFixed(1)+'" height="'+Math.max(0,bh).toFixed(1)+'" fill="'+g.color+'"><title>'+esc(g.lbl||g.k)+' · '+r.m+': '+fmt(v)+'</title></rect>';
-      if(v>0)s+='<text x="'+(x+bw*0.43).toFixed(1)+'" y="'+(y-2).toFixed(1)+'" font-size="6.5" fill="#555" text-anchor="middle">'+kf(v)+'</text>'; });
+    groups.forEach(function(g,gi){ var v=r.vals[g.k]||0, x=x0+gi*bw;
+      var y=v>=0?sc.y(v):sc.zero, bh=Math.abs(sc.y(v)-sc.zero);
+      s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+(bw*0.86).toFixed(1)+'" height="'+Math.max(0,bh).toFixed(1)+'" fill="'+g.color+'"'+(v<0?' opacity="0.55"':'')+'><title>'+esc(g.lbl||g.k)+' · '+r.m+': '+fmt(v)+'</title></rect>';
+      if(v)s+='<text x="'+(x+bw*0.43).toFixed(1)+'" y="'+(v<0?(y+bh+8):(y-2)).toFixed(1)+'" font-size="6.5" fill="'+(v<0?'var(--red)':'#555')+'" text-anchor="middle">'+(v<0?'-':'')+kf(Math.abs(v))+'</text>'; });
   });
   s+=xlabels(rows.map(function(r){return r.m;}), cx); return s+'</svg>';
 }
