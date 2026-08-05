@@ -83,7 +83,7 @@ var __rates={};
 function rateFor(m){                       // EGP per USD, recovered from the month's own P&L figures
   if(__rates[m]) return __rates[m];
   var egp=0,usdc=0,rev=0,net=0;
-  airbnbFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p)return; rev+=p.revenue.total; net+=p.net;
+  allFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p)return; rev+=p.revenue.total; net+=p.net;
     (p.costs||[]).forEach(function(c){ if(c.currency==='USD')usdc+=c.amount; else egp+=c.amount; }); });
   var egpInUSD=(rev-net)-usdc;
   var r=(egp>0&&egpInUSD>0)?egp/egpInUSD:((D.meta.fx&&D.meta.fx.current)||49);
@@ -102,9 +102,20 @@ function money(n){ n=+n||0; var dec=CUR==='USD'?2:0;   // EGP figures are big �
   var s=(n<0?'-':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});
   return CUR==='USD'?'$'+s:s+' EGP'; }
 function day(s){ return new Date(String(s).slice(0,10)+'T00:00:00'); }
-function airbnbFlats(){ return D.meta.flatsOrder.filter(function(f){ return D.targets.byFlat[f]; }); }
+/* EVERY screen counts the same flats (Sarah 2026-08-05). "Portfolio" here used to mean "flats with
+   an Airbnb target", which silently dropped 17B (long-let) — so Statistics disagreed with Close and
+   with the what-changed table by 17B's entire revenue and net (32k EGP in May alone).
+   MONEY now spans ALL flats. The only exceptions are metrics computed from per-booking data —
+   ADR, channel mix, money-by-account — which a long-let has none of; including it there would
+   divide real revenue by phantom bookings. Occupancy counts a long-let as FULLY OCCUPIED, which is
+   what it actually is, so the portfolio figure stays truthful instead of being deflated by 31
+   "vacant" nights a month. */
+function allFlats(){ return D.meta.flatsOrder.filter(function(f){ return D.pnl[f]; }); }
+function isLongLet(f){ var x=(D.flats||[]).filter(function(o){ return o.id===f; })[0]; return !!(x&&x.isLongLet); }
+function airbnbFlats(){ return allFlats().filter(function(f){ return !isLongLet(f); }); }
 function rawStays(){ return D.stays||[]; }
-function scopeFlats(){ return scope==='portfolio'?airbnbFlats():[scope]; }
+function scopeFlats(){ return scope==='portfolio'?allFlats():[scope]; }                          // money
+function scopeStayFlats(){ return scopeFlats().filter(function(f){ return !isLongLet(f); }); }   // per-booking metrics
 function monthOf(d){ return String(d).slice(0,7); }
 
 function mergeStays(stays){
@@ -274,7 +285,7 @@ function dToggle(f){ dOpen[f]=!dOpen[f]; render(); }
 var dMA='', dMB='prev';
 function setDMA(v){ dMA=v; render(); } function setDMB(v){ dMB=v; render(); }
 // the scope + currency controls, reusable inside any card (Sarah: "I don't want to keep going up and down")
-function scopeSeg(){ return '<div class="seg">'+['portfolio'].concat(airbnbFlats()).map(function(f){ return '<button class="'+(scope===f?'on':'')+'" onclick="setScope(\''+esc(f)+'\')">'+(f==='portfolio'?'Portfolio':esc(f))+'</button>'; }).join('')+'</div>'; }
+function scopeSeg(){ return '<div class="seg">'+['portfolio'].concat(allFlats()).map(function(f){ return '<button class="'+(scope===f?'on':'')+'" onclick="setScope(\''+esc(f)+'\')">'+(f==='portfolio'?'Portfolio':esc(f))+'</button>'; }).join('')+'</div>'; }
 function curSeg(){ return '<div class="seg">'+['USD','EGP'].map(function(c){ return '<button class="'+(CUR===c?'on':'')+'" onclick="setCur(\''+c+'\')">'+c+'</button>'; }).join('')+'</div>'; }
 function monthBtnsFor(ms,cur,fn){ return seg([['all','All']].concat(ms.map(function(m){return [m, MON[+m.slice(5,7)-1]+' '+m.slice(2,4)];})),cur,fn); }
 function pickMonths(rng,sel){ var ms=monthsInRange(rng); return (sel!=='all'&&ms.indexOf(sel)>=0)?[sel]:ms; }
@@ -380,7 +391,7 @@ function secRevenue(){
      STACKED for composition. Portfolio scope only — a single flat has nothing to split. */
   if(scope==='portfolio') h+='<div class="rowbtns">'+seg([['total','Total'],['flats','By flat'],['stack','Stacked']],revMode,'setRevMode')+'</div>';
   if(scope==='portfolio'&&revMode!=='total'){
-    var fl=airbnbFlats();
+    var fl=allFlats();
     var rows=ms.map(function(m){ var vals={}; fl.forEach(function(f){ var p=pnlOf(f,m); vals[f]=p?disp(serOf(p),m):0; }); return {m:m,vals:vals}; });
     var series=fl.map(function(f){ return {k:f,lbl:f===('Zayed 2000')?'Zayed':f,color:FLAT_COLORS[f]||'#999'}; });
     h+=(revMode==='flats'?lineMulti(rows,series,{}):stackedChart(rows,series,{unit:curU()}))+
@@ -428,9 +439,13 @@ function secAttribution(){
 /* 4 · Occupancy & ADR combined */
 function secOccAdr(){
   var ms=monthsInRange(R.occ);
-  var occ=ms.map(function(m){ var o=0,a=0; scopeFlats().forEach(function(f){ a+=daysIn(m); rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))o+=overlapNights(s,m); }); }); return {m:m,value:a>0?o/a*100:0}; });
-  var adr=ms.map(function(m){ var e=0,n=0; scopeFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat===f&&isLive(s)&&monthOf(s.checkOut)===m){ e+=earningsOf(s); n+=s.nights||0; } }); }); return {m:m,value:disp(n>0?e/n:0,m)}; });
-  return '<div class="card"><h3>Occupancy &amp; ADR</h3><div class="csub">bars = ADR (earnings ÷ nights, '+CUR+') · line = occupancy %</div>'+
+  // a long-let is occupied every night of the month — counting it as vacant would deflate the portfolio
+  var occ=ms.map(function(m){ var o=0,a=0; scopeFlats().forEach(function(f){ a+=daysIn(m);
+    if(isLongLet(f)){ o+=daysIn(m); return; }
+    rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))o+=overlapNights(s,m); }); }); return {m:m,value:a>0?o/a*100:0}; });
+  // ADR is a per-booking rate — a long-let has no bookings, so it is not part of this average
+  var adr=ms.map(function(m){ var e=0,n=0; scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat===f&&isLive(s)&&monthOf(s.checkOut)===m){ e+=earningsOf(s); n+=s.nights||0; } }); }); return {m:m,value:disp(n>0?e/n:0,m)}; });
+  return '<div class="card"><h3>Occupancy &amp; ADR</h3><div class="csub">bars = ADR (earnings ÷ nights, '+CUR+', Airbnb flats only — a long-let has no per-night rate) · line = occupancy % (a long-let counts as fully occupied)</div>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div><div class="rowbtns">'+timeSeg('occ')+'</div>'+occAdrChart(occ,adr)+
     '<div class="legend"><span><i style="background:var(--c-occ)"></i>ADR '+CUR+'</span><span><i style="background:var(--red)"></i>Occupancy %</span></div></div>';
 }
@@ -444,6 +459,7 @@ function secNights(){
   var rows=ms.map(function(m){
     var b=0,bl=0,fr=0,earn=0,nn=0, y=+m.slice(0,4),mo=+m.slice(5,7),dim=daysIn(m);
     scopeFlats().forEach(function(f){
+      if(isLongLet(f)){ b+=dim; earn+=0; return; }        // let: every night is booked, no per-night rate
       for(var dd=1;dd<=dim;dd++){
         var dt=new Date(y,mo-1,dd), occ=false,blk=false;
         (D.stays||[]).forEach(function(s){
@@ -487,7 +503,7 @@ function secVolumes(){
 function chColor(g){ return g==='Airbnb'?'var(--ch-airbnb)':g==='Booking.com'?'var(--ch-booking)':g==='Direct'?'var(--ch-direct)':g==='Test'?'var(--ch-test)':'var(--soft)'; }
 function secChannel(){
   var ms=monthsInRange(R.chan), groups=['Airbnb','Booking.com','Direct'];
-  var rows=ms.map(function(m){ var vals={Airbnb:0,'Booking.com':0,Direct:0}; scopeFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; var g=channelGroup(s.portal); if(!g.inRev)return;
+  var rows=ms.map(function(m){ var vals={Airbnb:0,'Booking.com':0,Direct:0}; scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; var g=channelGroup(s.portal); if(!g.inRev)return;
     if(chanMode==='nights'){ var n=overlapNights(s,m); if(n&&(g.group in vals))vals[g.group]+=n; }
     else if(monthOf(s.checkOut)===m&&(g.group in vals)) vals[g.group]+=disp(earningsOf(s),m); }); }); return {m:m,vals:vals}; });
   return '<div class="card"><h3>Channel mix<span class="rt">'+(chanMode==='nights'?'nights':'revenue '+CUR)+' by channel</span></h3>'+
@@ -499,10 +515,10 @@ function secChannel(){
 /* 7 · Money by account — money / nights toggle, stacked per-month */
 function secPay(){
   var ms=monthsInRange(R.pay);
-  var accSet={}; scopeFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; if(!channelGroup(s.portal).inRev)return; accSet[accountOf(s)]=1; }); });
+  var accSet={}; scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; if(!channelGroup(s.portal).inRev)return; accSet[accountOf(s)]=1; }); });
   var accs=Object.keys(accSet);
   var PC={HSBC:'#4a7fb5',Stripe:'#6f9a76',Instapay:'#d9a441',Cash:'#c98f8f','(unconfirmed)':'#bbb'};
-  var rows=ms.map(function(m){ var vals={}; accs.forEach(function(a){vals[a]=0;}); scopeFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s)||!channelGroup(s.portal).inRev)return;
+  var rows=ms.map(function(m){ var vals={}; accs.forEach(function(a){vals[a]=0;}); scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s)||!channelGroup(s.portal).inRev)return;
     if(payMode==='money'){ if(monthOf(s.checkOut)===m)vals[accountOf(s)]+=disp(earningsOf(s),m); } else { vals[accountOf(s)]+=overlapNights(s,m); } }); }); return {m:m,vals:vals}; });
   return '<div class="card"><h3>Money by account<span class="rt">'+(payMode==='money'?'revenue '+CUR:'nights')+' by account · Test excluded</span></h3>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
@@ -518,7 +534,7 @@ function secAdrTable(){
     '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.adr),adrMonth,'setAdrMonth')+timeSeg('adr')+'</div>'+
     '<table class="t"><thead><tr><th>Flat</th>'+chans.map(function(c){return '<th>'+c+'</th>';}).join('')+'<th>All</th><th>Spread</th></tr></thead><tbody>';
   var gE={},gN={},gTE=0,gTN=0;
-  scopeFlats().forEach(function(f){ var e={},n={},tE=0,tN=0; rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; if(monthOf(s.checkOut)<ms[0]||monthOf(s.checkOut)>ms[ms.length-1])return;
+  scopeStayFlats().forEach(function(f){ var e={},n={},tE=0,tN=0; rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; if(monthOf(s.checkOut)<ms[0]||monthOf(s.checkOut)>ms[ms.length-1])return;
     var g=channelGroup(s.portal).group; var ev=disp(earningsOf(s),monthOf(s.checkOut));
     e[g]=(e[g]||0)+ev; n[g]=(n[g]||0)+(s.nights||0); tE+=ev; tN+=s.nights||0;
     gE[g]=(gE[g]||0)+ev; gN[g]=(gN[g]||0)+(s.nights||0); gTE+=ev; gTN+=s.nights||0; });
@@ -571,7 +587,7 @@ function secRepairs(){
      stacked by TRADE or by FLAT — the toggle picks the stacking dimension. */
   var series = repMode==='cat'
     ? TRADES.map(function(t){ return {k:t[0],lbl:t[1],color:t[2]}; })
-    : scopeFlats().concat(scope==='portfolio'?['17B']:[]).map(function(f){ return {k:f,lbl:f==='Zayed 2000'?'Zayed':f,color:FLAT_COLORS[f]||'#999'}; });
+    : scopeFlats().map(function(f){ return {k:f,lbl:f==='Zayed 2000'?'Zayed':f,color:FLAT_COLORS[f]||'#999'}; });
   var chart, legend='';
   if(!closed.length){
     chart='<div class="muted">No closed repairs in range — log WeShare-backed ones in the Repairs tab (Status=closed + Closed date + Cost).</div>';
