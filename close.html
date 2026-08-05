@@ -238,7 +238,8 @@ function ribbon(){ var g=DATA._gen?new Date(DATA._gen):null;
 function deltaCell(v,p){ if(p==null||isNaN(p))return ''; var d=v-p; if(Math.abs(d)<0.5)return '<span class="muted">—</span>'; var pct=p?Math.round(d/Math.abs(p)*100):null; return '<span class="delta '+(d>0?'up':'down')+'">'+(d>0?'+':'')+fmt(d)+(pct!=null?' ('+(pct>0?'+':'')+pct+'%)':'')+'</span>'; }
 
 /* ---------- render ---------- */
-function render(){ ribbon(); $('#app').innerHTML=VIEW==='review'?renderReview():renderCompare(); }
+function render(){ ribbon(); $('#app').innerHTML=VIEW==='review'?renderReview():renderCompare();
+  if(VIEW==='review'){ if(RECUR&&RECUR.month===MONTH) renderRecurring(); else loadRecurring(); } }
 
 /* 4a — Review one flat: PORTRAIT (phone-first), current + previous month columns */
 function renderReview(){
@@ -268,7 +269,45 @@ function renderReview(){
   return '<div class="frame port"><span class="orient o-port">portrait · phone-first</span>'
     +'<div class="card"><h1>'+FLAT+' · '+MONTH+badge+'</h1><p class="sub">all values in '+CUR+'</p>'
     +'<table><thead><tr><th>Line</th><th>'+MONTH+'</th><th>'+pm+'</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +checklist(rec)+'</div>';
+    +checklist(rec)+'<div id="recurBox"></div></div>';
+}
+
+/* ---------- recurring monthly entries (Sarah 2026-08-05) ----------
+ * Rent, Emad's fee, the landline, 17B's rent income and the Smoobu subscription recur every month.
+ * They carry forward automatically; this is where you change one when the price moves — the edit
+ * applies to THIS month and every later month carries the new figure. */
+var RECUR=null;
+function loadRecurring(){
+  if(!MONTH) return;
+  api('props_recurring',{month:MONTH}).then(function(j){ if(j&&j.ok){ RECUR=j.recurring; renderRecurring(); } }).catch(function(){});
+}
+function renderRecurring(){
+  var el=document.getElementById('recurBox'); if(!el||!RECUR) return;
+  var r=RECUR, inp=function(id,val,w){ return '<input id="'+id+'" value="'+(val==null?'':val)+'" style="width:'+(w||70)+'px;font-family:inherit;font-size:12px;border:1px solid var(--line,#ddd);border-radius:7px;padding:3px 6px;text-align:right">'; };
+  var rows='';
+  Object.keys(r.rent||{}).sort().forEach(function(f){
+    rows+='<tr><td style="padding:3px 8px 3px 0">Rent · '+f+'</td><td>'+inp('rc_'+f,Math.round(r.rent[f]))+' <span class="muted">EGP</span></td></tr>'; });
+  if(r.rent17b) rows+='<tr><td style="padding:3px 8px 3px 0">Rent income · '+r.rent17b.flat+'</td><td>'+inp('rc17b',Math.round(r.rent17b.amount))+' <span class="muted">EGP</span></td></tr>';
+  rows+='<tr><td style="padding:3px 8px 3px 0">Ops fee · per flat</td><td>'+inp('rcops',r.ops==null?'':Math.round(r.ops))+' <span class="muted">EGP</span></td></tr>';
+  rows+='<tr><td style="padding:3px 8px 3px 0">Landline · per flat</td><td>'+inp('rcll',r.landline==null?'':Math.round(r.landline*100)/100)+' <span class="muted">EGP</span></td></tr>';
+  var s=r.sub||{};
+  rows+='<tr><td style="padding:3px 8px 3px 0">Smoobu · total &amp; EUR/USD</td><td>'+inp('rceur',s.eur,58)+' <span class="muted">EUR</span> × '+inp('rcrate',s.rate,52)+
+        ' <span class="muted">= $'+(s.perFlatUSD==null?'—':s.perFlatUSD)+' × '+(s.n||'?')+' flats</span></td></tr>';
+  el.innerHTML='<div class="card"><h3 style="margin:0 0 6px">Recurring · '+r.month+'</h3>'+
+    '<table style="font-size:12.5px">'+rows+'</table>'+
+    '<div class="btnrow" style="margin-top:8px"><button class="btn sec" onclick="saveRecurring()">Save</button><span class="muted" id="rcmsg"></span></div>'+
+    '<div class="legend">Carried forward each month automatically. Change a figure here and every later month follows it. Rent and the Smoobu fee also appear in WeShare to confirm who paid; the landline appears there on its quarterly due date.</div></div>';
+}
+function saveRecurring(){
+  var rent={}; Object.keys(RECUR.rent||{}).forEach(function(f){ var e=document.getElementById('rc_'+f); if(e)rent[f]=e.value.trim(); });
+  var g=function(id){ var e=document.getElementById(id); return e?e.value.trim():''; };
+  document.getElementById('rcmsg').textContent='saving…';
+  api('props_set_recurring',{month:MONTH,user:(ME&&ME.user)||'',rent:JSON.stringify(rent),
+      rent17b:g('rc17b'),ops:g('rcops'),landline:g('rcll'),subEur:g('rceur'),subRate:g('rcrate')})
+    .then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+      RECUR=j.recurring; renderRecurring();
+      document.getElementById('rcmsg').textContent='saved ✓ — refresh to see the P&L follow';
+    }).catch(function(e){ document.getElementById('rcmsg').textContent='failed: '+(e.message||e); });
 }
 function sec(t){ return '<tr class="sec"><td colspan="3">'+t+'</td></tr>'; }
 function r3(label,val,native,prev,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td><td>'+m(toCur(val,native))+'</td><td class="prevcol">'+m(prev==null?null:toCur(prev,native,prevMonth(MONTH)))+'</td></tr>'; }
