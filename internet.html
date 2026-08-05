@@ -338,30 +338,41 @@ function loadPhones(){
 function renderPhones(){
   var el=document.getElementById('phones'); if(!el) return;
   if(!PHONES){ el.innerHTML='<span class="muted">Loading…</span>'; return; }
-  var h='';
+  /* compact (Sarah 2026-08-05): one tight row per line, no per-row save button — one "save changed"
+     writes only the rows you actually touched. */
+  var h='<table style="width:100%;border-collapse:collapse;font-size:12.5px">';
   PHONES.forEach(function(b,i){
     var days=Math.round((new Date(b.due+'T12:00:00')-day(D.meta.asOf))/DAYMS);
     var chip=days<0?'<span style="color:var(--red);font-weight:700">overdue</span>'
-            :days<=2?'<span style="color:var(--red);font-weight:700">in '+days+'d</span>'
-            :'<span class="muted">in '+days+'d</span>';
-    h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 0;'+(i?'border-top:1px solid var(--line);':'')+'font-size:12.5px">'+
-       '<b style="min-width:88px">'+esc(b.line)+'</b>'+chip+
-       '<span style="flex:1"></span>'+
-       '<input type="date" id="phd'+i+'" value="'+esc(b.due)+'" style="font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:5px 7px">'+
-       '<span style="white-space:nowrap"><input type="number" id="php'+i+'" value="'+b.price+'" step="0.1" style="width:66px;font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:5px 7px;text-align:center"> <span class="muted">EGP</span></span>'+
-       '<button class="btn sec" onclick="savePhone('+i+')">save</button>'+
-       '</div>';
+            :days<=2?'<span style="color:var(--red);font-weight:700">'+days+'d</span>'
+            :'<span class="muted">'+days+'d</span>';
+    h+='<tr'+(i?' style="border-top:1px solid var(--line)"':'')+'>'+
+       '<td style="padding:4px 6px 4px 0;font-weight:700;white-space:nowrap">'+esc(b.line)+'</td>'+
+       '<td style="padding:4px 6px;text-align:right;white-space:nowrap">'+chip+'</td>'+
+       '<td style="padding:4px 6px"><input type="date" id="phd'+i+'" value="'+esc(b.due)+'" onchange="PH_DIRTY[\''+i+'\']=1" style="font-family:inherit;font-size:11.5px;border:1px solid var(--line);border-radius:7px;padding:3px 5px"></td>'+
+       '<td style="padding:4px 0;white-space:nowrap"><input type="number" id="php'+i+'" value="'+b.price+'" step="0.1" onchange="PH_DIRTY[\''+i+'\']=1" style="width:60px;font-family:inherit;font-size:11.5px;border:1px solid var(--line);border-radius:7px;padding:3px 5px;text-align:right"> <span class="muted">EGP</span></td>'+
+       '</tr>';
   });
-  h+='<div><span class="msg" id="phmsg"></span></div>';
+  h+='</table><div class="btnrow" style="margin-top:6px"><button class="btn sec" onclick="savePhones()">save changed</button><span class="msg" id="phmsg"></span></div>';
   el.innerHTML=h;
 }
-function savePhone(i){
-  var b=PHONES[i], d=document.getElementById('phd'+i).value, pr=document.getElementById('php'+i).value;
-  document.getElementById('phmsg').textContent='saving…';
-  api('props_set_phone_bill',{line:b.line,due:d,price:pr,user:(ME&&ME.user)||''}).then(function(j){
-    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
-    PHONES=j.bills; renderPhones();
-    document.getElementById('phmsg').textContent='saved ✓ — reminder follows the new date';
+var PH_DIRTY={};
+function savePhones(){
+  var idx=Object.keys(PH_DIRTY);
+  var msg=document.getElementById('phmsg');
+  if(!idx.length){ msg.textContent='nothing changed'; return; }
+  msg.textContent='saving '+idx.length+'…';
+  var chain=Promise.resolve();
+  idx.forEach(function(i){
+    chain=chain.then(function(){
+      var b=PHONES[i];
+      return api('props_set_phone_bill',{line:b.line,due:document.getElementById('phd'+i).value,
+        price:document.getElementById('php'+i).value,user:(ME&&ME.user)||''}).then(function(j){
+        if(!j||!j.ok)throw new Error(j&&j.error||'bad'); PHONES=j.bills; });
+    });
+  });
+  chain.then(function(){ PH_DIRTY={}; renderPhones();
+    document.getElementById('phmsg').textContent='saved ✓ — reminders follow the new dates';
   }).catch(function(e){ document.getElementById('phmsg').textContent='failed: '+(e.message||e); });
 }
 function fmtGB(n){ n=+n||0; return n>=100?Math.round(n):(Math.round(n*10)/10); }
