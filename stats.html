@@ -430,8 +430,8 @@ function secRevenue(){
   return h+'</div>';
 }
 /* 2 · What the money goes on — stacked per-month, category + month buttons + time */
-var COST_ORDER=[['rent','rent','#e0a5a5'],['cleaning','cleaning','#b8c9d9'],['supplies','supplies','#8ab48f'],['electricity','electricity','#d9a441'],['maintenance','maintenance','#c77b7b'],['tv-phone-internet','internet','#9c86c4'],['laundry','laundry','#c98f8f'],['contingency','contingency','#b0a08e'],['opsmanager','opsMgr','#7d9c9c'],['water','water','#7fb2c9'],['heat-gas','heat/gas','#caa06a'],['subscription','subscription','#9aa7b5']];
-var FOLD={'cleaning-labor':'cleaning','services-contingency':'contingency','gifts-contingency':'contingency','general-contingency':'contingency','compound-maintenance':'maintenance'};
+var COST_ORDER=[['rent','rent','#e0a5a5'],['cleaning','cleaning','#b8c9d9'],['supplies','supplies','#8ab48f'],['electricity','electricity','#d9a441'],['maintenance','maintenance','#c77b7b'],['compound-maintenance','compound maint.','#a05f5f'],['tv-phone-internet','internet','#9c86c4'],['laundry','laundry','#c98f8f'],['contingency','contingency','#b0a08e'],['opsmanager','opsMgr','#7d9c9c'],['water','water','#7fb2c9'],['heat-gas','heat/gas','#caa06a'],['subscription','subscription','#9aa7b5']];
+var FOLD={'cleaning-labor':'cleaning','services-contingency':'contingency','gifts-contingency':'contingency','general-contingency':'contingency'};   // compound maintenance stands on its own, as it does in Close
 function costRow(m){ var by={}; scopeFlats().forEach(function(f){ var c=costsUSD(f,m); for(var k in c.by){ var kk=FOLD[k]||k; by[kk]=(by[kk]||0)+c.by[k]; } }); return by; }
 function secCosts(){
   var ms=monthsInRange(R.cost);
