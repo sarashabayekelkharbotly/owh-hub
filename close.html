@@ -184,7 +184,7 @@ function fetchOnce(){
 function tryCache(){ try{var c=localStorage.getItem('owh_close');if(c)onData(JSON.parse(c),true);}catch(e){} }
 function showFetchHelp(e){ if(DATA)return; $('#err').style.display='block'; $('#err').innerHTML='<div class="err">Couldn\'t reach the endpoint'+(noAuthJs()?' — <b>auth.js did not load</b> (it must sit next to this file)':'')+'. Paste the JSON below to preview.<br><span class="muted">'+(e&&e.message||'')+'</span></div>'; var pf=document.getElementById('pasteFallback'); if(pf)pf.style.display='block'; }
 function loadPasted(){ try{ var j=JSON.parse($('#pasteBox').value); onData(j.data?j:{ok:true,data:j,generatedAt:new Date().toISOString()}); }catch(e){ alert('Not valid JSON'); } }
-function onData(j,fromCache){ DATA=j.data; DATA._gen=j.generatedAt; try{ if(!fromCache) localStorage.setItem('owh_close',JSON.stringify(j)); }catch(e){} $('#loader').style.display='none'; $('#err').style.display='none'; var pf=document.getElementById('pasteFallback'); if(pf)pf.style.display='none'; initControls(); render(); }
+function onData(j,fromCache){ DATA=j.data; DATA._gen=j.generatedAt; __rateCache={}; /* rates derive from the payload — never carry them across a reload */ try{ if(!fromCache) localStorage.setItem('owh_close',JSON.stringify(j)); }catch(e){} $('#loader').style.display='none'; $('#err').style.display='none'; var pf=document.getElementById('pasteFallback'); if(pf)pf.style.display='none'; initControls(); render(); }
 
 /* ---------- controls ---------- */
 function initControls(){
@@ -205,13 +205,36 @@ function prevMonth(m){ var d=new Date(m+'-01'); d.setMonth(d.getMonth()-1); retu
 
 /* ---------- currency: convert EVERYTHING to the selected display currency ---------- */
 function fx(){ return (DATA.meta.fx&&DATA.meta.fx.current)||1; }
-function toCur(amount,native){ if(amount==null||isNaN(amount))return amount; if(native===CUR)return amount; return native==='USD'?amount*fx():amount/fx(); }
+/* EVERY MONTH CONVERTS AT ITS OWN RATE (Sarah 2026-08-05, §5.1). This used to apply the CURRENT
+   rate to every month, so a closed month was silently restated whenever the pound moved: May's net
+   read 174,184 EGP at July's 49.26 instead of 183,450 at May's own 51.88 — and it disagreed with
+   Statistics and the what-changed table, which already follow the rule.
+   The rate is DERIVED from the month's own P&L figures, so it is by construction the exact rate the
+   sheet used: EGP costs ÷ (costs-in-USD − USD-native costs). Falls back to the current rate only
+   for a month with no EGP costs to divide by. */
+var __rateCache={};
+function rateFor(mo){
+  if(!mo) return fx();
+  if(__rateCache[mo]) return __rateCache[mo];
+  var egp=0,usd=0,rev=0,net=0;
+  (DATA.meta.flatsOrder||[]).forEach(function(f){
+    var p=(DATA.pnl[f]||{})[mo]; if(!p) return;
+    rev+=p.revenue.total; net+=p.net;
+    (p.costs||[]).forEach(function(c){ if(c.currency==='USD')usd+=c.amount; else egp+=c.amount; });
+  });
+  var egpInUsd=(rev-net)-usd;
+  return (__rateCache[mo] = (egp>0&&egpInUsd>0) ? egp/egpInUsd : fx());
+}
+function toCur(amount,native,mo){ if(amount==null||isNaN(amount))return amount; if(native===CUR)return amount;
+  var r=rateFor(mo||MONTH); return native==='USD'?amount*r:amount/r; }
 /* Money only (fmt stays whole-number for counts). Dollars carry 2 decimals: an EGP cost shown in USD
    is small — 20 EGP is $0.41 — and at whole dollars real costs printed as "0". */
 function fmtMoney(v){ var d=(CUR==='USD')?2:0;
   return (v<0?'-':'')+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}); }
 function m(v){ if(v==null||isNaN(v))return ''; var z=Math.abs(v)<0.005; return '<span class="'+(z?'zero':(v<0?'neg':''))+'">'+fmtMoney(v)+'</span>'; }
-function ribbon(){ var g=DATA._gen?new Date(DATA._gen):null; $('#rib').innerHTML=authWho()+' · FX '+fmt1(fx())+' <span style="color:#9a8c8c">('+(DATA.meta.fx.isCurrentMonthSet?'set':'carried')+')</span>'+(g?' · '+g.toLocaleDateString():''); }
+function ribbon(){ var g=DATA._gen?new Date(DATA._gen):null;
+  // show the rate THIS month is converted at, not a global one — they differ for every closed month
+  $('#rib').innerHTML=authWho()+' · FX '+fmt1(typeof MONTH!=='undefined'&&MONTH?rateFor(MONTH):fx())+' <span style="color:#9a8c8c">('+(DATA.meta.fx.isCurrentMonthSet?'set':'carried')+')</span>'+(g?' · '+g.toLocaleDateString():''); }
 function deltaCell(v,p){ if(p==null||isNaN(p))return ''; var d=v-p; if(Math.abs(d)<0.5)return '<span class="muted">—</span>'; var pct=p?Math.round(d/Math.abs(p)*100):null; return '<span class="delta '+(d>0?'up':'down')+'">'+(d>0?'+':'')+fmt(d)+(pct!=null?' ('+(pct>0?'+':'')+pct+'%)':'')+'</span>'; }
 
 /* ---------- render ---------- */
@@ -235,7 +258,7 @@ function renderReview(){
        on the line itself, not only inside the drill-down, so a moved figure can't pass unnoticed. */
     if(txFor(FLAT,MONTH,c.key).some(function(t){return /\[restated /i.test(t.desc||'');}))
       lbl+=' <span class="badge b-open" title="a rebuild changed this month — the drill-down shows the old figure">restated</span>';
-    rows+='<tr'+(canDrill?' class="drillable" onclick="toggleDrill(\''+id+'\')"':'')+'><td>'+lbl+'</td><td>'+m(toCur(c.amount,c.currency))+'</td><td class="prevcol">'+m(pc.amount==null?null:toCur(pc.amount,c.currency))+'</td></tr>';
+    rows+='<tr'+(canDrill?' class="drillable" onclick="toggleDrill(\''+id+'\')"':'')+'><td>'+lbl+'</td><td>'+m(toCur(c.amount,c.currency))+'</td><td class="prevcol">'+m(pc.amount==null?null:toCur(pc.amount,c.currency,prevMonth(MONTH)))+'</td></tr>';
     if(open) rows+=drillRows(c.key);
   });
   rows+=r3('Net', rec.net,'USD', prev?prev.net:null,'net');
@@ -248,7 +271,7 @@ function renderReview(){
     +checklist(rec)+'</div>';
 }
 function sec(t){ return '<tr class="sec"><td colspan="3">'+t+'</td></tr>'; }
-function r3(label,val,native,prev,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td><td>'+m(toCur(val,native))+'</td><td class="prevcol">'+m(prev==null?null:toCur(prev,native))+'</td></tr>'; }
+function r3(label,val,native,prev,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td><td>'+m(toCur(val,native))+'</td><td class="prevcol">'+m(prev==null?null:toCur(prev,native,prevMonth(MONTH)))+'</td></tr>'; }
 
 function checklist(rec){
   var fxSet=DATA.meta.fx.isCurrentMonthSet, isOpen=rec.status!=='final';
@@ -295,7 +318,7 @@ function renderCompare(){
 function csec(t,n){ return '<tr class="sec"><td colspan="'+(n+3)+'">'+t+'</td></tr>'; }
 function cmp(label,flats,pm,getNative,native,cls){
   var row='<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td>',tot=0,ptot=0;
-  flats.forEach(function(f){ var v=toCur(getNative(DATA.pnl[f][MONTH]),native), pv=toCur(getNative(DATA.pnl[f][pm]),native); tot+=v||0; ptot+=pv||0; row+='<td>'+m(v)+'</td>'; });
+  flats.forEach(function(f){ var v=toCur(getNative(DATA.pnl[f][MONTH]),native), pv=toCur(getNative(DATA.pnl[f][pm]),native,pm); tot+=v||0; ptot+=pv||0; row+='<td>'+m(v)+'</td>'; });
   row+='<td><b>'+m(tot)+'</b></td><td>'+deltaCell(tot,ptot)+'</td></tr>';
   return row;
 }
