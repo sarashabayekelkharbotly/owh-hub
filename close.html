@@ -66,6 +66,13 @@ textarea{width:100%;min-height:90px;font-family:monospace;font-size:11px;border:
 .ddate{display:inline-block;width:20px;color:var(--soft);margin-right:8px;font-size:10.5px}
 td.damt{font-size:11px;color:#5a4d4d}
 .dfootr td{font-size:10px;color:var(--soft);font-weight:700;border-top:1px dashed var(--line);padding-top:2px;padding-bottom:3px}
+/* other-revenue entry — data is typed in the app, never in the spreadsheet */
+.orevlink{font-size:10.5px;color:var(--soft);cursor:pointer;text-decoration:underline}
+.orevlink:hover{color:#5a4d4d}
+.orevform{margin-top:8px;padding:8px;border:1px solid var(--line,#ddd);border-radius:9px;background:#fbf7f7}
+.orevrow{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.orevrow label{flex:0 0 96px;font-size:11.5px;color:var(--soft)}
+.orevrow input,.orevrow select{flex:1;font-family:inherit;font-size:12px;border:1px solid var(--line,#ddd);border-radius:7px;padding:4px 7px;background:#fff}
 </style>
 </head>
 <body>
@@ -293,7 +300,8 @@ function deltaCell(v,p){ if(p==null||isNaN(p))return ''; var d=v-p; if(Math.abs(
 
 /* ---------- render ---------- */
 function render(){ ribbon(); $('#app').innerHTML=VIEW==='review'?renderReview():renderCompare();
-  if(VIEW==='review'){ if(RECUR&&RECUR.month===MONTH) renderRecurring(); else loadRecurring(); } }
+  if(VIEW==='review'){ if(RECUR&&RECUR.month===MONTH) renderRecurring(); else loadRecurring();
+                       if(OREV&&OREV.month===MONTH) renderOtherRev(); else loadOtherRev(); } }
 
 /* 4a — Review one flat: PORTRAIT (phone-first), current + previous month columns */
 function renderReview(){
@@ -329,7 +337,7 @@ function renderReview(){
   return '<div class="frame port"><span class="orient o-port">portrait · phone-first</span>'
     +'<div class="card"><h1>'+FLAT+' · '+MONTH+badge+'</h1><p class="sub">all values in '+CUR+'</p>'
     +'<table><thead><tr><th>Line</th><th>'+MONTH+'</th><th>'+pm+'</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +checklist(rec)+'<div id="recurBox"></div></div>';
+    +checklist(rec)+'<div id="orevBox"></div><div id="recurBox"></div></div>';
 }
 
 /* ---------- recurring monthly entries (Sarah 2026-08-05) ----------
@@ -369,6 +377,73 @@ function saveRecurring(){
       document.getElementById('rcmsg').textContent='saved ✓ — refresh to see the P&L follow';
     }).catch(function(e){ document.getElementById('rcmsg').textContent='failed: '+(e.message||e); });
 }
+/* ---- Other revenue, entered HERE (Sarah 2026-08-06) --------------------------------------------
+   House rule: nothing is typed into the spreadsheet. The sheet computes, the app is where things
+   are entered — so the ledger gets its own panel next to the month it belongs to.
+   Other revenue is the one figure nothing can derive: if it isn't entered it is simply gone, and it
+   was — $1,280 of kept cancellation fees, Farah's 39.66, Ehab's internet against the wrong flat.
+   It never touches the nightly rate: accommodation is apportioned on its own, and these sit whole
+   in the month they were earned. */
+var OREV=null, OREV_EDIT=null;
+function loadOtherRev(){
+  if(!MONTH) return;
+  api('props_other_rev',{month:MONTH}).then(function(j){ if(j&&j.ok){ OREV=j; OREV.month=MONTH; renderOtherRev(); } }).catch(function(){});
+}
+function orevFlats(){ var d=DATA||{}; return (d.meta&&d.meta.flatsOrder)||Object.keys(d.pnl||{}); }
+function renderOtherRev(){
+  var el=document.getElementById('orevBox'); if(!el||!OREV) return;
+  var rows=OREV.rows||[], tot=0;
+  var body=rows.map(function(r){
+    tot+=r.amount||0;
+    return '<tr><td>'+esc(r.flat)+'</td><td>'+esc(r.cat)+'</td>'+
+      '<td class="ditem" title="'+esc(r.note||'')+'">'+esc(r.guest||'—')+
+      (r.via?' <span class="dnote">'+esc(r.via)+'</span>':'')+'</td>'+
+      '<td class="damt">'+fmt(toCur(r.amount,'USD'))+'</td>'+
+      '<td><span class="orevlink" onclick="orevEdit(\''+esc(r.ref)+'\')">edit</span></td></tr>';
+  }).join('');
+  var e=OREV_EDIT||{}, isNew=!e.ref;
+  var opt=function(list,val){ return list.map(function(o){ return '<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>'; }).join(''); };
+  var form=OREV_EDIT?('<div class="orevform">'+
+      '<div class="orevrow"><label>Apartment</label><select id="or_flat">'+opt(orevFlats(),e.flat||'')+'</select></div>'+
+      '<div class="orevrow"><label>What for</label><select id="or_cat">'+opt(OREV.cats,e.cat||'')+'</select></div>'+
+      '<div class="orevrow"><label>Amount (USD)</label><input id="or_amt" value="'+(e.amount==null?'':e.amount)+'"></div>'+
+      '<div class="orevrow"><label>Date earned</label><input id="or_date" value="'+esc(e.date||(MONTH+'-01'))+'" placeholder="'+MONTH+'-01"></div>'+
+      '<div class="orevrow"><label>Guest</label><input id="or_guest" value="'+esc(e.guest||'')+'"></div>'+
+      '<div class="orevrow"><label>Received via</label><input id="or_via" value="'+esc(e.via||'')+'" placeholder="Stripe · Instapay · cash"></div>'+
+      '<div class="orevrow"><label>Note</label><input id="or_note" value="'+esc(e.note||'')+'"></div>'+
+      '<div class="btnrow" style="margin-top:6px">'+
+        '<button class="btn sec" onclick="orevSave()">'+(isNew?'Add':'Save')+'</button>'+
+        '<button class="btn sec" onclick="orevCancel()">Cancel</button>'+
+        (isNew?'':'<button class="btn sec" onclick="orevDelete()">Delete</button>')+
+        '<span class="muted" id="ormsg"></span></div></div>'):
+    '<div class="btnrow" style="margin-top:6px"><button class="btn sec" onclick="orevNew()">+ Add other revenue</button><span class="muted" id="ormsg"></span></div>';
+  el.innerHTML='<div class="card"><h3 style="margin:0 0 6px">Other revenue · '+MONTH+'</h3>'+
+    (rows.length?('<table style="font-size:12.5px;width:100%"><tbody>'+body+
+      '<tr class="tot"><td colspan="3">'+rows.length+' entr'+(rows.length===1?'y':'ies')+'</td>'+
+      '<td class="damt">'+fmt(toCur(tot,'USD'))+'</td><td></td></tr></tbody></table>')
+     :'<div class="muted" style="padding:4px 0">nothing recorded this month</div>')+
+    form+
+    '<div class="legend">Kept cancellation fees, extras like internet or transport, damage reimbursements, test bookings. Recorded whole in the month it was earned — never spread across nights, so it cannot move the nightly rate. Enter what you actually received: if it came through Stripe, that is net of their 3.65%.</div></div>';
+}
+function orevNew(){ OREV_EDIT={ flat:FLAT, cat:'extra service', date:MONTH+'-01' }; renderOtherRev(); }
+function orevEdit(ref){ var r=(OREV.rows||[]).filter(function(x){return x.ref===ref;})[0]; if(r){ OREV_EDIT=r; renderOtherRev(); } }
+function orevCancel(){ OREV_EDIT=null; renderOtherRev(); }
+function orevField(id){ var el=document.getElementById(id); return el?String(el.value).trim():''; }
+function orevSave(del){
+  var msg=document.getElementById('ormsg'); if(msg) msg.textContent=del?'deleting…':'saving…';
+  var p={ sid:'', month:MONTH, user:(ME&&ME.user)||'', ref:(OREV_EDIT&&OREV_EDIT.ref)||'' };
+  if(del) p.del='1';
+  else { p.flat=orevField('or_flat'); p.cat=orevField('or_cat'); p.amount=orevField('or_amt').replace(/,/g,'');
+         p.date=orevField('or_date'); p.guest=orevField('or_guest'); p.via=orevField('or_via'); p.note=orevField('or_note');
+         p.conf=(OREV_EDIT&&OREV_EDIT.conf)||''; p.stayId=(OREV_EDIT&&OREV_EDIT.stayId)||''; }
+  delete p.sid;
+  writeCall('props_other_rev_save',p).then(function(j){
+    OREV.rows=j.rows||[]; OREV_EDIT=null; renderOtherRev();
+    var m2=document.getElementById('ormsg'); if(m2) m2.textContent=(j.action||'saved')+' ✓ — refresh to see the P&L follow';
+  }).catch(function(err){ var m2=document.getElementById('ormsg'); if(m2) m2.textContent='failed: '+(err.message||err); });
+}
+function orevDelete(){ if(OREV_EDIT&&OREV_EDIT.ref) orevSave(true); }
+
 function sec(t){ return '<tr class="sec"><td colspan="3">'+t+'</td></tr>'; }
 function r3(label,val,native,prev,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td><td>'+m(toCur(val,native))+'</td><td class="prevcol">'+m(prev==null?null:toCur(prev,native,prevMonth(MONTH)))+'</td></tr>'; }
 
