@@ -370,6 +370,56 @@ function payRow(s){
       '<span class="paymsg" id="pmsg_'+id+'"></span>'+
     '</div></span></div>';
 }
+/* ---- other revenue that would otherwise be lost (Sarah 2026-08-06) -----------------------------
+   Two things Smoobu can tell us happened but not how much they were worth, so the Hub asks rather
+   than guesses. Answered here, they go straight into the ledger — nothing is typed into a sheet.
+     • an OTA booking cancelled  → "how much was kept?" (Smoobu never carries the payout decision)
+     • a price element with no type → a manual extra the host added; the amount can be stale after a
+       booking change, and it may belong to a DIFFERENT flat — Ehab's $40 was $20 for 8A and $20
+       for 28A — so both are confirmed, never auto-written.
+   A DIRECT cancellation raises nothing: those are data-entry corrections, not cancellations. */
+function orevRow(a,kind){
+  var id=esc(a.conf||a.smoobuId||''), pre='or_'+kind+'_'+id;
+  var flats=((D.meta&&D.meta.flatsOrder)||[]).map(function(f){
+    return '<option'+(f===a.flat?' selected':'')+'>'+esc(f)+'</option>'; }).join('');
+  var head = kind==='canc'
+    ? '<b>❓ '+esc(a.flat)+' — '+esc(a.guest||'guest')+' cancelled.</b> '+dmon(a.checkIn)+' → '+dmon(a.checkOut)+
+      ', '+a.nights+' night'+(a.nights===1?'':'s')+'. How much did we keep?'
+    : '<b>➕ '+esc(a.flat)+' — '+esc(a.guest||'guest')+' was charged an extra.</b> "'+esc(a.name)+'"'+
+      (a.qty>1?' ×'+a.qty:'')+' — Smoobu says $'+fmt(a.amount)+'. Confirm the amount actually received.';
+  return '<div class="need n-warn" id="'+pre+'"><span class="nb">$</span><span>'+head+
+    '<div class="payctl">'+
+      '<input id="'+pre+'_amt" style="width:74px" value="'+(kind==='canc'?'':a.amount)+'" placeholder="USD">'+
+      (kind==='extra'?'<select id="'+pre+'_flat">'+flats+'</select>':'')+
+      '<button class="paybtn" onclick="orevAnswer(\''+kind+'\',\''+id+'\')">Save</button>'+
+      '<span class="paymsg" id="'+pre+'_msg"></span>'+
+    '</div>'+
+    '<div class="soft" style="font-size:10.5px;margin-top:2px">'+
+      (kind==='canc'?'Spread across the nights the booking would have used, the way you do it — enter the total kept.'
+                    :'Goes in whole, in the month it was earned. If it came through Stripe, enter what landed (net of 3.65%).')+
+    '</div></span></div>';
+}
+function orevAnswer(kind,id){
+  var pre='or_'+kind+'_'+id, msg=document.getElementById(pre+'_msg');
+  var list=((ALERTS&&ALERTS.revAlerts)||{})[kind==='canc'?'cancellations':'extras']||[];
+  var a=list.filter(function(x){ return String(x.conf||x.smoobuId||'')===id; })[0];
+  if(!a){ if(msg)msg.textContent='not found'; return; }
+  var amt=(document.getElementById(pre+'_amt')||{}).value||'';
+  amt=String(amt).replace(/,/g,'').trim();
+  if(!amt||isNaN(+amt)||+amt===0){ if(msg)msg.textContent='enter an amount'; return; }
+  var flatEl=document.getElementById(pre+'_flat');
+  var p={ flat:(flatEl?flatEl.value:a.flat), amount:amt, guest:a.guest||'', conf:a.conf||'',
+          stayId:a.stayId||'', user:(ME&&ME.user)||'' };
+  if(kind==='canc'){ p.cat='cancellation fee'; p.split='1'; p.month=(a.checkOut||'').slice(0,7); p.date=a.checkOut||''; }
+  else { p.cat='extra service'; p.month=(a.checkIn||'').slice(0,7); p.date=a.checkIn||''; p.note=a.name||''; }
+  if(msg)msg.textContent='saving…';
+  api('props_other_rev_save',p).then(function(j){
+    if(!j||!j.ok) throw new Error(j&&j.error||'failed');
+    if(msg)msg.textContent=(j.action||'saved')+' ✓';
+    var row=document.getElementById(pre); if(row) row.style.opacity=.45;
+  }).catch(function(e){ if(msg)msg.textContent='failed: '+(e.message||e); });
+}
+
 function needs(cm,pmY){
   var items=[];
   if(!D.meta.fx.isCurrentMonthSet) items.push({t:'warn',txt:'<b>FX not set for '+D.meta.currentMonth+'</b> — carrying '+(D.meta.fx.current||'?')+' from last close.'});
@@ -413,9 +463,14 @@ function needs(cm,pmY){
       if(!done) items.unshift({t:'warn',txt:'<b>It\'s Thursday</b> — confirm the <a class="tab" href="week.html">Week</a> schedule &amp; send the WhatsApp.'});
     }
   })();
-  if(!items.length&&!pays.length) items.push({t:'ok',txt:'Nothing needs you right now.'});
+  var RA=(ALERTS&&ALERTS.revAlerts)||{}, cancs=RA.cancellations||[], extras=RA.extras||[];
+  if(!items.length&&!pays.length&&!cancs.length&&!extras.length) items.push({t:'ok',txt:'Nothing needs you right now.'});
   var h='<div class="card"><h3>Needs you<button id="syncAllBtn" onclick="syncAll()" style="float:right;font:inherit;font-size:11px;font-weight:700;border:1px solid var(--line,#ecdede);background:#fff;color:var(--red,#cc5f5f);border-radius:8px;padding:3px 9px;cursor:pointer">🔄 Sync all</button></h3>';
   pays.forEach(function(s){ h+=payRow(s); });
+  /* money that exists but has no amount recorded yet — put it above the informational lines,
+     because unlike those it is lost entirely if it is never answered */
+  cancs.forEach(function(a){ h+=orevRow(a,'canc'); });
+  extras.forEach(function(a){ h+=orevRow(a,'extra'); });
   items.forEach(function(i){ h+='<div class="need n-'+i.t+'"><span class="nb">'+(i.t==='warn'?'!':(i.t==='ok'?'✓':'•'))+'</span><span>'+i.txt+'</span></div>'; });
   return h+'</div>';
 }
