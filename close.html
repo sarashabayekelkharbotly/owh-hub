@@ -164,61 +164,64 @@ function txFor(flat,ym,key){
     return c;
   }));
 }
-/* ---- Revenue drill-down, by stay (Sarah 2026-08-06) --------------------------------------------
-   The sheet apportions a stay's All-in over the months it covers — All-in × nights in month ÷ total
-   nights — so the only honest drill-down is that same arithmetic on the same numbers.
-
-   It reconciles OUT LOUD. Two live defects show up here rather than hiding:
-     • a stay whose month-by-month nights exceed its own total nights (Smoobu merges a booking that
-       came in non-contiguous blocks into one first-in→last-out row) is paid for nights that belong
-       to another booking — flagged "over-counted";
-     • a cancelled stay with money kept contributes nothing to revenue, yet the P&L still subtracts
-       that money as Other — flagged "kept, not in revenue".
-   Whatever the stays don't explain is shown as its own line, never absorbed silently. */
-function isLongLetFlat(f){ var x=(DATA.flats||[]).filter(function(o){return o.id===f;})[0]; return !!(x&&x.isLongLet); }
-function nightsInMonth(ci,co,ym){
-  if(!ci||!co||!ym) return 0;
-  var s=new Date(+ci.slice(0,4),+ci.slice(5,7)-1,+ci.slice(8,10),12);
-  var e=new Date(+co.slice(0,4),+co.slice(5,7)-1,+co.slice(8,10),12);
-  var ms=new Date(+ym.slice(0,4),+ym.slice(5,7)-1,1,12), me=new Date(+ym.slice(0,4),+ym.slice(5,7),1,12);
-  var a=s>ms?s:ms, b=e<me?e:me;
-  return Math.max(0,Math.round((b-a)/86400000));
-}
-function revStays(flat,ym){
-  return (DATA.stays||[]).filter(function(s){
-    return s.flat===flat && s.status!=='Blocked' && nightsInMonth(s.checkIn,s.checkOut,ym)>0;
-  }).sort(function(a,b){ return (a.checkIn||'')<(b.checkIn||'')?-1:1; });
-}
-function revDrillRows(){
-  var rec=DATA.pnl[FLAT][MONTH]; if(!rec) return '';
-  var list=revStays(FLAT,MONTH), rows='', sum=0;
-  list.forEach(function(s){
-    var nm=nightsInMonth(s.checkIn,s.checkOut,MONTH), tot=s.nights||0;
-    var canc=/cancel/i.test(s.status||'');
-    var val=(canc||!tot)?0:(s.allIn||0)*nm/tot;
-    sum+=val;
-    var note='';
-    if(canc) note=' <span class="badge b-open" title="a cancelled stay contributes no revenue, but its kept money is still subtracted as Other">kept, not in revenue</span>';
-    else if(nm>tot) note=' <span class="badge b-open" title="this booking\'s dates span more nights than the booking has — the extra nights belong to another reservation">over-counted</span>';
-    var span=nm+(tot&&tot!==nm?' of '+tot:'')+(nm===1?' night':' nights');
-    rows+='<tr class="drill"><td class="ditem" title="'+esc((s.guest||'')+'  '+(s.checkIn||'')+' → '+(s.checkOut||''))+'">'+
-          '<span class="ddate">'+dday(s.checkIn)+'</span>'+esc(s.guest||'—')+
-          ' <span class="dnote">'+span+(s.portal?' · '+esc(s.portal):'')+'</span>'+note+
-          (canc?'':(s.other?' <span class="dnote">incl. '+fmt(toCur(s.other,'USD'))+' other</span>':''))+
-          '</td><td class="damt">'+fmt(toCur(val,'USD'))+'</td><td class="prevcol"></td></tr>';
-  });
-  var resid=(rec.revenue.total||0)-sum;
-  if(Math.abs(resid)>0.005){
-    var lbl=isLongLetFlat(FLAT)?'long-term rent':'not explained by any stay — check the apportionment';
-    rows+='<tr class="drill"><td class="ditem"><span class="ddate"></span>'+lbl+'</td>'+
-          '<td class="damt">'+fmt(toCur(resid,'USD'))+'</td><td class="prevcol"></td></tr>';
-  }
-  if(!rows) return '<tr class="drill"><td class="dnote" colspan="3">no stays and no rent in this month</td></tr>';
-  return rows+'<tr class="drill dfootr"><td class="dnote">'+list.length+' stay'+(list.length===1?'':'s')+
-         ' · adds to total revenue</td><td class="damt">'+fmt(toCur(rec.revenue.total,'USD'))+'</td><td class="prevcol"></td></tr>';
-}
-
+/* ---- Revenue drill-downs for the close review (Sarah 2026-08-06) -------------------------------
+   These read the SHEET's own rows — the apportionment lines and the ledger entries — rather than
+   re-deriving them here. A review screen that recomputes can agree with itself while disagreeing
+   with the figure above it, which is exactly how a whole month sat in the wrong place unnoticed.
+   It also means seeded stays (Yang Yang, whose split only exists in the sheet) show truthfully.
+     Earnings  = accommodation apportioned + long-term rent
+     Other     = the ledger, whole, in the month earned
+     Revenue   = the two added
+   Each list ends with its own total against the line above it, so a gap is visible, not absorbed. */
 function toggleDrill(id){OPEN[id]=!OPEN[id];render();}
+var RDET={}, RDET_BUSY={};
+function rdKey(){ return FLAT+'|'+MONTH; }
+function loadRevDetail(){
+  var k=rdKey(); if(RDET[k]||RDET_BUSY[k]) return; RDET_BUSY[k]=1;
+  api('props_revenue_detail',{flat:FLAT,month:MONTH}).then(function(j){
+    RDET_BUSY[k]=0; if(j&&j.ok){ RDET[k]=j; render(); }
+  }).catch(function(){ RDET_BUSY[k]=0; });
+}
+function rdWait(){ return '<tr class="drill"><td class="dnote" colspan="3">loading…</td></tr>'; }
+function rdFoot(label,shown,line){
+  var gap=line-shown, h='<tr class="drill dfootr"><td class="dnote">'+label+'</td>'+
+    '<td class="damt">'+fmt(toCur(shown,'USD'))+'</td><td class="prevcol"></td></tr>';
+  if(Math.abs(gap)>0.005) h+='<tr class="drill"><td class="ditem"><span class="ddate"></span>'+
+    '<b>not explained — check the apportionment</b></td><td class="damt">'+fmt(toCur(gap,'USD'))+'</td><td class="prevcol"></td></tr>';
+  return h;
+}
+function earnDrillRows(){
+  var d=RDET[rdKey()]; if(!d){ loadRevDetail(); return rdWait(); }
+  var rec=DATA.pnl[FLAT][MONTH]||{}, rows='', sum=0;
+  (d.accommodation||[]).slice().sort(function(a,b){ return (a.checkIn||'')<(b.checkIn||'')?-1:1; }).forEach(function(a){
+    sum+=a.amount;
+    var split=(a.nights===''||a.nights==null)?'as recorded':(a.nights+' of '+a.total+' night'+(a.total===1?'':'s'));
+    rows+='<tr class="drill"><td class="ditem" title="'+esc((a.guest||'')+'  '+(a.checkIn||'')+' → '+(a.checkOut||'')+'  ·  '+a.accommodation+' over '+a.total+' nights')+'">'+
+      '<span class="ddate">'+dday(a.checkIn)+'</span>'+esc(a.guest||a.stayId||'—')+
+      ' <span class="dnote">'+split+(a.portal?' · '+esc(a.portal):'')+'</span>'+
+      '</td><td class="damt">'+fmt(toCur(a.amount,'USD'))+'</td><td class="prevcol"></td></tr>';
+  });
+  if(d.rent){ sum+=d.rent;
+    rows+='<tr class="drill"><td class="ditem"><span class="ddate"></span>long-term rent</td>'+
+      '<td class="damt">'+fmt(toCur(d.rent,'USD'))+'</td><td class="prevcol"></td></tr>'; }
+  if(!rows) return '<tr class="drill"><td class="dnote" colspan="3">no stays and no rent this month</td></tr>';
+  return rows+rdFoot((d.accommodation||[]).length+' stay'+((d.accommodation||[]).length===1?'':'s')+
+    (d.rent?' + rent':'')+' · = earnings', sum, rec.revenue?rec.revenue.earnings:sum);
+}
+function otherDrillRows(){
+  var d=RDET[rdKey()]; if(!d){ loadRevDetail(); return rdWait(); }
+  var rec=DATA.pnl[FLAT][MONTH]||{}, rows='', sum=0, list=d.other||[];
+  list.forEach(function(o){
+    sum+=o.amount;
+    rows+='<tr class="drill"><td class="ditem" title="'+esc((o.note||'')+(o.via?' · '+o.via:''))+'">'+
+      '<span class="ddate">'+dday(o.date)+'</span>'+esc(o.guest||'—')+
+      ' <span class="dnote">'+esc(o.cat||'')+(o.via?' · '+esc(o.via):'')+'</span>'+
+      '</td><td class="damt">'+fmt(toCur(o.amount,'USD'))+'</td><td class="prevcol"></td></tr>';
+  });
+  if(!rows) return '<tr class="drill"><td class="dnote" colspan="3">nothing recorded — add it in the panel below</td></tr>';
+  return rows+rdFoot(list.length+' entr'+(list.length===1?'y':'ies'), sum, rec.revenue?rec.revenue.other:sum);
+}
+
 function drillRows(key){
   var list=txFor(FLAT,MONTH,key);
   if(!list.length) return '<tr class="drill"><td class="dnote" colspan="3">no itemised entries</td></tr>';
@@ -308,16 +311,21 @@ function renderReview(){
   var rec=DATA.pnl[FLAT][MONTH]; if(!rec)return '<div class="frame port"><div class="card">No data.</div></div>';
   var pm=prevMonth(MONTH), prev=DATA.pnl[FLAT][pm]||null;
   var rows='';
+  /* Revenue drills where the money actually comes from: Earnings opens the stays behind it, Other
+     opens the ledger. Total is the two added — nothing of its own to show. Sarah reviews the
+     reservations here, so both halves have to be openable, not numbers carried in from the sheet. */
   rows+=sec('Revenue');
-  rows+=r3('Earnings', rec.revenue.earnings,'USD', prev&&prev.revenue.earnings);
-  rows+=r3('Other revenue', rec.revenue.other,'USD', prev?prev.revenue.other:null);
-  /* Total revenue drills to the stays behind it — Sarah reviews reservations here, so the line has
-     to be openable, not just a number carried over from the sheet. */
-  var revId=FLAT+'|'+MONTH+'|__revenue', revOpen=!!OPEN[revId];
-  rows+='<tr class="drillable tot" onclick="toggleDrill(\''+revId+'\')"><td><span class="tri">'+(revOpen?'▾':'▸')+'</span>Total revenue</td>'+
-        '<td>'+m(toCur(rec.revenue.total,'USD'))+'</td>'+
-        '<td class="prevcol">'+m(prev?toCur(prev.revenue.total,'USD',pm):null)+'</td></tr>';
-  if(revOpen) rows+=revDrillRows();
+  var earnId=FLAT+'|'+MONTH+'|__earnings', earnOpen=!!OPEN[earnId];
+  rows+='<tr class="drillable" onclick="toggleDrill(\''+earnId+'\')"><td><span class="tri">'+(earnOpen?'▾':'▸')+'</span>Earnings</td>'+
+        '<td>'+m(toCur(rec.revenue.earnings,'USD'))+'</td>'+
+        '<td class="prevcol">'+m(prev?toCur(prev.revenue.earnings,'USD',pm):null)+'</td></tr>';
+  if(earnOpen) rows+=earnDrillRows();
+  var othId=FLAT+'|'+MONTH+'|__other', othOpen=!!OPEN[othId];
+  rows+='<tr class="drillable" onclick="toggleDrill(\''+othId+'\')"><td><span class="tri">'+(othOpen?'▾':'▸')+'</span>Other revenue</td>'+
+        '<td>'+m(toCur(rec.revenue.other,'USD'))+'</td>'+
+        '<td class="prevcol">'+m(prev?toCur(prev.revenue.other,'USD',pm):null)+'</td></tr>';
+  if(othOpen) rows+=otherDrillRows();
+  rows+=r3('Total revenue', rec.revenue.total,'USD', prev?prev.revenue.total:null,'tot');
   rows+=sec('Costs');
   rec.costs.forEach(function(c){
     var pc=prev?(prev.costs.find(function(x){return x.key===c.key;})||{}):{};
