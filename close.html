@@ -61,9 +61,16 @@ textarea{width:100%;min-height:90px;font-family:monospace;font-size:11px;border:
 .drillable:hover{background:#faf5f5}
 .tri{display:inline-block;width:12px;color:var(--soft)}
 .drill td{background:#fbf7f7;padding:1px 8px;border-bottom:0}
-.ditem{font-size:11px;color:#5a4d4d;padding-left:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0}
+/* Drill rows carry guest names in Arabic and English side by side. Left to itself the browser
+   reorders a mixed line — "عبدالعزيز السعدون 5 of 7 nights" put the 5 on the wrong side of the
+   name — so every name is wrapped in <bdi>, which isolates its direction from the text around it.
+   The nights/portal detail also moved to its own line: one truncating line could not hold a long
+   Arabic name AND its meta without cutting both. */
+.ditem{font-size:11px;color:#5a4d4d;padding-left:22px;white-space:normal;line-height:1.35;padding-top:2px;padding-bottom:2px}
+.dname{unicode-bidi:isolate;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom;white-space:nowrap}
+.dmeta{font-size:10px;color:#8a7a7a;margin-left:28px;unicode-bidi:isolate;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dnote{font-size:10.5px;color:#8a7a7a;padding-left:22px}
-.ddate{display:inline-block;width:20px;color:var(--soft);margin-right:8px;font-size:10.5px}
+.ddate{display:inline-block;width:20px;color:var(--soft);margin-right:8px;font-size:10.5px;vertical-align:bottom}
 td.damt{font-size:11px;color:#5a4d4d}
 .dfootr td{font-size:10px;color:var(--soft);font-weight:700;border-top:1px dashed var(--line);padding-top:2px;padding-bottom:3px}
 /* other-revenue entry — data is typed in the app, never in the spreadsheet */
@@ -197,8 +204,8 @@ function earnDrillRows(){
     sum+=a.amount;
     var split=(a.nights===''||a.nights==null)?'as recorded':(a.nights+' of '+a.total+' night'+(a.total===1?'':'s'));
     rows+='<tr class="drill"><td class="ditem" title="'+esc((a.guest||'')+'  '+(a.checkIn||'')+' → '+(a.checkOut||'')+'  ·  '+a.accommodation+' over '+a.total+' nights')+'">'+
-      '<span class="ddate">'+dday(a.checkIn)+'</span>'+esc(a.guest||a.stayId||'—')+
-      ' <span class="dnote">'+split+(a.portal?' · '+esc(a.portal):'')+'</span>'+
+      '<span class="ddate">'+dday(a.checkIn)+'</span><bdi class="dname">'+esc(a.guest||a.stayId||'—')+'</bdi>'+
+      '<div class="dmeta">'+split+(a.portal?' · '+esc(a.portal):'')+'</div>'+
       '</td><td class="damt">'+fmt(toCur(a.amount,'USD'))+'</td><td class="prevcol"></td></tr>';
   });
   if(d.rent){ sum+=d.rent;
@@ -214,8 +221,8 @@ function otherDrillRows(){
   list.forEach(function(o){
     sum+=o.amount;
     rows+='<tr class="drill"><td class="ditem" title="'+esc((o.note||'')+(o.via?' · '+o.via:''))+'">'+
-      '<span class="ddate">'+dday(o.date)+'</span>'+esc(o.guest||'—')+
-      ' <span class="dnote">'+esc(o.cat||'')+(o.via?' · '+esc(o.via):'')+'</span>'+
+      '<span class="ddate">'+dday(o.date)+'</span><bdi class="dname">'+esc(o.guest||'—')+'</bdi>'+
+      '<div class="dmeta">'+esc(o.cat||'')+(o.via?' · '+esc(o.via):'')+'</div>'+
       '</td><td class="damt">'+fmt(toCur(o.amount,'USD'))+'</td><td class="prevcol"></td></tr>';
   });
   if(!rows) return '<tr class="drill"><td class="dnote" colspan="3">nothing recorded — add it in the panel below</td></tr>';
@@ -226,7 +233,8 @@ function drillRows(key){
   var list=txFor(FLAT,MONTH,key);
   if(!list.length) return '<tr class="drill"><td class="dnote" colspan="3">no itemised entries</td></tr>';
   var rows=list.map(function(t){
-    return '<tr class="drill"><td class="ditem" title="'+esc(t.desc||'')+'"><span class="ddate">'+dday(t.date)+'</span>'+esc(t.desc||'—')+'</td><td class="damt">'+fmt(toCur(t.amount,t.currency))+'</td><td class="prevcol"></td></tr>';
+    return '<tr class="drill"><td class="ditem" title="'+esc(t.desc||'')+'"><span class="ddate">'+dday(t.date)+'</span>'+
+      '<bdi class="dname">'+esc(t.desc||'—')+'</bdi></td><td class="damt">'+fmt(toCur(t.amount,t.currency))+'</td><td class="prevcol"></td></tr>';
   }).join('');
   var sum=list.reduce(function(a,t){return a+toCur(t.amount||0,t.currency);},0);
   var foot=key==='supplies'
