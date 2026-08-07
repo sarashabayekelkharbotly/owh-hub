@@ -155,13 +155,27 @@ function netHistory(){
           return r.flat===f&&t&&t>=x.cs&&(!ceN||t<ceN); })
         .map(function(r){return {t:pdt(r.at),rem:r.remaining};}).sort(function(a,z){return a.t-z.t;});
       var pts=[{t:x.cs,rem:x.b.quota}].concat(reads);
+      /* THE HOUSE CLOCK (Sarah 2026-08-07). Ownership used to be decided per DAY, at noon — and on
+         a changeover day the incoming guest owns the date, so Ryen's last morning plus the empty
+         12:00→15:00 gap landed on Iman, who had been in the flat 49 minutes: 8.3 GB she never
+         used, which then became her "measured" pace. A stay actually occupies 15:00 check-in day →
+         12:00 check-out day, so each interval is now sliced at those boundaries and every slice
+         charged to whoever really held the flat; the changeover gap burns as vacant idle. A reading
+         taken just after check-in therefore becomes the new guest's true baseline. */
+      var occs=STAYS.filter(function(st){return st.flat===f;}).map(function(st){
+        return {st:st, s0:day(st.checkIn).getTime()+15*3600000, s1:day(st.checkOut).getTime()+12*3600000};
+      }).filter(function(o){return o.s1>o.s0;});
+      function ownerAt(T){ for(var oi=0;oi<occs.length;oi++){ if(T>=occs[oi].s0&&T<occs[oi].s1) return occs[oi].st; } return null; }
       for(var i=0;i<pts.length-1;i++){
         var a=pts[i],z=pts[i+1],delta=Math.max(0,a.rem-z.rem),tot=z.t-a.t; if(tot<=0)continue;
-        var d0=new Date(a.t); d0.setHours(0,0,0,0);
-        for(var t=d0.getTime(); t<z.t.getTime(); t+=DAYMS){
-          var s1=Math.max(a.t.getTime(),t), s2=Math.min(z.t.getTime(),t+DAYMS); if(s2<=s1)continue;
+        var cuts=[a.t.getTime(),z.t.getTime()];
+        occs.forEach(function(o){ if(o.s0>a.t.getTime()&&o.s0<z.t.getTime())cuts.push(o.s0);
+                                  if(o.s1>a.t.getTime()&&o.s1<z.t.getTime())cuts.push(o.s1); });
+        cuts.sort(function(p,q){return p-q;});
+        for(var c2=0;c2<cuts.length-1;c2++){
+          var s1=cuts[c2], s2=cuts[c2+1]; if(s2<=s1)continue;
           var gb=delta*(s2-s1)/tot, df=(s2-s1)/DAYMS;
-          var st=curStay(f,new Date(t+DAYMS/2));
+          var st=ownerAt((s1+s2)/2);
           if(st){ var gk=f+'|'+st.id;
             (H.guest[gk]=H.guest[gk]||{gb:0,days:0}); H.guest[gk].gb+=gb; H.guest[gk].days+=df;
             (H.flat[f]=H.flat[f]||{gb:0,days:0});     H.flat[f].gb+=gb;   H.flat[f].days+=df;
