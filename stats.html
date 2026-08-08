@@ -33,6 +33,16 @@ body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink)
 svg{width:100%;height:auto;max-width:860px;display:block}
 svg text{font-family:'Cairo',sans-serif}
 .legend{font-size:10px;color:var(--soft);margin-top:5px;display:flex;gap:12px;flex-wrap:wrap}
+/* item 8 — the bookings behind a bar. Same visual family as Close's drill rows. */
+.bdrill{margin-top:8px;border:1px solid var(--line,#ecdede);border-radius:10px;padding:8px 10px;background:#fbf7f7}
+.bdrill h4{margin:0 0 6px;font-size:12px}.bdrill h4 .x{float:left;cursor:pointer;color:var(--soft);font-weight:400}
+.bdrill table{width:100%;border-collapse:collapse;font-size:11px}
+.bdrill td{padding:2px 6px;border-bottom:1px solid #f0e6e6;text-align:right;white-space:nowrap}
+.bdrill td:first-child{text-align:left;overflow:hidden;text-overflow:ellipsis;max-width:0;white-space:nowrap}
+.bdrill .bname{unicode-bidi:isolate}
+.bdrill .bnote{font-size:10px;color:var(--soft)}
+.bdrill .btot td{font-weight:700;border-top:1px dashed var(--line,#ecdede);border-bottom:0}
+.bhit{cursor:pointer}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:middle}
 .csub{font-size:10.5px;color:var(--soft);margin-bottom:6px}
 .note{font-size:10px;color:var(--soft);margin-top:5px}
@@ -71,6 +81,10 @@ var D=null, DAYMS=86400000, MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'
 var scope='portfolio';
 var R={rev:'12M',cost:'12M',attr:'12M',occ:'12M',nb:'12M',vol:'12M',chan:'12M',pay:'12M',adr:'6M',turn:'6M',rep:'12M'};
 var revSeries='earnings', costCat='all', costMonth='all', chanMode='nights', payMode='money', nbMode='nights';
+/* item 8 (Sarah 2026-08-05, built 2026-08-08): tap a month on the revenue or nights chart → the
+   bookings behind it. One open drill at a time; tapping the same month again closes it. */
+var DRILL=null;
+function statDrill(kind,m){ DRILL=(DRILL&&DRILL.kind===kind&&DRILL.m===m)?null:{kind:kind,m:m}; render(); }
 var adrMonth='all', turnMonth='all', repMonth='all', repMode='flat';
 var revMode='total', dMode='prev', dOpen={};   // by-flat chart mode · What-changed comparison · expanded rows
 var FLAT_COLORS={'8A':'#4a7fb5','17A':'#cc5f5f','17B':'#9aa7b5','28A':'#6f9a76','Zayed 2000':'#d9a441'};
@@ -181,6 +195,18 @@ function xlabels(months, gwCenter){
    LOSS drew an identical bar to a profit — August's −289 read as +289. Every money chart now maps
    values onto a real scale with a zero line, so a negative sits below it and is labelled with its
    sign. scaleOf returns that mapping; `zero` is the y of 0 and is only drawn when data goes below. */
+/* item 8 — one transparent full-height hit band per month, laid over the finished chart. The SVG
+   stays a plain string; the bands are appended last so they sit on top and catch the tap. */
+function drillRects(months, cxFn, bandW, kind){
+  if(!kind) return '';
+  var s='';
+  months.forEach(function(m,i){
+    s+='<rect class="bhit" x="'+(cxFn(i)-bandW/2).toFixed(1)+'" y="0" width="'+bandW.toFixed(1)+'" height="'+H+'" '+
+       'fill="'+(DRILL&&DRILL.kind===kind&&DRILL.m===m?'rgba(204,95,95,.07)':'transparent')+'" '+
+       'onclick="statDrill(\''+kind+'\',\''+m+'\')"><title>'+m+' — tap for the bookings</title></rect>';
+  });
+  return s;
+}
 function scaleOf(vals, plotH, baseY){
   var hi=Math.max.apply(null,[0].concat(vals)), lo=Math.min.apply(null,[0].concat(vals));
   var span=(hi-lo)||1;
@@ -197,7 +223,9 @@ function lineChart(rows, opt){ opt=opt||{}; var col=opt.color||'var(--c-earn)', 
   pts.forEach(function(p,i){ var v=rows[i].value, neg=v<0;
     s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="2.3" fill="'+(neg?'var(--red)':col)+'"><title>'+rows[i].m+': '+(opt.unit||'')+fmt(v)+'</title></circle>'+
     '<text x="'+p[0].toFixed(1)+'" y="'+(neg?(p[1]+10):(p[1]-5)).toFixed(1)+'" font-size="8" font-weight="700" fill="'+(neg?'var(--red)':'#333')+'" text-anchor="middle">'+(v<0?'-':'')+(opt.unit||'')+kf(Math.abs(v))+'</text>'; });
-  s+=xlabels(rows.map(function(r){return r.m;}), cx); return s+'</svg>';
+  s+=xlabels(rows.map(function(r){return r.m;}), cx);
+  if(opt.drill) s+=drillRects(rows.map(function(r){return r.m;}), cx, step||W-2*PAD, opt.drill);
+  return s+'</svg>';
 }
 /* several lines on one chart (2026-08-04, the by-flat trend view) — rows: [{m, vals:{key:v}}] */
 function lineMulti(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) return '<div class="muted">No data.</div>';
@@ -215,7 +243,9 @@ function lineMulti(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) re
     var lp=pts[pts.length-1];
     s+='<text x="'+Math.min(W-2,lp[0]+4).toFixed(1)+'" y="'+(lp[1]+3).toFixed(1)+'" font-size="7.5" font-weight="700" fill="'+se.color+'">'+esc(se.lbl||se.k)+'</text>';
   });
-  s+=xlabels(rows.map(function(r){return r.m;}), cx); return s+'</svg>';
+  s+=xlabels(rows.map(function(r){return r.m;}), cx);
+  if(opt.drill) s+=drillRects(rows.map(function(r){return r.m;}), cx, step||W-2*PAD, opt.drill);
+  return s+'</svg>';
 }
 function stackedChart(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) return '<div class="muted">No data.</div>';
   var gw=(W-2*PAD)/n, bw=Math.min(46,gw*0.6), plotH=H-TOP-BOT, baseY=H-BOT;
@@ -234,7 +264,9 @@ function stackedChart(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n)
     var lblY = tot<0 ? (yDn+9) : (yUp-3);
     s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+lblY.toFixed(1)+'" font-size="8" font-weight="700" fill="'+(tot<0?'var(--red)':'#333')+'" text-anchor="middle">'+(tot<0?'-':'')+(opt.unit||'')+kf(Math.abs(tot))+'</text>';
   });
-  s+=xlabels(rows.map(function(r){return r.m;}), cx); return s+'</svg>';
+  s+=xlabels(rows.map(function(r){return r.m;}), cx);
+  if(opt.drill) s+=drillRects(rows.map(function(r){return r.m;}), cx, gw, opt.drill);
+  return s+'</svg>';
 }
 function groupedChart(rows, groups, opt){ opt=opt||{}; var n=rows.length; if(!n) return '<div class="muted">No data.</div>';
   var gw=(W-2*PAD)/n, inner=gw*0.82, bw=inner/groups.length, plotH=H-TOP-BOT, baseY=H-BOT;
@@ -407,6 +439,43 @@ function occLine(f,mNow,refMs){
     ' ('+(a.nightsAvg-b.nightsAvg>=0?'+':'')+Math.round(a.nightsAvg-b.nightsAvg)+') · ADR '+fmt(adrA)+' ('+(adrA-adrB>=0?'+':'')+fmt(adrA-adrB)+')</div>';
 }
 
+/* item 8 — the bookings behind a tapped month. Reads the SAME basis the screens use everywhere:
+   earnedIn (RULE C1 apportionment of earnings = accommodation only), so the list adds up to the
+   month's earnings line, with long-term rent shown as its own row rather than absorbed. */
+function bookingsCard(kind){
+  if(!DRILL||DRILL.kind!==kind) return '';
+  var m=DRILL.m, port=scope==='portfolio', list=[];
+  scopeStayFlats().forEach(function(f){
+    rawStays().forEach(function(s){
+      if(s.flat!==f||!isLive(s))return;
+      var nn=overlapNights(s,m); if(nn<=0)return;
+      list.push({s:s,nn:nn,val:disp(earnedIn(s,m),m)});
+    });
+  });
+  list.sort(function(a,z){return z.val-a.val;});
+  var sum=0,nsum=0;
+  var rows=list.map(function(x){ sum+=x.val; nsum+=x.nn;
+    return '<tr><td>'+(port?'<b>'+esc(x.s.flat==='Zayed 2000'?'Zayed':x.s.flat)+'</b> · ':'')+
+      '<span class="bname">'+esc(x.s.guest||x.s.id||'—')+'</span>'+
+      '<span class="bnote"> · '+esc(x.s.portal||'')+'</span></td>'+
+      '<td>'+x.nn+(x.s.nights&&x.s.nights!==x.nn?' of '+x.s.nights:'')+'n</td>'+
+      '<td>'+money(x.val)+'</td></tr>';
+  }).join('');
+  var h='<div class="bdrill"><h4><span class="x" onclick="statDrill(\''+kind+'\',\''+DRILL.m+'\')">✕ close</span>'+
+        'Bookings · '+esc(m)+(kind==='rev'?' · earnings, '+CUR:'')+'</h4>';
+  if(!list.length&&!port) h+='<div class="muted">no bookings touch this month</div>';
+  h+='<table><tbody>'+rows;
+  if(kind==='rev'){
+    var rent=0; scopeFlats().forEach(function(f){ if(!isLongLet(f))return; var p=pnlOf(f,m); if(p)rent+=disp(p.revenue.earnings,m); });
+    if(rent>0.005){ sum+=rent; h+='<tr><td><span class="bnote">long-term rent (17B)</span></td><td></td><td>'+money(rent)+'</td></tr>'; }
+    h+='<tr class="btot"><td>'+list.length+' booking'+(list.length===1?'':'s')+(rent>0.005?' + rent':'')+' · = the month\'s earnings</td><td>'+nsum+'n</td><td>'+money(sum)+'</td></tr>';
+  } else {
+    h+='<tr class="btot"><td>'+list.length+' booking'+(list.length===1?'':'s')+'</td><td>'+nsum+'n</td><td>'+money(sum)+'</td></tr>';
+    h+='<tr><td colspan="3" class="bnote">the bar also counts a long-let as fully booked and shows blocked/free nights — those have no booking to list</td></tr>';
+  }
+  return h+'</tbody></table></div>';
+}
+
 /* 1 · Revenue — line, series toggle + time toggle */
 function secRevenue(){
   var ms=monthsInRange(R.rev);
@@ -420,14 +489,14 @@ function secRevenue(){
     var fl=allFlats();
     var rows=ms.map(function(m){ var vals={}; fl.forEach(function(f){ var p=pnlOf(f,m); vals[f]=p?disp(serOf(p),m):0; }); return {m:m,vals:vals}; });
     var series=fl.map(function(f){ return {k:f,lbl:f===('Zayed 2000')?'Zayed':f,color:FLAT_COLORS[f]||'#999'}; });
-    h+=(revMode==='flats'?lineMulti(rows,series,{}):stackedChart(rows,series,{unit:curU()}))+
+    h+=(revMode==='flats'?lineMulti(rows,series,{drill:'rev'}):stackedChart(rows,series,{unit:curU(),drill:'rev'}))+
        '<div class="legend">'+fl.map(function(f){return '<span><i style="background:'+(FLAT_COLORS[f]||'#999')+'"></i>'+esc(f)+'</span>';}).join('')+'</div>';
   } else {
     var rows1=ms.map(function(m){ var v=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p)return; v+=serOf(p); }); return {m:m,value:disp(v,m)}; });
     var col=revSeries==='net'?'var(--c-net)':revSeries==='costs'?'var(--c-cost)':'var(--c-earn)';
-    h+=lineChart(rows1,{color:col,unit:curU()});
+    h+=lineChart(rows1,{color:col,unit:curU(),drill:'rev'});
   }
-  return h+'</div>';
+  return h+bookingsCard('rev')+'</div>';
 }
 /* 2 · What the money goes on — stacked per-month, category + month buttons + time */
 var COST_ORDER=[['rent','rent','#e0a5a5'],['cleaning','cleaning','#b8c9d9'],['supplies','supplies','#8ab48f'],['electricity','electricity','#d9a441'],['maintenance','maintenance','#c77b7b'],['compound-maintenance','compound maint.','#a05f5f'],['tv-phone-internet','internet','#9c86c4'],['laundry','laundry','#c98f8f'],['contingency','contingency','#b0a08e'],['opsmanager','opsMgr','#7d9c9c'],['water','water','#7fb2c9'],['heat-gas','heat/gas','#caa06a'],['subscription','subscription','#9aa7b5']];
@@ -507,8 +576,9 @@ function secNights(){
   return '<div class="card"><h3>Booked · blocked · free nights<span class="rt">'+(nbMode==='nights'?'nights':'value '+CUR+' — free/blocked at that month\'s ADR')+'</span></h3>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+seg([['nights','Nights'],['value','Value']],nbMode,'setNb')+timeSeg('nb')+'</div>'+
-    stackedChart(rows,NB,{unit:nbMode==='value'?curU():''})+
-    '<div class="legend"><span><i style="background:var(--g)"></i>booked</span><span><i style="background:#b58a5a"></i>blocked</span><span><i style="background:#d9c7c7"></i>free</span></div></div>';
+    stackedChart(rows,NB,{unit:nbMode==='value'?curU():'',drill:'stays'})+
+    '<div class="legend"><span><i style="background:var(--g)"></i>booked</span><span><i style="background:#b58a5a"></i>blocked</span><span><i style="background:#d9c7c7"></i>free</span></div>'+
+    bookingsCard('stays')+'</div>';
 }
 /* 5 · Nights · stays · dry-clean submissions (grouped) */
 // dry-clean submissions = count of per-submission "laundry" rows in Cost line items (the same rows that drive
