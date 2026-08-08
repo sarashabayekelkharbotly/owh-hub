@@ -66,7 +66,10 @@ textarea{width:100%;min-height:90px;font-family:monospace;font-size:11px;border:
    name — so every name is wrapped in <bdi>, which isolates its direction from the text around it.
    The nights/portal detail also moved to its own line: one truncating line could not hold a long
    Arabic name AND its meta without cutting both. */
-.ditem{font-size:11px;color:#5a4d4d;padding-left:22px;white-space:normal;line-height:1.35;padding-top:2px;padding-bottom:2px}
+/* max-width:0 + hidden keeps the table's shape whatever the text: the electricity accrual's
+   paragraph-length source note was stretching the whole sheet sideways (Sarah 2026-08-08).
+   Each line inside truncates with … and the full text stays on hover via the title attr. */
+.ditem{font-size:11px;color:#5a4d4d;padding-left:22px;line-height:1.35;padding-top:2px;padding-bottom:2px;max-width:0;overflow:hidden}
 .dname{unicode-bidi:isolate;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom;white-space:nowrap}
 .dmeta{font-size:10px;color:#8a7a7a;margin-left:28px;unicode-bidi:isolate;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dnote{font-size:10.5px;color:#8a7a7a;padding-left:22px}
@@ -103,6 +106,7 @@ td.damt{font-size:11px;color:#5a4d4d}
       <button data-cur="USD" class="on">USD</button>
       <button data-cur="EGP">EGP</button>
     </span>
+    <button id="xlsBtn" onclick="exportClose()" title="the whole month, every apartment, every drill-down — opens in Excel">⬇ Export month</button>
   </div>
 
   <div id="app"></div>
@@ -181,6 +185,55 @@ function txFor(flat,ym,key){
      Revenue   = the two added
    Each list ends with its own total against the line above it, so a gap is visible, not absorbed. */
 function toggleDrill(id){OPEN[id]=!OPEN[id];render();}
+
+/* ---- Export the month to Excel (Sarah 2026-08-08) ----------------------------------------------
+   The whole close for the selected month, EVERY apartment, with all three drill-downs inline:
+   earnings → its stays, other → the ledger entries, each cost line → its WeShare entries. CSV with
+   a UTF-8 BOM so Excel opens Arabic correctly; amounts in the currency currently selected, and the
+   same toCur/txFor the screen itself uses — the file can never disagree with what's on screen. */
+async function exportClose(){
+  var btn=document.getElementById('xlsBtn'); if(btn){btn.disabled=true;btn.textContent='⏳ building…';}
+  try{
+    var ms=MONTH, flats=(DATA.meta&&DATA.meta.flatsOrder)||Object.keys(DATA.pnl||{});
+    var dets={};
+    for (var i=0;i<flats.length;i++){
+      try{ var j=await api('props_revenue_detail',{flat:flats[i],month:ms}); if(j&&j.ok) dets[flats[i]]=j; }catch(e){}
+    }
+    var v=function(x,cur,mo){ x=toCur(x||0,cur||'USD',mo||ms); return Math.round(x*100)/100; };
+    var rows=[['Flat','Section','Line','Detail','Date','Nights','Amount ('+CUR+')']];
+    flats.forEach(function(f){
+      var rec=(DATA.pnl[f]||{})[ms]; if(!rec)return;
+      var d=dets[f]||{accommodation:[],other:[],rent:0};
+      rows.push([f,'Revenue','Earnings','','','',v(rec.revenue.earnings)]);
+      (d.accommodation||[]).slice().sort(function(a,z){return (a.checkIn||'')<(z.checkIn||'')?-1:1;}).forEach(function(a){
+        rows.push([f,'Revenue','· stay',(a.guest||a.stayId||'')+(a.portal?' ('+a.portal+')':''),
+                   (a.checkIn||'')+' → '+(a.checkOut||''),(a.nights===''||a.nights==null)?'':(a.nights+' of '+a.total),v(a.amount)]); });
+      if(d.rent) rows.push([f,'Revenue','· long-term rent','','','',v(d.rent)]);
+      rows.push([f,'Revenue','Other revenue','','','',v(rec.revenue.other)]);
+      (d.other||[]).forEach(function(o){
+        rows.push([f,'Revenue','· '+(o.cat||'other'),(o.guest||'')+(o.via?' · '+o.via:''),o.date||'','',v(o.amount)]); });
+      rows.push([f,'Revenue','Total revenue','','','',v(rec.revenue.total)]);
+      (rec.costs||[]).forEach(function(c){
+        var lbl=(c.label||c.key||'').replace(/\s*\((EGP|USD)\)/,'');
+        rows.push([f,'Costs',lbl,'','','',v(c.amount,c.currency)]);
+        txFor(f,ms,c.key).forEach(function(t){
+          rows.push([f,'Costs','· entry',t.desc||'',t.date||'','',v(t.amount,t.currency)]); });
+      });
+      rows.push([f,'','Net','','','',v(rec.net)]);
+      if(rec.attribution){
+        rows.push([f,'','Khaled','','','',v(rec.attribution.khaled)]);
+        rows.push([f,'','Sarah','','','',v(rec.attribution.sarah)]);
+      }
+      rows.push(['','','','','','','']);
+    });
+    var csv='﻿'+rows.map(function(r){ return r.map(function(x){ x=String(x==null?'':x);   // BOM → Excel reads the Arabic as UTF-8
+      return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; }).join(','); }).join('\r\n');
+    var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='OWH_close_'+ms+'_'+CUR+'.csv'; document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },500);
+  } finally { if(btn){btn.disabled=false;btn.textContent='⬇ Export month';} }
+}
 var RDET={}, RDET_BUSY={};
 function rdKey(){ return FLAT+'|'+MONTH; }
 function loadRevDetail(){
