@@ -60,8 +60,27 @@ function api(fn, extra) {
     // a write or a sync — what the screens show next must be rebuilt, not replayed
     try { for (var i = sessionStorage.length - 1; i >= 0; i--) { var sk = sessionStorage.key(i); if (sk && sk.indexOf('owh_pga|') === 0) sessionStorage.removeItem(sk); } } catch (e) {}
   }
-  return fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
-    .then(function (r) { return r.json(); })
+  /* GOOGLE SOMETIMES ANSWERS WITH A PAGE, NOT JSON (Sarah 2026-08-12: a save came back
+     «Unexpected token '<', "<!DOCTYPE "…»). That is Apps Script's own error/redirect page after a
+     transient failure — nothing to do with the data being sent. Parsing it threw a developer
+     error at the user. Now: read the body as text, and if it isn't JSON, retry the call ONCE;
+     if it still isn't, return a plain-language error that says what to check. */
+  function post_() {
+    return fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.text(); })
+      .then(function (t) { try { return JSON.parse(t); } catch (e) { return { __html: true, snippet: String(t).slice(0, 60) }; } });
+  }
+  return post_()
+    .then(function (j) { return (j && j.__html) ? post_() : j; })              // one silent retry
+    .then(function (j) {
+      if (j && j.__html) {
+        var isWrite = fn.indexOf('_save') > -1 || fn.indexOf('_sync') > -1 || fn.indexOf('_set') > -1;
+        return { ok: false, code: 'BAD_REPLY',
+                 error: 'Google returned a page instead of data (a temporary glitch).' +
+                        (isWrite ? ' Refresh before retrying — the entry may already have saved.' : ' Try again in a moment.') };
+      }
+      return j;
+    })
     .then(function (j) {
       if (fn === 'props_get_all' && j && j.ok) {
         try { sessionStorage.setItem(pgaKey(body), JSON.stringify({ t: Date.now(), j: j })); } catch (e) {}
