@@ -406,18 +406,33 @@ function orevAnswer(kind,id){
   if(!a){ if(msg)msg.textContent='not found'; return; }
   var amt=(document.getElementById(pre+'_amt')||{}).value||'';
   amt=String(amt).replace(/,/g,'').trim();
-  if(!amt||isNaN(+amt)||+amt===0){ if(msg)msg.textContent='enter an amount'; return; }
+  // 0 IS A VALID ANSWER — "cancelled, we kept nothing" (Sarah 2026-08-11, Amber). Only a blank
+  // or a non-number is rejected; the zero row is the trace that clears the alert honestly.
+  if(amt===''||isNaN(+amt)||+amt<0){ if(msg)msg.textContent='enter an amount (0 if nothing was kept)'; return; }
   var flatEl=document.getElementById(pre+'_flat');
   var p={ flat:(flatEl?flatEl.value:a.flat), amount:amt, guest:a.guest||'', conf:a.conf||'',
           stayId:a.stayId||'', user:(ME&&ME.user)||'' };
   if(kind==='canc'){ p.cat='cancellation fee'; p.split='1'; p.month=(a.checkOut||'').slice(0,7); p.date=a.checkOut||''; }
   else { p.cat='extra service'; p.month=(a.checkIn||'').slice(0,7); p.date=a.checkIn||''; p.note=a.name||''; }
-  if(msg)msg.textContent='saving…';
+  /* The button locks and the row dims WHILE it saves — the sheet round-trip is a couple of
+     seconds and the screen used to look frozen. Nothing is claimed until the server answers
+     (save-then-say-so): a failure restores the row and names the reason, so a silent loss is
+     impossible. (Sarah 2026-08-11: "writing in Needs-you takes a lot of time".) */
+  var row=document.getElementById(pre);
+  var btn=row?row.querySelector('.paybtn'):null;
+  if(btn){ btn.disabled=true; btn.textContent='saving…'; }
+  if(row) row.style.opacity=.5;
+  if(msg)msg.textContent='';
   api('props_other_rev_save',p).then(function(j){
     if(!j||!j.ok) throw new Error(j&&j.error||'failed');
-    if(msg)msg.textContent=(j.action||'saved')+' ✓';
-    var row=document.getElementById(pre); if(row) row.style.opacity=.45;
-  }).catch(function(e){ if(msg)msg.textContent='failed: '+(e.message||e); });
+    if(msg)msg.textContent=(+amt===0?'recorded as kept nothing':(j.action||'saved'))+' ✓';
+    if(btn){ btn.textContent='saved'; }
+    if(row) row.style.opacity=.45;
+  }).catch(function(e){
+    if(row) row.style.opacity=1;
+    if(btn){ btn.disabled=false; btn.textContent='Save'; }
+    if(msg)msg.textContent='failed: '+(e.message||e);
+  });
 }
 
 function needs(cm,pmY){
@@ -447,10 +462,23 @@ function needs(cm,pmY){
      check-out or within 7 days. Sarah gets it because she pays the recharges. */
   if(ALERTS && ALERTS.meter8a && ALERTS.meter8a.alert){
     var m8=ALERTS.meter8a;
-    items.unshift({t:'warn',txt:'<b>⚡ 8A prepaid card is running out.</b> ~'+fmt(m8.projectedBalance)+' EGP left, burning ~'+
-      fmt(m8.ratePerDay)+'/day → empty ~<b>'+esc(m8.depletion)+'</b>'+
-      (m8.nextCheckout&&m8.depletion<=m8.nextCheckout?' — <b>before the next check-out ('+esc(m8.nextCheckout)+')</b>. Recharge and log it in WeShare as usual.':'. Recharge soon.')+
-      (m8.readAgoDays>3?' <span class="soft">(last reading '+m8.readAgoDays+' days old)</span>':'')});
+    /* The alert always shows its evidence now (reading + date + rate), and when the newest
+       interval runs far hotter than the earlier ones it asks a question instead of asserting a
+       depletion date — the usual cause is a misread digit or a recharge that never reached
+       WeShare, not a genuinely empty card (Sarah 2026-08-11). */
+    var ev='<span class="soft" style="font-size:10.5px"> — from '+fmt(m8.balance)+' EGP read on '+esc(m8.lastReadAt||'?')+
+           ' ('+m8.readAgoDays+'d ago), '+fmt(m8.ratePerDay)+'/day over '+(m8.intervals||0)+' interval'+((m8.intervals||0)===1?'':'s')+'</span>';
+    if(m8.suspect){
+      items.unshift({t:'warn',txt:'<b>⚡ 8A card — the numbers don\'t add up.</b> The last stretch burned ~'+fmt(m8.lastIntervalRate)+
+        '/day against ~'+fmt(m8.priorRate)+'/day before it, which would empty the card ~<b>'+esc(m8.depletion)+'</b>. '+
+        'Before treating that as real: check the last reading ('+fmt(m8.balance)+' on '+esc(m8.lastReadAt||'?')+') and whether a recharge was paid but never logged in WeShare. '+
+        'Ask Emad for a fresh reading.'+ev});
+    } else {
+      items.unshift({t:'warn',txt:'<b>⚡ 8A prepaid card is running out.</b> ~'+fmt(m8.projectedBalance)+' EGP left, burning ~'+
+        fmt(m8.ratePerDay)+'/day → empty ~<b>'+esc(m8.depletion)+'</b>'+
+        (m8.nextCheckout&&m8.depletion<=m8.nextCheckout?' — <b>before the next check-out ('+esc(m8.nextCheckout)+')</b>. Recharge and log it in WeShare as usual.':'. Recharge soon.')+
+        ev});
+    }
   }
   /* 8A closed-month mismatch alert RETIRED (2026-08-01): the recharge reader auto-corrects open
      months before they close, so new mismatches cannot form. Sheet menu → "Electricity — sync 8A
