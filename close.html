@@ -506,6 +506,7 @@ function orevSave(del){
          p.date=orevField('or_date'); p.guest=orevField('or_guest'); p.via=orevField('or_via'); p.note=orevField('or_note');
          p.conf=(OREV_EDIT&&OREV_EDIT.conf)||''; p.stayId=(OREV_EDIT&&OREV_EDIT.stayId)||''; }
   delete p.sid;
+  p.list='1';   // the Close screen shows the ledger, so it asks for the refreshed rows
   writeCall('props_other_rev_save',p).then(function(j){
     OREV.rows=j.rows||[]; OREV_EDIT=null; renderOtherRev();
     var m2=document.getElementById('ormsg'); if(m2) m2.textContent=(j.action||'saved')+' ✓ — refresh to see the P&L follow';
