@@ -378,8 +378,13 @@ function payRow(s){
        booking change, and it may belong to a DIFFERENT flat — Ehab's $40 was $20 for 8A and $20
        for 28A — so both are confirmed, never auto-written.
    A DIRECT cancellation raises nothing: those are data-entry corrections, not cancellations. */
-function orevRow(a,kind){
-  var id=esc(a.conf||a.smoobuId||''), pre='or_'+kind+'_'+id;
+/* ONE ROW, ONE KEY (Sarah 2026-08-12). The key used to be the confirmation code — but one booking
+   moved between flats produces TWO cancellation alerts sharing that code, so both rows got the
+   same element ids: the second row's Save read the first row's input and wrote to the first row's
+   message. The STAY id is unique per row; the index is the last-resort tie-break. */
+function orevKey(a,i){ return String(a.stayId||a.conf||a.smoobuId||('n'+i)).replace(/[^A-Za-z0-9_-]/g,'')+'_'+i; }
+function orevRow(a,kind,i){
+  var id=esc(orevKey(a,i)), pre='or_'+kind+'_'+id;
   var flats=((D.meta&&D.meta.flatsOrder)||[]).map(function(f){
     return '<option'+(f===a.flat?' selected':'')+'>'+esc(f)+'</option>'; }).join('');
   var head = kind==='canc'
@@ -468,7 +473,11 @@ function needs(cm,pmY){
        WeShare, not a genuinely empty card (Sarah 2026-08-11). */
     var ev='<span class="soft" style="font-size:10.5px"> — from '+fmt(m8.balance)+' EGP read on '+esc(m8.lastReadAt||'?')+
            ' ('+m8.readAgoDays+'d ago), '+fmt(m8.ratePerDay)+'/day over '+(m8.intervals||0)+' interval'+((m8.intervals||0)===1?'':'s')+'</span>';
-    if(m8.suspect){
+    if(m8.belowFloor){
+      items.unshift({t:'warn',txt:'<b>🔴 8A card is below '+fmt(m8.floor||400)+' EGP</b> — '+fmt(m8.balance)+
+        ' left as of '+esc(m8.lastReadAt||'?')+'. It needs the pre-charged card in the meter now.'+
+        (m8.depletion?' Estimated empty ~<b>'+esc(m8.depletion)+'</b>.':'')+ev});
+    } else if(m8.suspect){
       items.unshift({t:'warn',txt:'<b>⚡ 8A card — the numbers don\'t add up.</b> The last stretch burned ~'+fmt(m8.lastIntervalRate)+
         '/day against ~'+fmt(m8.priorRate)+'/day before it, which would empty the card ~<b>'+esc(m8.depletion)+'</b>. '+
         'Before treating that as real: check the last reading ('+fmt(m8.balance)+' on '+esc(m8.lastReadAt||'?')+') and whether a recharge was paid but never logged in WeShare. '+
@@ -497,8 +506,8 @@ function needs(cm,pmY){
   pays.forEach(function(s){ h+=payRow(s); });
   /* money that exists but has no amount recorded yet — put it above the informational lines,
      because unlike those it is lost entirely if it is never answered */
-  cancs.forEach(function(a){ h+=orevRow(a,'canc'); });
-  extras.forEach(function(a){ h+=orevRow(a,'extra'); });
+  cancs.forEach(function(a,i){ h+=orevRow(a,'canc',i); });
+  extras.forEach(function(a,i){ h+=orevRow(a,'extra',i); });
   items.forEach(function(i){ h+='<div class="need n-'+i.t+'"><span class="nb">'+(i.t==='warn'?'!':(i.t==='ok'?'✓':'•'))+'</span><span>'+i.txt+'</span></div>'; });
   return h+'</div>';
 }
