@@ -84,7 +84,7 @@ table.t{width:100%;border-collapse:collapse;font-size:12px}
 /* ---------- state ---------- */
 var D=null, DAYMS=86400000, MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var scope='portfolio';
-var R={rev:'12M',cost:'12M',attr:'12M',occ:'12M',nb:'12M',vol:'12M',chan:'12M',pay:'12M',adr:'6M',turn:'6M',rep:'12M'};
+var R={rev:'12M',cost:'12M',attr:'12M',occ:'12M',nb:'12M',vol:'12M',chan:'12M',pay:'12M',adr:'6M',turn:'6M',vc:'6M',rep:'12M'};
 var revSeries='earnings', costCat='all', costMonth='all', chanMode='nights', payMode='money', nbMode='nights';
 /* item 8 (Sarah 2026-08-05, built 2026-08-08): tap a month on the revenue or nights chart → the
    bookings behind it. One open drill at a time; tapping the same month again closes it. */
@@ -98,7 +98,7 @@ function setNbShow(k){
   if(nbShow[k]&&on.length===1) return;                      // never an empty chart
   nbShow[k]=!nbShow[k]; render();
 }
-var adrMonth='all', turnMonth='all', repMonth='all', repMode='flat';
+var adrMonth='all', turnMonth='all', vcMonth='all', repMonth='all', repMode='flat';
 var revMode='total', dMode='prev', dOpen={};   // by-flat chart mode · What-changed comparison · expanded rows
 var FLAT_COLORS={'8A':'#4a7fb5','17A':'#cc5f5f','17B':'#9aa7b5','28A':'#6f9a76','Zayed 2000':'#d9a441'};
 /* §5.1 currency toggle (2026-08-04): ONE currency for the whole screen, chosen like the partner
@@ -346,11 +346,11 @@ function seg(opts, cur, fn){ return '<div class="seg">'+opts.map(function(o){ va
 function timeSeg(chart){ return seg(['3M','6M','YTD','12M','all'], R[chart], 'setR_'+chart); }
 function setR_rev(r){R.rev=r;render();} function setR_cost(r){R.cost=r;render();} function setR_attr(r){R.attr=r;render();}
 function setR_occ(r){R.occ=r;render();} function setR_vol(r){R.vol=r;render();} function setR_chan(r){R.chan=r;render();}
-function setR_pay(r){R.pay=r;render();} function setR_adr(r){R.adr=r;render();} function setR_turn(r){R.turn=r;render();} function setR_rep(r){R.rep=r;render();}
+function setR_pay(r){R.pay=r;render();} function setR_adr(r){R.adr=r;render();} function setR_turn(r){R.turn=r;render();} function setR_vc(r){R.vc=r;render();} function setR_rep(r){R.rep=r;render();}
 function setScope(s){ scope=s; render(); }
 function setRev(s){ revSeries=s; render(); } function setCat(c){ costCat=c; render(); } function setCostMonth(m){ costMonth=m; render(); }
 function setChan(m){ chanMode=m; render(); } function setPay(m){ payMode=m; render(); }
-function setAdrMonth(m){ adrMonth=m; render(); } function setTurnMonth(m){ turnMonth=m; render(); }
+function setAdrMonth(m){ adrMonth=m; render(); } function setTurnMonth(m){ turnMonth=m; render(); } function setVcMonth(m){ vcMonth=m; render(); }
 function setRepMonth(m){ repMonth=m; render(); } function setRepMode(m){ repMode=m; render(); }
 function setR_nb(r){ R.nb=r; render(); } function setNb(m){ nbMode=m; render(); }
 function setRevMode(m){ revMode=m; render(); } function setDMode(m){ dMode=m; render(); }
@@ -367,7 +367,7 @@ function pickMonths(rng,sel){ var ms=monthsInRange(rng); return (sel!=='all'&&ms
 function render(){
   if(!allMonths().length){ document.getElementById('app').innerHTML='<div class="card muted">No months yet.</div>'; return; }
   var h='<div class="scope" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+scopeSeg()+curSeg()+'</div>';
-  h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secTurnover()+secRepairs();
+  h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secTurnover()+secVarCost()+secRepairs();
   document.getElementById('app').innerHTML=h;
 }
 function sumEarn(field, rng){ var t=0; monthsInRange(rng).forEach(function(m){ var mv=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p)return;
@@ -702,6 +702,49 @@ function secTurnover(){
      '<td>'+money(T.subs>0?T.laun/T.subs:0)+'</td><td>'+money(T.subs>0?T.clean/T.subs:0)+'</td>'+
      '<td>'+money(T.subs>0?(T.laun+T.clean)/T.subs:0)+'</td><td>'+money(T.nights>0?(T.laun+T.clean)/T.nights:0)+'</td></tr>';
   return h+'</tbody></table><div class="note">A submission = one dry-clean drop-off (mid-stay cleans included) — the real turnover unit. Turnover/night = (laundry + cleaning in range) ÷ <b>occupied</b> nights, so a month inside a long stay shows its true nightly cost. Portfolio row = the same math over all flats\' sums.</div></div>';
+}
+/* 9b · Variable cost per turnover (Sarah 2026-08-13) — the same unit and the same toggles as
+   Turnover economics, widened to EVERY variable cost so a submission shows what a turnover really
+   costs us: laundry · cleaning (incl. labour) · electricity · supplies · internet & phone ·
+   utilities (water + gas). Rent, maintenance, subscriptions and contingency are deliberately OUT:
+   they do not move with a turnover. Per RULE: the /night column divides by OCCUPIED nights, so a
+   month inside a long stay shows its true nightly cost instead of zero. */
+var VC_COLS=[
+  {k:'laundry',   lbl:'Laundry',    keys:['laundry']},
+  // cleaning and cleaning labour stay ONE column (Sarah 2026-08-13) — same as Turnover economics,
+  // so the two tables can be read against each other without mental arithmetic
+  {k:'cleaning',  lbl:'Cleaning',   keys:['cleaning','cleaning-labor']},
+  {k:'elec',      lbl:'Electricity',keys:['electricity']},
+  {k:'supplies',  lbl:'Supplies',   keys:['supplies']},
+  {k:'net',       lbl:'Net & phone',keys:['tv-phone-internet']},
+  {k:'util',      lbl:'Utilities',  keys:['water','heat-gas']}
+];
+function secVarCost(){
+  var ms=pickMonths(R.vc,vcMonth), merged=mergeStays(rawStays());
+  var h='<div class="card"><h3>Variable cost per turnover<span class="rt">per dry-clean submission'+(vcMonth!=='all'?' · '+MON[+vcMonth.slice(5,7)-1]+' '+vcMonth.slice(0,4):'')+'</span></h3>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
+    '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.vc),vcMonth,'setVcMonth')+timeSeg('vc')+'</div>'+
+    '<div style="overflow-x:auto"><table class="t" style="min-width:760px"><thead><tr><th>Flat</th><th>Stays</th><th>Subs</th>'+
+      VC_COLS.map(function(c){return '<th>'+c.lbl+'/sub</th>';}).join('')+
+      '<th>Total/sub</th><th>Total/night</th></tr></thead><tbody>';
+  var T={nS:0,subs:0,nights:0,tot:0,by:{}}; VC_COLS.forEach(function(c){T.by[c.k]=0;});
+  scopeFlats().forEach(function(f){
+    var stays=merged.filter(function(s){ return s.flat===f&&monthOf(s.checkOut)>=ms[0]&&monthOf(s.checkOut)<=ms[ms.length-1]; });
+    var nS=stays.length, subs=0, nights=0, val={}, tot=0; VC_COLS.forEach(function(c){val[c.k]=0;});
+    ms.forEach(function(m){
+      var c=costsUSD(f,m); subs+=dcCount(f,m);
+      VC_COLS.forEach(function(col){ col.keys.forEach(function(k){ var v=disp(c.by[k]||0,m); val[col.k]+=v; tot+=v; }); });
+      rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))nights+=overlapNights(s,m); });
+    });
+    T.nS+=nS; T.subs+=subs; T.nights+=nights; T.tot+=tot;
+    VC_COLS.forEach(function(c){ T.by[c.k]+=val[c.k]; });
+    h+='<tr><td>'+esc(f)+'</td><td>'+(nS||'—')+'</td><td>'+(subs||'—')+'</td>'+
+       VC_COLS.map(function(c){return '<td>'+money(subs>0?val[c.k]/subs:0)+'</td>';}).join('')+
+       '<td style="font-weight:700">'+money(subs>0?tot/subs:0)+'</td><td>'+money(nights>0?tot/nights:0)+'</td></tr>'; });
+  h+='<tr style="font-weight:800"><td>Portfolio</td><td>'+(T.nS||'—')+'</td><td>'+(T.subs||'—')+'</td>'+
+     VC_COLS.map(function(c){return '<td>'+money(T.subs>0?T.by[c.k]/T.subs:0)+'</td>';}).join('')+
+     '<td>'+money(T.subs>0?T.tot/T.subs:0)+'</td><td>'+money(T.nights>0?T.tot/T.nights:0)+'</td></tr>';
+  return h+'</tbody></table></div><div class="note">Every cost that moves with a turnover, per dry-clean submission — laundry, cleaning (labour included, same as Turnover economics), electricity, supplies, internet &amp; phone, and utilities (water + gas). <b>Rent, maintenance, compound maintenance, subscriptions, ops manager and contingency are excluded</b>: they run whether or not a guest turns over. Total/night divides the same costs by <b>occupied</b> nights. Columns add across to Total/sub, and the Portfolio row is the same maths over all flats\' sums.</div></div>';
 }
 /* 10 · Repairs — stacked by flat × trade category (or by category), month + time buttons */
 function tradeLabel(t){ var m=TRADES.filter(function(x){return x[0]===t;})[0]; return m?m[1]:(t||'other'); }
