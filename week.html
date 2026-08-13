@@ -253,10 +253,17 @@ function bookedAfterConfirm(){
 }
 
 /* ---------- fetch ---------- */
-function boot(){ fetchOnce().then(onData).catch(function(){ setTimeout(function(){ fetchOnce().then(onData).catch(function(e){ showErr(e); }); },800); }); }
+function boot(){
+  /* Which week we are on needs only today's date, so the drafts can be asked for BEFORE the payload
+     comes back — both requests overlap and the first paint is already complete. */
+  if(!weekStart) weekStart=defaultWeek();
+  BOOT_DRAFTS=Promise.all([draftRaw(weekStart),draftRaw(addD(weekStart,7))]);
+  fetchOnce().then(onData).catch(function(){ setTimeout(function(){ fetchOnce().then(onData).catch(function(e){ showErr(e); }); },800); });
+}
 function fetchOnce(){ return api('props_get_all',{scope:'live'}).then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
-function onData(j){ D=j.data; STAYS=mergeStays(D.stays); if(!weekStart)weekStart=defaultWeek(); loadWeek(); render(); loadDraft();
-  document.getElementById('rib').innerHTML='data <b>'+new Date().toTimeString().slice(0,5)+'</b>'; }
+function onData(j){ D=j.data; STAYS=mergeStays(D.stays); if(!weekStart)weekStart=defaultWeek(); loadWeek();
+  loadDrafts().then(function(){ render();
+    document.getElementById('rib').innerHTML='data <b>'+new Date().toTimeString().slice(0,5)+'</b>'; }); }
 function showErr(e){ document.getElementById('app').innerHTML='<div class="err"><b>Couldn\'t load.</b> '+esc(e.message||e)+'</div>'; }
 
 /* ---------- grid model ---------- */
@@ -649,6 +656,7 @@ function copyWa(){
 }
 /* ---------- drafts (2026-08-03): the full editing state, server-side per week ---------- */
 var DRAFT_AT=null, DRAFT2_AT=null;   // DRAFT2_AT: the NEXT week is on the message too, from its own draft
+var BOOT_DRAFTS=null;                // both drafts, requested at boot in parallel with the payload
 function draftPayload(){
   return cleans.map(function(c){ return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code,
     codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal', on:!!c.on, src:c.src }; });
@@ -679,25 +687,38 @@ function healDraftList(ws,list){
   out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
   return out;
 }
-function draftFor(ws){
-  return api('props_get_draft',{week:ymd(ws)}).then(function(j){
-    if(!(j&&j.ok&&j.draft&&j.draft.cleans&&j.draft.cleans.length)) return null;
-    var confAt=weekConfirmedFor(ws);
-    if(confAt && new Date(j.draft.savedAt) <= new Date(confAt)) return null;   // an older draft never beats a newer confirm
-    return j.draft;
-  }).catch(function(){ return null; });
+function draftRaw(ws){        // the stored draft, or null — no judgement, the payload may not be here yet
+  return api('props_get_draft',{week:ymd(ws)})
+    .then(function(j){ return (j&&j.ok&&j.draft&&j.draft.cleans&&j.draft.cleans.length)?j.draft:null; })
+    .catch(function(){ return null; });
 }
-function loadDraft(){
+function applyDraft(ws,d,second){
+  if(!d) return false;
+  var confAt=weekConfirmedFor(ws);
+  if(confAt && new Date(d.savedAt) <= new Date(confAt)) return false;   // an older draft never beats a newer confirm
+  if(second){ cleans2=healDraftList(ws,d.cleans); DRAFT2_AT=d.savedAt; }
+  else      { cleans =healDraftList(ws,d.cleans); DRAFT_AT =d.savedAt; dirty=false; }
+  return true;
+}
+/* ONE paint, not two (Sarah 2026-08-14: "whenever i refresh i see the old version first and then it
+   refreshes to the new version"). The screen used to render from the sheet and re-render when the
+   draft landed, so every reload flashed a week that was missing your unconsigned work — long enough
+   to read, and long enough to copy the wrong message. Both draft calls now fly ALONGSIDE the
+   payload (boot launches them before the fetch) and the first render waits for them; they are tiny
+   next to props_get_all, so nothing got slower. Paging between weeks still paints immediately —
+   there the old content is visibly a different week, not a stale version of this one.
+   The SECOND week's draft matters as much as the first: it is half the WhatsApp. */
+function loadDrafts(){
   DRAFT_AT=null; DRAFT2_AT=null;
-  draftFor(weekStart).then(function(d){ if(!d) return;
-    cleans=healDraftList(weekStart,d.cleans); DRAFT_AT=d.savedAt; dirty=false; render(); });
-  /* The message spans TWO weeks, so the second week's DRAFT has to load as well. It did not, so a
-     clean planned for next week and left unconfirmed was simply absent from the WhatsApp sent this
-     week — the grid showed it, the message didn't, and nothing said why (Sarah 2026-08-14: "it
-     keeps on being skipped"). cleans2 is read-only here; it is confirmed on its own week. */
-  var ws2=addD(weekStart,7);
-  draftFor(ws2).then(function(d){ if(!d) return;
-    cleans2=healDraftList(ws2,d.cleans); DRAFT2_AT=d.savedAt; render(); });
+  var ws=weekStart, ws2=addD(ws,7), late=false;
+  var got=BOOT_DRAFTS||Promise.all([draftRaw(ws),draftRaw(ws2)]); BOOT_DRAFTS=null;
+  var p=got.then(function(ds){
+    if(ws!==weekStart) return;                       // paged again while waiting — a stale answer must not land
+    applyDraft(ws,ds[0],false); applyDraft(ws2,ds[1],true);
+    if(late) render();                               // arrived after we stopped holding the page
+  }).catch(function(){});
+  // a hung draft call must never leave the screen on "Loading…" — give up holding after 6s
+  return Promise.race([p,new Promise(function(r){ setTimeout(function(){ late=true; r(); },6000); })]);
 }
 function confirmWeek(){
   var btn=document.getElementById('confirmBtn'); btn.disabled=true;
@@ -722,8 +743,8 @@ function guardNav(go){
   if(!dirty){ go(); return; }
   saveDraft().then(go).catch(function(){ if(confirm('Draft save failed — leave anyway and lose the changes?')) go(); });
 }
-document.getElementById('wprev').onclick=function(){ guardNav(function(){ weekStart=addD(weekStart,-7); loadWeek(); render(); loadDraft(); }); };
-document.getElementById('wnext').onclick=function(){ guardNav(function(){ weekStart=addD(weekStart,7); loadWeek(); render(); loadDraft(); }); };
+document.getElementById('wprev').onclick=function(){ guardNav(function(){ weekStart=addD(weekStart,-7); loadWeek(); render(); loadDrafts(); }); };
+document.getElementById('wnext').onclick=function(){ guardNav(function(){ weekStart=addD(weekStart,7); loadWeek(); render(); loadDrafts(); }); };
 
 AUTH_ON_LOGIN = boot; if (authGuard()) boot();   // signed in → load now; otherwise the sign-in form loads it
 </script>
