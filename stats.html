@@ -724,7 +724,7 @@ function secVarCost(){
   var h='<div class="card"><h3>Variable cost per turnover<span class="rt">per dry-clean submission'+(vcMonth!=='all'?' · '+MON[+vcMonth.slice(5,7)-1]+' '+vcMonth.slice(0,4):'')+'</span></h3>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.vc),vcMonth,'setVcMonth')+timeSeg('vc')+'</div>'+
-    '<div style="overflow-x:auto"><table class="t" style="min-width:760px"><thead><tr><th>Flat</th><th>Stays</th><th>Subs</th>'+
+    '<div style="overflow-x:auto"><table class="t" style="min-width:800px"><thead><tr><th>Flat</th><th>Stays</th><th>Subs</th><th>Nights</th>'+
       VC_COLS.map(function(c){return '<th>'+c.lbl+'/sub</th>';}).join('')+
       '<th>Total/sub</th><th>Total/night</th></tr></thead><tbody>';
   var T={nS:0,subs:0,nights:0,tot:0,by:{}}; VC_COLS.forEach(function(c){T.by[c.k]=0;});
@@ -738,13 +738,13 @@ function secVarCost(){
     });
     T.nS+=nS; T.subs+=subs; T.nights+=nights; T.tot+=tot;
     VC_COLS.forEach(function(c){ T.by[c.k]+=val[c.k]; });
-    h+='<tr><td>'+esc(f)+'</td><td>'+(nS||'—')+'</td><td>'+(subs||'—')+'</td>'+
+    h+='<tr><td>'+esc(f)+'</td><td>'+(nS||'—')+'</td><td>'+(subs||'—')+'</td><td>'+(nights||'—')+'</td>'+
        VC_COLS.map(function(c){return '<td>'+money(subs>0?val[c.k]/subs:0)+'</td>';}).join('')+
        '<td style="font-weight:700">'+money(subs>0?tot/subs:0)+'</td><td>'+money(nights>0?tot/nights:0)+'</td></tr>'; });
-  h+='<tr style="font-weight:800"><td>Portfolio</td><td>'+(T.nS||'—')+'</td><td>'+(T.subs||'—')+'</td>'+
+  h+='<tr style="font-weight:800"><td>Portfolio</td><td>'+(T.nS||'—')+'</td><td>'+(T.subs||'—')+'</td><td>'+(T.nights||'—')+'</td>'+
      VC_COLS.map(function(c){return '<td>'+money(T.subs>0?T.by[c.k]/T.subs:0)+'</td>';}).join('')+
      '<td>'+money(T.subs>0?T.tot/T.subs:0)+'</td><td>'+money(T.nights>0?T.tot/T.nights:0)+'</td></tr>';
-  return h+'</tbody></table></div><div class="note">Every cost that moves with a turnover, per dry-clean submission — laundry, cleaning (labour included, same as Turnover economics), electricity, supplies, internet &amp; phone, and utilities (water + gas). <b>Rent, maintenance, compound maintenance, subscriptions, ops manager and contingency are excluded</b>: they run whether or not a guest turns over. Total/night divides the same costs by <b>occupied</b> nights. Columns add across to Total/sub, and the Portfolio row is the same maths over all flats\' sums.</div></div>';
+  return h+'</tbody></table></div><div class="note">Every cost that moves with a turnover, per dry-clean submission — laundry, cleaning (labour included, same as Turnover economics), electricity, supplies, internet &amp; phone, and utilities (water + gas). <b>Rent, maintenance, compound maintenance, subscriptions, ops manager and contingency are excluded</b>: they run whether or not a guest turns over. <b>Nights = booked nights</b> — nights a guest actually occupied the flat inside the range (blocked and empty nights excluded), and it is exactly the divisor behind Total/night. Columns add across to Total/sub, and the Portfolio row is the same maths over all flats\' sums.</div></div>';
 }
 /* 10 · Repairs — stacked by flat × trade category (or by category), month + time buttons */
 function tradeLabel(t){ var m=TRADES.filter(function(x){return x[0]===t;})[0]; return m?m[1]:(t||'other'); }
