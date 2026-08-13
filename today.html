@@ -495,8 +495,11 @@ function needs(cm,pmY){
   // Thursday-6pm reminder: confirm the Week schedule + send the WhatsApp (shows Thu-eve & Fri until the upcoming week is confirmed)
   (function(){ var nd=new Date(), dow=nd.getDay();
     if((dow===4&&nd.getHours()>=18)||dow===5){
-      var sat=new Date(nd); sat.setDate(sat.getDate()+(((6-dow+7)%7)||7));   // upcoming Saturday = operational week start
-      var satY=ymd(sat), done=(D.cleans||[]).some(function(c){ return c.week===satY; });
+      // the operational week starts FRIDAY (2026-08-13): Thursday → tomorrow, Friday → today.
+      var fri=new Date(nd); fri.setDate(fri.getDate()+(dow===4?1:0));
+      var a=ymd(fri), e=new Date(fri); e.setDate(e.getDate()+7); var b=ymd(e);
+      // confirmed = any clean already filed for a day of that week (the Week label is not the test)
+      var done=(D.cleans||[]).some(function(c){ var k=c.date||''; return k>=a&&k<b; });
       if(!done) items.unshift({t:'warn',txt:'<b>It\'s Thursday</b> — confirm the <a class="tab" href="week.html">Week</a> schedule &amp; send the WhatsApp.'});
     }
   })();
