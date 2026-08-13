@@ -240,9 +240,10 @@ function mergeWeek(ws){
   return out;
 }
 function loadWeek(){ cleans=mergeWeek(weekStart); cleans2=mergeWeek(addD(weekStart,7)); dirty=false; }
-function weekConfirmed(){ var at=null;
-  weekRows(weekStart).forEach(function(c){ if(c.confirmedAt && (!at || +new Date(c.confirmedAt) > +new Date(at))) at=c.confirmedAt; });
+function weekConfirmedFor(ws){ var at=null;
+  weekRows(ws).forEach(function(c){ if(c.confirmedAt && (!at || +new Date(c.confirmedAt) > +new Date(at))) at=c.confirmedAt; });
   return at; }
+function weekConfirmed(){ return weekConfirmedFor(weekStart); }
 function bookedAfterConfirm(){
   var at=weekConfirmed(); if(!at)return [];
   var ws=weekStart, we=addD(ws,7), cf=new Date(at);
@@ -444,7 +445,20 @@ function render(){
   h+='<div class="card"><h3>WhatsApp<span class="rt">Arabic · two weeks · edit before copy</span></h3>';
   h+='<textarea class="wa" id="wa" oninput="waCapture()"></textarea>';
   h+='<div class="btnrow"><button class="btn sec" onclick="regenWa()">↻ Regenerate</button><button class="btn sec" onclick="copyWa()">📋 Copy</button>'+
-     '<span class="muted">covers '+dm(days[0])+' → '+dm(addD(ws,13))+' · your edits and notes are kept per week and follow you between weeks — only Regenerate rebuilds</span> <span class="muted" id="wamsg"></span></div></div>';
+     '<span class="muted">covers '+dm(days[0])+' → '+dm(addD(ws,13))+' · your edits and notes are kept per week and follow you between weeks — only Regenerate rebuilds</span> <span class="muted" id="wamsg"></span></div>';
+  /* The message carries SELECTED cleans only, so a proposal nobody ticked is silently absent and the
+     message reads as truncated (Sarah 2026-08-14: "it stops here"). Name what is missing and where,
+     so a short message is either explained or acted on — never just short. */
+  if(DRAFT2_AT) h+='<div class="legend" style="color:#8a6fa8">✎ the second week (from '+dm(addD(ws,7))+
+    ') is your <b>unconfirmed draft</b> — it is in the message, but nothing is booked and Emad has not been told. '+
+    'Page to › and Confirm there to make it real.</div>';
+  var pend=[].concat(cleans,cleans2).filter(function(c){ return !c.on && c.src==='new'; })
+              .sort(function(a,b){ return a.date<b.date?-1:1; });
+  if(pend.length) h+='<div class="legend" style="color:#b8860b">⚠️ not in the message — '+pend.length+
+    ' proposed clean'+(pend.length>1?'s':'')+' nobody has ticked: '+
+    pend.map(function(c){ return dm(day(c.date))+' '+esc(c.flat)+' '+c.type; }).join(' · ')+
+    '. Tick them on the week they belong to, Confirm, then Regenerate.</div>';
+  h+='</div>';
 
   /* --- save draft / confirm (split 2026-08-03: switching weeks auto-saves a draft; only CONFIRM
          alerts the group, reaches Emad, and books the جيني sessions in WeShare) --- */
@@ -634,7 +648,7 @@ function copyWa(){
   else done(document.execCommand('copy'));
 }
 /* ---------- drafts (2026-08-03): the full editing state, server-side per week ---------- */
-var DRAFT_AT=null;
+var DRAFT_AT=null, DRAFT2_AT=null;   // DRAFT2_AT: the NEXT week is on the message too, from its own draft
 function draftPayload(){
   return cleans.map(function(c){ return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code,
     codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal', on:!!c.on, src:c.src }; });
@@ -648,28 +662,42 @@ function saveDraftBtn(){
   saveDraft().then(function(){ render(); document.getElementById('cmsg').textContent='draft saved ✓ (no alerts sent)'; })
     .catch(function(e){ document.getElementById('cmsg').textContent='draft failed: '+(e.message||e); });
 }
+/* A restored draft heals + merges like a normal load (bug 2026-08-04: a draft froze the state
+   from BEFORE a booking landed — empty guest-in times and missing proposal cleans survived
+   every Regenerate, because the draft replaced the healed list verbatim). Hand-set codes and
+   everything the draft says stay; only derived facts refresh, and new bookings' proposed
+   cleans appear as off-by-default 'new' rows, exactly like mergeWeek. */
+function healDraftList(ws,list){
+  var out=list.map(function(c){
+    c.on=(c.on!==false); c.cleaner=c.cleaner||'amal';
+    if(!c.codeEdited && (c.src!=='manual')) c.code=doorCode(c.flat,day(c.date));
+    if(!hm(c.inTime) && c.type==='checkout' && sameDayIn(c.flat,c.date)) c.inTime=DEFAULT_IN;
+    return c;
+  });
+  var seen={}; out.forEach(function(c){ seen[ckey(c)]=1; });
+  proposeWeek(ws).forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=false; out.push(p); } });
+  out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
+  return out;
+}
+function draftFor(ws){
+  return api('props_get_draft',{week:ymd(ws)}).then(function(j){
+    if(!(j&&j.ok&&j.draft&&j.draft.cleans&&j.draft.cleans.length)) return null;
+    var confAt=weekConfirmedFor(ws);
+    if(confAt && new Date(j.draft.savedAt) <= new Date(confAt)) return null;   // an older draft never beats a newer confirm
+    return j.draft;
+  }).catch(function(){ return null; });
+}
 function loadDraft(){
-  DRAFT_AT=null;
-  api('props_get_draft',{week:ymd(weekStart)}).then(function(j){
-    if(!(j&&j.ok&&j.draft&&j.draft.cleans&&j.draft.cleans.length)) return;
-    var confAt=weekConfirmed();
-    if(confAt && new Date(j.draft.savedAt) <= new Date(confAt)) return;   // an older draft never beats a newer confirm
-    /* A restored draft heals + merges like a normal load (bug 2026-08-04: a draft froze the state
-       from BEFORE a booking landed — empty guest-in times and missing proposal cleans survived
-       every Regenerate, because the draft replaced the healed list verbatim). Hand-set codes and
-       everything the draft says stay; only derived facts refresh, and new bookings' proposed
-       cleans appear as off-by-default 'new' rows, exactly like mergeWeek. */
-    cleans=j.draft.cleans.map(function(c){
-      c.on=(c.on!==false); c.cleaner=c.cleaner||'amal';
-      if(!c.codeEdited && (c.src!=='manual')) c.code=doorCode(c.flat,day(c.date));
-      if(!hm(c.inTime) && c.type==='checkout' && sameDayIn(c.flat,c.date)) c.inTime=DEFAULT_IN;
-      return c;
-    });
-    var seen={}; cleans.forEach(function(c){ seen[ckey(c)]=1; });
-    proposeWeek(weekStart).forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=false; cleans.push(p); } });
-    cleans.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
-    DRAFT_AT=j.draft.savedAt; dirty=false; render();
-  }).catch(function(){});
+  DRAFT_AT=null; DRAFT2_AT=null;
+  draftFor(weekStart).then(function(d){ if(!d) return;
+    cleans=healDraftList(weekStart,d.cleans); DRAFT_AT=d.savedAt; dirty=false; render(); });
+  /* The message spans TWO weeks, so the second week's DRAFT has to load as well. It did not, so a
+     clean planned for next week and left unconfirmed was simply absent from the WhatsApp sent this
+     week — the grid showed it, the message didn't, and nothing said why (Sarah 2026-08-14: "it
+     keeps on being skipped"). cleans2 is read-only here; it is confirmed on its own week. */
+  var ws2=addD(weekStart,7);
+  draftFor(ws2).then(function(d){ if(!d) return;
+    cleans2=healDraftList(ws2,d.cleans); DRAFT2_AT=d.savedAt; render(); });
 }
 function confirmWeek(){
   var btn=document.getElementById('confirmBtn'); btn.disabled=true;
