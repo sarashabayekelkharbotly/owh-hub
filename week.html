@@ -572,8 +572,12 @@ function waSection(ws,list){
   if(firstI<0) return waRtl('*جدول النظافة — من '+DAY_AR[days[0].getDay()]+' '+dm(days[0])+
                       ' إلى '+DAY_AR[days[6].getDay()]+' '+dm(days[6])+'*\nلا توجد نظافة مجدولة.\n');
 
-  var t='*جدول النظافة — من '+DAY_AR[days[firstI].getDay()]+' '+dm(days[firstI])+
-        ' إلى '+DAY_AR[days[lastI].getDay()]+' '+dm(days[lastI])+'*\n';
+  /* One working day in the span → name the day, not a from/to (it read "من الجمعة 21/8 إلى الجمعة
+     21/8", which looks like a mistake in a message Emad and the cleaners read). */
+  var t=(firstI===lastI)
+        ? '*جدول النظافة — '+DAY_AR[days[firstI].getDay()]+' '+dm(days[firstI])+'*\n'
+        : '*جدول النظافة — من '+DAY_AR[days[firstI].getDay()]+' '+dm(days[firstI])+
+          ' إلى '+DAY_AR[days[lastI].getDay()]+' '+dm(days[lastI])+'*\n';
   for(var j=firstI;j<=lastI;j++){
     if(!perDay[j]) continue;
     t+='*'+DAY_AR[perDay[j].d.getDay()]+' '+dm(perDay[j].d)+':*\n'+perDay[j].lines;
