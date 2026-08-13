@@ -158,8 +158,14 @@ function doorCode(flat,dt){ var cur=occStayOn(flat,dt); if(cur) return codeOf(da
   return codeOf(n); }
 function sameDayIn(flat,k){ return innStayOn(flat,k); }
 function inTimeFor(f,k){ var t=DEFAULT_IN; cleans.forEach(function(c){ if(c.flat===f&&c.date===k&&c.inTime)t=c.inTime; }); return hm(t); }
-function satOf(d){ var x=new Date(d); x.setDate(x.getDate()-((x.getDay()+1)%7)); return x; }
-function defaultWeek(){ var t=day(new Date().toISOString()); var wd=t.getDay(); var base=satOf(t); if(wd===4||wd===5) base=addD(base,7); return base; }
+/* THE WEEK RUNS FRIDAY → THURSDAY (Sarah 2026-08-13). The schedule is built on Thursday, so a
+   Saturday-start week cut the plan in half: Thursday sat at the END of the old week and the days
+   she was actually planning lived in the next one. Friday-start means "the week ahead" is exactly
+   what she sees while planning. getDay(): Sun 0 … Fri 5 · Sat 6, so days-since-Friday = (day+2)%7. */
+function friOf(d){ var x=new Date(d); x.setDate(x.getDate()-((x.getDay()+2)%7)); return x; }
+function defaultWeek(){ var t=day(new Date().toISOString()); var wd=t.getDay(); var base=friOf(t);
+  if(wd===4) base=addD(base,7);    // Thursday = planning day → open the week that starts tomorrow
+  return base; }
 function openRepairs(){ return (D.repairs||[]).filter(function(r){ return r.status==='open'; }); }
 function cleansForDay(f,k){ var o=[]; cleans.forEach(function(c,idx){ if(c.flat===f&&c.date===k)o.push({c:c,idx:idx}); }); return o; }
 function primaryClean(list){ for(var i=0;i<list.length;i++)if(list[i].c.type==='checkout')return list[i]; return list[0]; }
@@ -527,7 +533,7 @@ function waSection(ws,list){
   var firstI=-1, lastI=-1;
   for(var i=0;i<7;i++) if(perDay[i]){ if(firstI<0) firstI=i; lastI=i; }
 
-  // nothing scheduled → keep the full Sat→Fri span so the reader still knows which week it is
+  // nothing scheduled → keep the full Fri→Thu span so the reader still knows which week it is
   if(firstI<0) return waRtl('*جدول النظافة — من '+DAY_AR[days[0].getDay()]+' '+dm(days[0])+
                       ' إلى '+DAY_AR[days[6].getDay()]+' '+dm(days[6])+'*\nلا توجد نظافة مجدولة.\n');
 
