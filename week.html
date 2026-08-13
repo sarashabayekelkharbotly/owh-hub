@@ -49,6 +49,10 @@ table.grid{width:100%;border-collapse:collapse;font-size:11.5px;min-width:800px;
 .clbl{font-size:8.5px;font-weight:700;line-height:1.2;text-transform:uppercase;letter-spacing:.3px}
 .grid td.clean.midstay .clbl{color:#3a5f9f} .grid td.clean.revision .clbl{color:#7a4f9a}
 .grid td.rep{background:var(--rep)}
+/* a repair sharing a cleaning day — its own strip inside the cleaning cell, in the repair colour
+   so it reads as a second visit rather than part of the clean (Sarah 2026-08-13) */
+.grid td.clean .repin{background:var(--rep);color:#7a5a2f;font-weight:700;font-size:9px;line-height:1.3;
+  border-radius:4px;padding:1px 3px;margin-top:2px;white-space:nowrap}
 .grid td.longlet{background:var(--long);color:var(--soft);font-size:10px}
 .gname{font-weight:700;font-size:11.5px;line-height:1.25}
 .ct{font-weight:700;font-size:12px;line-height:1.2;color:#cc2f2f}   /* cleaning time — red */
@@ -201,9 +205,23 @@ function proposeWeek(ws){
   return out;
 }
 function ckey(c){ return c.date+'|'+c.flat+'|'+c.type; }
+/* A week is a RANGE OF DAYS, never a label (Sarah 2026-08-13). Rows carry the Week key they were
+   confirmed under, and the day the week starts on has changed (Saturday → Friday) — so matching on
+   that label made every previously confirmed clean invisible the moment the start moved, and let a
+   re-confirm write a second row for the same day under the new label. Matching on the DATE heals
+   both: old-label rows show up, and the server replaces by date so nothing can double. Two rows for
+   the same day+flat+type (one per label) collapse to the LATEST confirm. */
+function weekRows(ws){
+  var a=ymd(ws), b=ymd(addD(ws,7)), best={};
+  (D.cleans||[]).forEach(function(c){
+    var k=c.date||''; if(!(k>=a&&k<b)) return;
+    var kk=ckey(c), p=best[kk];
+    if(!p || (+new Date(c.confirmedAt||0)) >= (+new Date(p.confirmedAt||0))) best[kk]=c;
+  });
+  return Object.keys(best).map(function(k){ return best[k]; });
+}
 function mergeWeek(ws){
-  var wk=ymd(ws);
-  var confirmed=(D.cleans||[]).filter(function(c){ return c.week===wk; });
+  var confirmed=weekRows(ws);
   var props=proposeWeek(ws);
   if(!confirmed.length) return props;
   var seen={}, out=confirmed.map(function(c){ seen[ckey(c)]=1;
@@ -222,7 +240,9 @@ function mergeWeek(ws){
   return out;
 }
 function loadWeek(){ cleans=mergeWeek(weekStart); cleans2=mergeWeek(addD(weekStart,7)); dirty=false; }
-function weekConfirmed(){ var wk=ymd(weekStart); var rows=(D.cleans||[]).filter(function(c){ return c.week===wk; }); return rows.length?rows[0].confirmedAt:null; }
+function weekConfirmed(){ var at=null;
+  weekRows(weekStart).forEach(function(c){ if(c.confirmedAt && (!at || +new Date(c.confirmedAt) > +new Date(at))) at=c.confirmedAt; });
+  return at; }
 function bookedAfterConfirm(){
   var at=weekConfirmed(); if(!at)return [];
   var ws=weekStart, we=addD(ws,7), cf=new Date(at);
@@ -244,8 +264,11 @@ function showErr(e){ document.getElementById('app').innerHTML='<div class="err">
 function dayType(f,days,i){
   var k=ymd(days[i]);
   var cod=cleansForDay(f,k).filter(function(x){ return x.c.on; });   // ACTIVE cleans only — a removed clean leaves no trace on the grid
-  if(cod.length) return { t:'clean', out:outStayOn(f,k), inn:innStayOn(f,k), list:cod };
   var rep=repairOn(f,k);
+  /* A repair and a clean on the SAME day used to be a contest the clean always won, so the repair
+     disappeared from the grid entirely (Sarah 2026-08-13) — dangerous, because that is exactly the
+     day someone must be let in twice. The clean cell now carries the repair too. */
+  if(cod.length) return { t:'clean', out:outStayOn(f,k), inn:innStayOn(f,k), list:cod, rep:rep };
   if(rep) return { t:'repair', rep:rep };
   var occ=occStayOn(f,days[i]);
   if(occ) return { t:'stay', stay:occ };
@@ -259,7 +282,7 @@ function buildRow(f,days){
     if(t.t==='stay'){
       var span=1; while(d+span<7 && ty[d+span].t==='stay' && ty[d+span].stay===t.stay) span++;
       segs.push({kind:'stay',stay:t.stay,di:d,span:span}); d+=span;
-    } else if(t.t==='clean'){ segs.push({kind:'clean',di:d,out:t.out,inn:t.inn,list:t.list}); d++; }
+    } else if(t.t==='clean'){ segs.push({kind:'clean',di:d,out:t.out,inn:t.inn,list:t.list,rep:t.rep}); d++; }
     else if(t.t==='repair'){ segs.push({kind:'repair',di:d,rep:t.rep}); d++; }
     else { segs.push({kind:'vacant',di:d}); d++; }
   }
@@ -354,6 +377,7 @@ function render(){
               mcell+='<div class="mrow">'+hm(cc.time)+' '+CLEANER_LBL[cc.cleaner||'amal']+
                      (cc.type==='checkout'?' · '+esc(cc.code):(cc.type==='revision'?' · إعادة':''))+'</div>'; });
           if(seg.inn) mcell+='<div class="gsub">in '+esc(short(seg.inn.guest))+' '+inTimeFor(f,ymd(days[seg.di]))+'</div>';
+          if(seg.rep) mcell+='<div class="repin">🔧 '+esc(seg.rep.trade)+(seg.rep.time?' '+hm(seg.rep.time):'')+'</div>';
           h+='<td class="clean multi">'+mcell+'</td>';
           return;
         }
@@ -371,6 +395,8 @@ function render(){
             cell+='<div class="code">'+esc(c.code)+'</div>'; }
         else cell+='<div class="ct soft">out</div>';
         if(seg.inn) cell+='<div class="gsub">in '+esc(short(seg.inn.guest))+' '+inTimeFor(f,ymd(days[seg.di]))+'</div>';
+        // the repair shares the day — shown on its own beige strip inside the cleaning cell
+        if(seg.rep) cell+='<div class="repin">🔧 '+esc(seg.rep.trade)+(seg.rep.time?' '+hm(seg.rep.time):'')+'</div>';
         h+='<td class="clean'+(typeCls?' '+typeCls:'')+(faded?' faded':'')+'"'+(c?' onclick="tog('+pri.idx+')"':'')+'>'+cell+'</td>';
       } else if(seg.kind==='repair'){
         h+='<td class="rep"><div class="rlbl">🔧 '+esc(seg.rep.trade)+'</div>'+(seg.rep.time?'<div class="ct">'+hm(seg.rep.time)+'</div>':'')+'</td>';
@@ -404,12 +430,15 @@ function render(){
        '<td><span class="rm" onclick="tog('+idx+')">'+(c.on?'✕':'↩')+'</span></td></tr>';
   });
   h+='</tbody></table>';
-  h+='<div class="btnrow"><select id="addFlat">'+airbnbFlats().map(function(f){return '<option>'+esc(f)+'</option>';}).join('')+'</select>'+
-     '<select id="addDay">'+days.map(function(d){return '<option value="'+ymd(d)+'">'+DAY_EN[d.getDay()]+' '+dm(d)+'</option>';}).join('')+'</select>'+
-     '<select id="addType">'+TYPES.map(function(t){return '<option'+(t==='custom'?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+
-     '<input type="time" id="addTime" value="12:00">'+
+  /* The add row starts EMPTY (Sarah 2026-08-13): pre-filled flat/day/type read like a suggestion,
+     and one distracted click added a clean for the wrong flat on the wrong day. Nothing is added
+     until all four are chosen by hand; the row blanks itself again after each add. */
+  h+='<div class="btnrow"><select id="addFlat"><option value="">— flat —</option>'+airbnbFlats().map(function(f){return '<option>'+esc(f)+'</option>';}).join('')+'</select>'+
+     '<select id="addDay"><option value="">— day —</option>'+days.map(function(d){return '<option value="'+ymd(d)+'">'+DAY_EN[d.getDay()]+' '+dm(d)+'</option>';}).join('')+'</select>'+
+     '<select id="addType"><option value="">— type —</option>'+TYPES.map(function(t){return '<option>'+t+'</option>';}).join('')+'</select>'+
+     '<input type="time" id="addTime" value="">'+
      '<button class="btn sec" onclick="addClean()">+ add clean</button>'+
-     '<span class="muted">early check-out/-in: pick the type &amp; time</span></div></div>';
+     '<span class="muted" id="addmsg">pick flat · day · type · time — nothing is added until all four are set</span></div></div>';
 
   /* --- WhatsApp (two-week span) --- */
   h+='<div class="card"><h3>WhatsApp<span class="rt">Arabic · two weeks · edit before copy</span></h3>';
@@ -452,7 +481,13 @@ function edit(i,field,v){
 }
 function addClean(){
   var f=document.getElementById('addFlat').value, d=document.getElementById('addDay').value,
-      ty=document.getElementById('addType').value, t=document.getElementById('addTime').value||'12:00';
+      ty=document.getElementById('addType').value, t=document.getElementById('addTime').value;
+  var miss=[]; if(!f)miss.push('flat'); if(!d)miss.push('day'); if(!ty)miss.push('type'); if(!t)miss.push('time');
+  if(miss.length){ var m=document.getElementById('addmsg');
+    if(m){ m.textContent='pick '+miss.join(' · ')+' first — nothing added'; m.style.color='#cc5f5f'; }
+    return; }
+  var dup=cleans.filter(function(c){ return c.date===d&&c.flat===f&&c.type===ty&&c.on; }).length;
+  if(dup && !confirm(f+' already has a '+ty+' on '+d+' — add a second one?')) return;
   var inn=(ty==='checkout')?sameDayIn(f,d):null, inTime='';
   if(inn){ inTime=prompt('Same-day check-in ('+(inn.guest||'guest')+') — what time does the guest arrive?',DEFAULT_IN)||DEFAULT_IN; }
   cleans.push({ date:d, flat:f, type:ty, time:t, code:doorCode(f,day(d)), inTime:inTime, stayId:inn?inn.id:'', on:true, src:'manual', cleaner:'amal' });
@@ -642,7 +677,9 @@ function confirmWeek(){
     DRAFT_AT=null;
     var jy=j.result&&j.result.jinny;
     // no telegram for jinny money (2026-08-04) — this line + WeShare's pending list are the record
+    var sk=(j.result&&j.result.skipped)||[];
     document.getElementById('cmsg').textContent='confirmed ✓ ('+j.result.count+' cleans'+
+      (sk.length?' · '+sk.length+' past day kept as history: '+sk.join(', '):'')+
       (jy&&jy.created.length?' · '+jy.created.length+' جيني → WeShare pending':'')+
       (jy&&jy.locked.length?' · ⚠️ '+jy.locked.length+' cancelled جيني already confirmed in WeShare — fix there by hand':'')+')';
     return fetchOnce().then(onData);
