@@ -318,12 +318,12 @@ function initControls(){
   FLAT=FLAT||(flats.indexOf('28A')>-1?'28A':flats[0]);
   var months=monthsFor(FLAT); MONTH=(MONTH&&months.indexOf(MONTH)>-1)?MONTH:months[months.length-1];
   var fs=$('#flatSel'); fs.innerHTML=flats.map(function(f){return '<option'+(f===FLAT?' selected':'')+'>'+f+'</option>';}).join('');
-  fs.onchange=function(){ FLAT=fs.value; var ms=monthsFor(FLAT); if(ms.indexOf(MONTH)<0)MONTH=ms[ms.length-1]; fillMonths(); render(); };
+  fs.onchange=function(){ FLAT=fs.value; FXMSG=''; var ms=monthsFor(FLAT); if(ms.indexOf(MONTH)<0)MONTH=ms[ms.length-1]; fillMonths(); render(); };
   fillMonths();
   $('#viewSeg').onclick=function(e){ if(!e.target.dataset.view)return; VIEW=e.target.dataset.view; seg('#viewSeg','view',VIEW); $('#flatSel').style.display=VIEW==='review'?'':'none'; render(); };
   $('#curSeg').onclick=function(e){ if(!e.target.dataset.cur)return; CUR=e.target.dataset.cur; seg('#curSeg','cur',CUR); render(); };
 }
-function fillMonths(){ var ms=monthsFor(FLAT),el=$('#monthSel'); el.innerHTML=ms.map(function(m){return '<option'+(m===MONTH?' selected':'')+'>'+m+'</option>';}).join(''); el.onchange=function(){MONTH=el.value;render();}; }
+function fillMonths(){ var ms=monthsFor(FLAT),el=$('#monthSel'); el.innerHTML=ms.map(function(m){return '<option'+(m===MONTH?' selected':'')+'>'+m+'</option>';}).join(''); el.onchange=function(){MONTH=el.value;FXMSG='';render();}; }
 function monthsFor(f){ return Object.keys(DATA.pnl[f]||{}).sort(); }
 function seg(sel,attr,val){ document.querySelectorAll(sel+' button').forEach(function(b){ b.classList.toggle('on',b.dataset[attr]===val); }); }
 function prevMonth(m){ var d=new Date(m+'-01'); d.setMonth(d.getMonth()-1); return d.toISOString().slice(0,7); }
@@ -517,11 +517,38 @@ function orevDelete(){ if(OREV_EDIT&&OREV_EDIT.ref) orevSave(true); }
 function sec(t){ return '<tr class="sec"><td colspan="3">'+t+'</td></tr>'; }
 function r3(label,val,native,prev,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td><td>'+m(toCur(val,native))+'</td><td class="prevcol">'+m(prev==null?null:toCur(prev,native,prevMonth(MONTH)))+'</td></tr>'; }
 
+/* The rate belongs to the month on screen, not to "now" (DATA.meta.fx.current is simply the last
+   filled row in the tab). byMonth/carried arrive with the payload from v139; before that deploys we
+   fall back to the old global flags rather than mislabel the month. */
+function fxOf(mo){ var b=(DATA.meta.fx&&DATA.meta.fx.byMonth)||null; return b?(b[mo]||null):null; }
+function fxIsCarried(mo){ var c=(DATA.meta.fx&&DATA.meta.fx.carried)||{}; return !!c[mo]; }
+function fxIsSet(mo){ return (DATA.meta.fx&&DATA.meta.fx.byMonth) ? (!!fxOf(mo)&&!fxIsCarried(mo)) : !!DATA.meta.fx.isCurrentMonthSet; }
+var FXMSG='';   // survives the re-render that follows a save, so the confirmation is still readable
+function saveFx(){
+  var el=document.getElementById('fxin'), btn=document.getElementById('fxsavebtn'), msg=document.getElementById('fxmsg');
+  var rate=el?el.value.trim().replace(/,/g,''):'';
+  if(!rate||isNaN(parseFloat(rate))||parseFloat(rate)<=0){ if(msg)msg.textContent='enter a rate first'; return; }
+  if(btn)btn.disabled=true; if(msg)msg.textContent='saving…';
+  // save-then-show: nothing is claimed until the sheet has taken it
+  writeCall('props_set_fx',{month:MONTH,rate:rate}).then(function(j){
+    var f=(j.result&&j.result.followed)||[];
+    FXMSG='saved ✓ '+MONTH+' = '+rate+(f.length?' · carried into '+f.join(', '):'');
+    boot();
+  }).catch(function(e){ if(btn)btn.disabled=false; if(msg)msg.textContent='failed: '+(e.message||e); });
+}
 function checklist(rec){
-  var fxSet=DATA.meta.fx.isCurrentMonthSet, isOpen=rec.status!=='final';
+  var fxSet=fxIsSet(MONTH), isOpen=rec.status!=='final';
   var missing=rec.revenue.total===0 && rec.costs.every(function(c){return !c.amount;});
   var h='<div class="card checklist"><h1 style="font-size:14px;margin-bottom:6px">Close checklist · '+MONTH+'</h1>';
-  h+='<div><span class="'+((fxSet||!isOpen)?'ok':'warn')+'">'+((fxSet||!isOpen)?'✓':'!')+'</span> Closing FX '+(isOpen?'<input class="fxin" id="fxin" value="'+fmt1(fx())+'"> <span class="muted">EGP/USD '+(fxSet?'':'(carried — confirm)')+'</span>':'used '+fmt1(fx()))+'</div>';
+  /* Editable for as long as the month is open, and saveable on its own — the rate used to be
+     readable only by "Mark final", so recording it and closing the month were the same act and you
+     could not put a rate in early or correct one (Sarah 2026-08-14). */
+  h+='<div><span class="'+((fxSet||!isOpen)?'ok':'warn')+'">'+((fxSet||!isOpen)?'✓':'!')+'</span> Closing FX '+
+     (isOpen?'<input class="fxin" id="fxin" value="'+fmt1(fxOf(MONTH)||fx())+'"> '+
+             '<button class="btn sec" id="fxsavebtn" onclick="saveFx()" style="padding:2px 10px;font-size:11px">Save rate</button> '+
+             '<span class="muted">EGP/USD '+(fxSet?'':'(carried — confirm)')+'</span> '+
+             '<span class="muted" id="fxmsg">'+esc(FXMSG)+'</span>'
+            :'used '+fmt1(fxOf(MONTH)||fx()))+'</div>';
   h+='<div><span class="'+(missing?'warn':'ok')+'">'+(missing?'!':'✓')+'</span> '+(missing?'No data this month — check WeShare':'Revenue & costs present')+'</div>';
   h+='<div><span class="ok">✓</span> Reconciled from the sheet (formulas, not the app)</div>';
   h+='<button class="mark" id="markbtn" '+(isOpen?'':'disabled')+' onclick="doMarkFinal()">'+(isOpen?'Mark '+MONTH+' final':MONTH+' is final ✓')+'</button>';
