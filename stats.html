@@ -84,7 +84,7 @@ table.t{width:100%;border-collapse:collapse;font-size:12px}
 /* ---------- state ---------- */
 var D=null, DAYMS=86400000, MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var scope='portfolio';
-var R={rev:'12M',cost:'12M',attr:'12M',occ:'12M',nb:'12M',vol:'12M',chan:'12M',pay:'12M',adr:'6M',turn:'6M',vc:'6M',rep:'12M'};
+var R={rev:'12M',cost:'12M',attr:'12M',occ:'12M',nb:'12M',vol:'12M',chan:'12M',pay:'12M',adr:'6M',vc:'6M',rep:'12M',mar:'6M',uni:'12M',fx:'12M'};
 var revSeries='earnings', costCat='all', costMonth='all', chanMode='nights', payMode='money', nbMode='nights';
 /* item 8 (Sarah 2026-08-05, built 2026-08-08): tap a month on the revenue or nights chart → the
    bookings behind it. One open drill at a time; tapping the same month again closes it. */
@@ -98,7 +98,8 @@ function setNbShow(k){
   if(nbShow[k]&&on.length===1) return;                      // never an empty chart
   nbShow[k]=!nbShow[k]; render();
 }
-var adrMonth='all', turnMonth='all', vcMonth='all', repMonth='all', repMode='flat';
+var adrMonth='all', vcMonth='all', repMonth='all', repMode='flat';
+var marMonth='all', marBasis='var', uniUnit='sub', uniView='sum';   // margin table · per-unit trend chart
 var revMode='total', dMode='prev', dOpen={};   // by-flat chart mode · What-changed comparison · expanded rows
 var FLAT_COLORS={'8A':'#4a7fb5','17A':'#cc5f5f','17B':'#9aa7b5','28A':'#6f9a76','Zayed 2000':'#d9a441'};
 /* §5.1 currency toggle (2026-08-04): ONE currency for the whole screen, chosen like the partner
@@ -128,6 +129,7 @@ function kf(n){ n=+n||0; var a=Math.abs(n); return (n<0?'-':'')+(a>=1000?(a/1000
 function money(n){ n=+n||0; var dec=CUR==='USD'?2:0;   // EGP figures are big — decimals are noise (Sarah 2026-08-04)
   var s=(n<0?'-':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});
   return CUR==='USD'?'$'+s:s+' EGP'; }
+function fmt1(n){ return (Math.round((+n||0)*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }   // an FX rate, always 2dp
 function day(s){ return new Date(String(s).slice(0,10)+'T00:00:00'); }
 /* EVERY screen counts the same flats (Sarah 2026-08-05). "Portfolio" here used to mean "flats with
    an Airbnb target", which silently dropped 17B (long-let) — so Statistics disagreed with Close and
@@ -262,6 +264,27 @@ function lineMulti(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) re
   s+=xlabels(rows.map(function(r){return r.m;}), cx);
   return s+'</svg>';
 }
+/* like lineMulti, but on a REAL scale (2026-08-14). lineMulti plots Math.abs(), which is fine for
+   flat revenues and lethal for margin: a negative month would draw identically to a positive one.
+   Every series shares one scale so the lines are comparable, a zero line appears when anything goes
+   below it, and point labels are dropped once there are more than three lines — seven series with a
+   number on every point is unreadable. The series name still sits at the end of its line. */
+function lineSigned(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) return '<div class="muted">No data.</div>';
+  var all=[]; rows.forEach(function(r){ series.forEach(function(se){ all.push(r.vals[se.k]||0); }); });
+  var plotH=H-TOP-BOT, sc=scaleOf(all, plotH, H-BOT);
+  var step=n>1?(W-2*PAD)/(n-1):0, cx=function(i){ return PAD+i*step; };
+  var s=open_()+zeroLine(sc), label=series.length<=3;
+  series.forEach(function(se){
+    var pts=rows.map(function(r,i){ return [cx(i), sc.y(r.vals[se.k]||0)]; });
+    s+='<path d="'+pts.map(function(p,i){ return (i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1); }).join(' ')+'" fill="none" stroke="'+se.color+'" stroke-width="1.9"/>';
+    pts.forEach(function(p,i){ var v=rows[i].vals[se.k]||0;
+      s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="1.9" fill="'+se.color+'"><title>'+esc(se.lbl||se.k)+' · '+rows[i].m+': '+(opt.unit||'')+fmt(v)+'</title></circle>';
+      if(label) s+='<text x="'+p[0].toFixed(1)+'" y="'+(v<0?(p[1]+9):(p[1]-3.5)).toFixed(1)+'" font-size="6.5" font-weight="700" fill="'+se.color+'" text-anchor="middle">'+(v<0?'-':'')+(opt.unit||'')+kf(Math.abs(v))+'</text>'; });
+    var lp=pts[pts.length-1];
+    s+='<text x="'+Math.min(W-2,lp[0]+4).toFixed(1)+'" y="'+(lp[1]+3).toFixed(1)+'" font-size="7.5" font-weight="700" fill="'+se.color+'">'+esc(se.lbl||se.k)+'</text>';
+  });
+  return s+xlabels(rows.map(function(r){return r.m;}), cx)+'</svg>';
+}
 function stackedChart(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) return '<div class="muted">No data.</div>';
   var gw=(W-2*PAD)/n, bw=Math.min(46,gw*0.6), plotH=H-TOP-BOT, baseY=H-BOT;
   // positives stack up from zero, negatives stack DOWN from it — a loss must not look like a gain
@@ -346,11 +369,14 @@ function seg(opts, cur, fn){ return '<div class="seg">'+opts.map(function(o){ va
 function timeSeg(chart){ return seg(['3M','6M','YTD','12M','all'], R[chart], 'setR_'+chart); }
 function setR_rev(r){R.rev=r;render();} function setR_cost(r){R.cost=r;render();} function setR_attr(r){R.attr=r;render();}
 function setR_occ(r){R.occ=r;render();} function setR_vol(r){R.vol=r;render();} function setR_chan(r){R.chan=r;render();}
-function setR_pay(r){R.pay=r;render();} function setR_adr(r){R.adr=r;render();} function setR_turn(r){R.turn=r;render();} function setR_vc(r){R.vc=r;render();} function setR_rep(r){R.rep=r;render();}
+function setR_pay(r){R.pay=r;render();} function setR_adr(r){R.adr=r;render();} function setR_vc(r){R.vc=r;render();} function setR_rep(r){R.rep=r;render();}
+function setR_mar(r){R.mar=r;render();} function setR_uni(r){R.uni=r;render();} function setR_fx(r){R.fx=r;render();}
+function setMarMonth(m){ marMonth=m; render(); } function setMarBasis(b){ marBasis=b; render(); }
+function setUniUnit(u){ uniUnit=u; render(); } function setUniView(v){ uniView=v; render(); }
 function setScope(s){ scope=s; render(); }
 function setRev(s){ revSeries=s; render(); } function setCat(c){ costCat=c; render(); } function setCostMonth(m){ costMonth=m; render(); }
 function setChan(m){ chanMode=m; render(); } function setPay(m){ payMode=m; render(); }
-function setAdrMonth(m){ adrMonth=m; render(); } function setTurnMonth(m){ turnMonth=m; render(); } function setVcMonth(m){ vcMonth=m; render(); }
+function setAdrMonth(m){ adrMonth=m; render(); } function setVcMonth(m){ vcMonth=m; render(); }
 function setRepMonth(m){ repMonth=m; render(); } function setRepMode(m){ repMode=m; render(); }
 function setR_nb(r){ R.nb=r; render(); } function setNb(m){ nbMode=m; render(); }
 function setRevMode(m){ revMode=m; render(); } function setDMode(m){ dMode=m; render(); }
@@ -367,7 +393,7 @@ function pickMonths(rng,sel){ var ms=monthsInRange(rng); return (sel!=='all'&&ms
 function render(){
   if(!allMonths().length){ document.getElementById('app').innerHTML='<div class="card muted">No months yet.</div>'; return; }
   var h='<div class="scope" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+scopeSeg()+curSeg()+'</div>';
-  h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secTurnover()+secVarCost()+secRepairs();
+  h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs();
   document.getElementById('app').innerHTML=h;
 }
 function sumEarn(field, rng){ var t=0; monthsInRange(rng).forEach(function(m){ var mv=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p)return;
@@ -679,29 +705,168 @@ function secAdrTable(){
    a 46-night stay with weekly cleans produces several submissions but only one checkout, so
    per-stay understated the real turnover rhythm. Submissions counted from the per-submission
    laundry rows already mirrored into the P&L (dcCount — same source as the volumes chart). */
-function secTurnover(){
-  var ms=pickMonths(R.turn,turnMonth), merged=mergeStays(rawStays());
-  var h='<div class="card"><h3>Turnover economics<span class="rt">per dry-clean submission'+(turnMonth!=='all'?' · '+MON[+turnMonth.slice(5,7)-1]+' '+turnMonth.slice(0,4):'')+'</span></h3>'+
+/* 9a · Margin per unit (Sarah 2026-08-14) — replaces "Turnover economics", which showed only what a
+   turnover COST. The unit is unchanged (a dry-clean submission = one turnover · an occupied night),
+   but each unit now carries what it earned, what it cost and what it left:
+       Margin/sub   = Revenue/sub   − Cost/sub
+       Margin/night = Revenue/night − Cost/night
+   Revenue = the month's TOTAL (nightly earnings + other revenue), so a flat's row ties to the P&L.
+   COST BASIS is a toggle, because "margin" honestly means two different things:
+     · Variable  — the same costs as the table below, so the two tables reconcile column for column.
+                   Margin here is CONTRIBUTION: what a turnover leaves before the standing costs.
+     · All costs — everything the P&L charges the flat (rent, subscription, ops manager, repairs,
+                   contingency …), so Portfolio Margin × units ties back to Net.
+   Nights = occupied nights in the range, the same divisor the cost table uses. */
+function marCols(){ return marBasis==='all'
+  ? {lbl:'all costs', note:'every cost the P&L charges the flat'}
+  : {lbl:'variable',  note:'the variable costs from the table below'}; }
+function unitCostUSD(f,m){                       // one flat-month's cost on the chosen basis, in USD
+  var c=costsUSD(f,m);
+  if(marBasis==='all') return c.total;
+  var t=0; VC_COLS.forEach(function(col){ col.keys.forEach(function(k){ t+=(c.by[k]||0); }); });
+  return t;
+}
+function secMargin(){
+  var ms=pickMonths(R.mar,marMonth), merged=mergeStays(rawStays()), basis=marCols();
+  var h='<div class="card"><h3>Margin per unit<span class="rt">per dry-clean submission · per occupied night'+(marMonth!=='all'?' · '+MON[+marMonth.slice(5,7)-1]+' '+marMonth.slice(0,4):'')+'</span></h3>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
-    '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.turn),turnMonth,'setTurnMonth')+timeSeg('turn')+'</div>'+
-    '<table class="t"><thead><tr><th>Flat</th><th>Stays</th><th>Subs</th><th>Laundry/sub</th><th>Cleaning/sub</th><th>Turnover/sub</th><th>Turnover/night</th></tr></thead><tbody>';
-  /* Turnover/night divides by OCCUPIED nights in the range (Sarah 2026-08-04) — the old per-stay
-     nights (checkout-month attribution) went to zero in months a long stay merely spanned, which
-     read as "no cost" in a fully occupied month. Stays stays checkout-based (that's what a stay
-     count means); the night denominator is occupancy-based. */
-  var T={nS:0,subs:0,laun:0,clean:0,nights:0};
+    '<div class="rowbtns">'+monthBtnsFor(monthsInRange(R.mar),marMonth,'setMarMonth')+timeSeg('mar')+
+      seg([['var','Variable cost'],['all','All costs']],marBasis,'setMarBasis')+'</div>'+
+    '<div style="overflow-x:auto"><table class="t" style="min-width:780px"><thead><tr><th>Flat</th><th>Stays</th><th>Subs</th><th>Nights</th>'+
+      '<th>Revenue/sub</th><th>Cost/sub</th><th>Margin/sub</th>'+
+      '<th>Revenue/night</th><th>Cost/night</th><th>Margin/night</th></tr></thead><tbody>';
+  function cells(rev,cost,subs,nights){
+    var mg=rev-cost;
+    function trio(d){ return d>0
+      ? '<td>'+money(rev/d)+'</td><td>'+money(cost/d)+'</td><td style="font-weight:700'+(mg<0?';color:var(--red)':'')+'">'+money(mg/d)+'</td>'
+      : '<td>—</td><td>—</td><td>—</td>'; }
+    return trio(subs)+trio(nights);
+  }
+  var T={nS:0,subs:0,nights:0,rev:0,cost:0};
   scopeFlats().forEach(function(f){
     var stays=merged.filter(function(s){ return s.flat===f&&monthOf(s.checkOut)>=ms[0]&&monthOf(s.checkOut)<=ms[ms.length-1]; });
-    var nS=stays.length, laun=0,clean=0,subs=0,nights=0;
-    ms.forEach(function(m){ var c=costsUSD(f,m); laun+=disp(c.by['laundry']||0,m); clean+=disp((c.by['cleaning-labor']||0)+(c.by['cleaning']||0),m); subs+=dcCount(f,m);
-      rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))nights+=overlapNights(s,m); }); });
-    T.nS+=nS; T.subs+=subs; T.laun+=laun; T.clean+=clean; T.nights+=nights;
-    var lps=subs>0?laun/subs:0,cps=subs>0?clean/subs:0,tps=lps+cps,tpn=nights>0?(laun+clean)/nights:0;
-    h+='<tr><td>'+esc(f)+'</td><td>'+(nS||'—')+'</td><td>'+(subs||'—')+'</td><td>'+money(lps)+'</td><td>'+money(cps)+'</td><td>'+money(tps)+'</td><td>'+money(tpn)+'</td></tr>'; });
-  h+='<tr style="font-weight:800"><td>Portfolio</td><td>'+(T.nS||'—')+'</td><td>'+(T.subs||'—')+'</td>'+
-     '<td>'+money(T.subs>0?T.laun/T.subs:0)+'</td><td>'+money(T.subs>0?T.clean/T.subs:0)+'</td>'+
-     '<td>'+money(T.subs>0?(T.laun+T.clean)/T.subs:0)+'</td><td>'+money(T.nights>0?(T.laun+T.clean)/T.nights:0)+'</td></tr>';
-  return h+'</tbody></table><div class="note">A submission = one dry-clean drop-off (mid-stay cleans included) — the real turnover unit. Turnover/night = (laundry + cleaning in range) ÷ <b>occupied</b> nights, so a month inside a long stay shows its true nightly cost. Portfolio row = the same math over all flats\' sums.</div></div>';
+    var nS=stays.length, subs=0, nights=0, rev=0, cost=0;
+    ms.forEach(function(m){
+      var p=pnlOf(f,m);
+      if(p){ rev+=disp(p.revenue.total,m); cost+=disp(unitCostUSD(f,m),m); }
+      subs+=dcCount(f,m);
+      rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))nights+=overlapNights(s,m); });
+    });
+    T.nS+=nS; T.subs+=subs; T.nights+=nights; T.rev+=rev; T.cost+=cost;
+    h+='<tr><td>'+esc(f)+'</td><td>'+(nS||'—')+'</td><td>'+(subs||'—')+'</td><td>'+(nights||'—')+'</td>'+cells(rev,cost,subs,nights)+'</tr>';
+  });
+  h+='<tr style="font-weight:800"><td>Portfolio</td><td>'+(T.nS||'—')+'</td><td>'+(T.subs||'—')+'</td><td>'+(T.nights||'—')+'</td>'+
+     cells(T.rev,T.cost,T.subs,T.nights)+'</tr>';
+  return h+'</tbody></table></div><div class="note">A submission = one dry-clean drop-off (mid-stay cleans included) — the real turnover unit. <b>Revenue</b> = the month\'s total (nightly earnings + other revenue). <b>Cost</b> = '+basis.note+'. <b>Margin = Revenue − Cost</b> on the same divisor, so each trio adds across. <b>Nights</b> = occupied nights in the range, so a month inside a long stay shows its true nightly figures. Portfolio row = the same maths over all flats\' sums.'+
+    (marBasis==='var'?' On this basis margin is a <b>contribution</b>: rent, subscriptions, ops manager, repairs and contingency are not deducted — switch to All costs for the figure that ties to Net.':' On this basis Margin × units ties back to the P&L Net.')+'</div></div>';
+}
+
+/* 9c · Per-unit economics over time (Sarah 2026-08-14) — the tables answer "what does a unit earn
+   and cost"; this answers "and how is that moving". Same unit, months side by side: every series is
+   a RATE (÷ subs or ÷ occupied nights), never a total, so a big month and a small one compare
+   honestly. Cost detail breaks out the same six categories as the cost table. */
+var UNI_SER={
+  sum:[ {k:'rev',lbl:'Revenue',color:'#4a7fb5'},{k:'cost',lbl:'Cost',color:'#cc5f5f'},{k:'mar',lbl:'Margin',color:'#3a7d4d'} ],
+  cost:[{k:'laundry',lbl:'Laundry',color:'#4a7fb5'},{k:'cleaning',lbl:'Cleaning',color:'#cc5f5f'},
+        {k:'elec',lbl:'Electricity',color:'#d9a441'},{k:'supplies',lbl:'Supplies',color:'#6f9a76'},
+        {k:'net',lbl:'Net & phone',color:'#a97fb0'},{k:'util',lbl:'Utilities',color:'#9aa7b5'},
+        {k:'cost',lbl:'Total',color:'#1a1a1a'}]
+};
+function uniRows(ms){
+  return ms.map(function(m){
+    var subs=0, nights=0, rev=0, cost=0, by={}; VC_COLS.forEach(function(c){ by[c.k]=0; });
+    scopeFlats().forEach(function(f){
+      var p=pnlOf(f,m);
+      if(p){ rev+=disp(p.revenue.total,m); cost+=disp(unitCostUSD(f,m),m);
+             var c=costsUSD(f,m);
+             VC_COLS.forEach(function(col){ col.keys.forEach(function(k){ by[col.k]+=disp(c.by[k]||0,m); }); }); }
+      subs+=dcCount(f,m);
+      rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))nights+=overlapNights(s,m); });
+    });
+    var d=(uniUnit==='sub'?subs:nights), vals={};
+    vals.rev=d>0?rev/d:0; vals.cost=d>0?cost/d:0; vals.mar=vals.rev-vals.cost;
+    VC_COLS.forEach(function(c){ vals[c.k]=d>0?by[c.k]/d:0; });
+    return { m:m, vals:vals, d:d };
+  });
+}
+function secUnitTrend(){
+  var ms=monthsInRange(R.uni), rows=uniRows(ms), ser=UNI_SER[uniView], basis=marCols();
+  var unitLbl=(uniUnit==='sub'?'per submission':'per occupied night');
+  var h='<div class="card"><h3>Per-unit economics over time<span class="rt">'+unitLbl+' · '+basis.lbl+' cost</span></h3>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
+    '<div class="rowbtns">'+seg([['sub','Per submission'],['night','Per night']],uniUnit,'setUniUnit')+
+      seg([['sum','Revenue · cost · margin'],['cost','Cost detail']],uniView,'setUniView')+
+      seg([['var','Variable cost'],['all','All costs']],marBasis,'setMarBasis')+timeSeg('uni')+'</div>'+
+    lineSigned(rows, ser, {unit:curU()});
+  h+='<div class="legend">'+ser.map(function(s){ return '<span><i style="background:'+s.color+'"></i>'+esc(s.lbl)+'</span>'; }).join('')+'</div>';
+  var thin=rows.filter(function(r){ return !r.d; }).map(function(r){ return r.m; });
+  return h+'<div class="note">Every line is a rate, '+unitLbl+' — the divisor is that month\'s '+(uniUnit==='sub'?'dry-clean submissions':'occupied nights')+', so months compare like for like. Cost basis follows the Margin per unit table above ('+basis.note+'); Margin = Revenue − Cost at every point.'+
+    (thin.length?' <b>'+thin.join(', ')+'</b> had no '+(uniUnit==='sub'?'submissions':'occupied nights')+' and plot at zero.':'')+'</div></div>';
+}
+
+/* 9d · FX impact on margin (Sarah 2026-08-14: "it has been quite volatile lately, so i need to see
+   the impact on profitability"). Revenue is earned in USD and almost every cost is spent in EGP, so
+   the rate moves margin on its own — with nothing changing in the business.
+   TWO readings, because they answer different questions:
+     · vs a constant rate — every month restated at ONE reference rate (the latest month in range),
+       so "margin as reported" minus "margin at that rate" IS the cumulative FX effect.
+     · month-over-month bridge — the change in margin split into what OPERATIONS did and what the
+       RATE did. The split is exact, not an estimate: operating change is measured at last month's
+       rate, and the rate change is applied to this month's spend, so the two always sum to Δ.
+   In EGP the exposure is the mirror image (USD income restated at a moving rate), so the same two
+   readings are computed against the currency on screen. */
+function fxRows(ms){
+  return ms.map(function(m){
+    var usdNat=0, egpNat=0, rev=0;
+    scopeFlats().forEach(function(f){
+      var p=pnlOf(f,m); if(!p) return;
+      rev+=p.revenue.total;                                    // USD-native
+      (p.costs||[]).forEach(function(c){ if(c.currency==='USD') usdNat+=c.amount; else egpNat+=c.amount; });
+    });
+    // N = the USD-native flow (revenue less USD-priced costs) · E = the EGP-native spend
+    return { m:m, r:rateFor(m), N:rev-usdNat, E:egpNat, rev:rev };
+  });
+}
+function secFx(){
+  var ms=monthsInRange(R.fx), rows=fxRows(ms);
+  if(!rows.length) return '';
+  var R0=rows[rows.length-1].r, refM=rows[rows.length-1].m;
+  var usd=(CUR==='USD');
+  function marginAt(row,rate){ return usd ? (row.N - row.E/rate) : (row.N*rate - row.E); }
+  var h='<div class="card"><h3>FX impact on margin<span class="rt">'+(usd?'USD':'EGP')+' · reference '+fmt1(R0)+' ('+MON[+refM.slice(5,7)-1]+' '+refM.slice(0,4)+')</span></h3>'+
+    '<div class="rowbtns">'+scopeSeg()+curSeg()+timeSeg('fx')+'</div>'+
+    '<div style="overflow-x:auto"><table class="t" style="min-width:760px"><thead><tr><th>Month</th><th>Rate</th>'+
+      '<th>Margin</th><th>At '+fmt1(R0)+'</th><th>FX effect</th><th>Δ vs prev</th><th>· operating</th><th>· FX</th></tr></thead><tbody>';
+  var TF=0, TO=0, TD=0;
+  rows.forEach(function(r,i){
+    var mAct=marginAt(r,r.r), mRef=marginAt(r,R0);
+    var fxEff=mAct-mRef;
+    var d=null, op=null, fx=null;
+    if(i){ var q=rows[i-1];
+      d=mAct-marginAt(q,q.r);
+      op = usd ? ((r.N-q.N) - (r.E-q.E)/q.r) : ((r.N-q.N)*q.r - (r.E-q.E));
+      fx = usd ? (-r.E*(1/r.r - 1/q.r))      : ( r.N*(r.r-q.r));
+      TD+=d; TO+=op; TF+=fx;
+    }
+    var neg=function(v){ return v<0?' style="color:var(--red)"':''; };
+    h+='<tr><td>'+MON[+r.m.slice(5,7)-1]+' '+r.m.slice(2,4)+'</td><td>'+fmt1(r.r)+'</td>'+
+       '<td'+neg(mAct)+'>'+money(mAct)+'</td><td>'+money(mRef)+'</td>'+
+       '<td'+neg(fxEff)+'>'+(fxEff>0?'+':'')+money(fxEff)+'</td>'+
+       (d==null?'<td>—</td><td>—</td><td>—</td>'
+              :'<td'+neg(d)+'>'+(d>0?'+':'')+money(d)+'</td><td'+neg(op)+'>'+(op>0?'+':'')+money(op)+'</td><td'+neg(fx)+'>'+(fx>0?'+':'')+money(fx)+'</td>')+'</tr>';
+  });
+  h+='<tr style="font-weight:800"><td>Total</td><td>—</td><td>—</td><td>—</td><td>—</td><td>'+(TD>0?'+':'')+money(TD)+'</td><td>'+(TO>0?'+':'')+money(TO)+'</td><td>'+(TF>0?'+':'')+money(TF)+'</td></tr>';
+  h+='</tbody></table></div>';
+  // the bridge, drawn: what operations did vs what the pound did, month by month
+  var brows=rows.slice(1).map(function(r,i){ var q=rows[i];
+    return { m:r.m, vals:{ op: usd?((r.N-q.N)-(r.E-q.E)/q.r):((r.N-q.N)*q.r-(r.E-q.E)),
+                           fx: usd?(-r.E*(1/r.r-1/q.r)):(r.N*(r.r-q.r)) } }; });
+  if(brows.length) h+=groupedChart(brows,[{k:'op',lbl:'Operating',color:'#4a7fb5'},{k:'fx',lbl:'FX',color:'#d9a441'}])+
+    '<div class="legend"><span><i style="background:#4a7fb5"></i>Operating</span><span><i style="background:#d9a441"></i>FX</span></div>';
+  return h+'<div class="note"><b>Margin</b> here is revenue less <i>every</i> cost — the P&amp;L\'s Net for the flats in scope. <b>At '+fmt1(R0)+'</b> restates the month at '+MON[+refM.slice(5,7)-1]+' '+refM.slice(0,4)+'\'s rate, so <b>FX effect</b> is what the pound alone did to that month: '+
+    (usd?'in USD you are long EGP costs, so a <b>weaker</b> pound (a higher rate) makes them cheaper and margin higher.'
+        :'in EGP you are long USD income, so a <b>weaker</b> pound (a higher rate) makes that income worth more and margin higher.')+
+    ' <b>Δ vs prev</b> splits each month\'s move exactly into operating and FX — the two columns always sum to Δ (operating is measured at last month\'s rate, FX is applied to this month\'s '+(usd?'EGP spend':'USD income')+').</div></div>';
 }
 /* 9b · Variable cost per turnover (Sarah 2026-08-13) — the same unit and the same toggles as
    Turnover economics, widened to EVERY variable cost so a submission shows what a turnover really
