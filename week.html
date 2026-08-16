@@ -224,6 +224,13 @@ function mergeWeek(ws){
   var confirmed=weekRows(ws);
   var props=proposeWeek(ws);
   if(!confirmed.length) return props;
+  /* A visit that has ALREADY HAPPENED is a record, not a plan (Sarah 2026-08-16). Healing re-derives
+     the door code from today's bookings, which is right for a trip still to come and wrong for one
+     already made: the 15-Aug Zayed checkout was confirmed — and carried out — carrying 0107, then
+     Mona booked on the 16th and the heal quietly restated that past trip as 1608. The screen then
+     believed her arrival was covered by a visit that had physically set a different code. Elapsed
+     days keep the code they were confirmed with; only today-forward heals. */
+  var todayK=ymd(day(new Date().toISOString()));
   var seen={}, out=confirmed.map(function(c){ seen[ckey(c)]=1;
     // door code is derived from current bookings — recompute so stale values heal on the next
     // confirm. EXCEPT a hand-set code (§5.5): the 'Code edited' flag marks it, and it must stick.
@@ -232,7 +239,7 @@ function mergeWeek(ws){
        guest arrives the same day — while a clean confirmed after the booking (7-Aug 17A) did. */
     var healIn = hm(c.inTime) || ((c.type==='checkout'&&sameDayIn(c.flat,c.date)) ? DEFAULT_IN : '');
     return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time)||'12:00',
-             code: (c.codeEdited&&(c.code||'').trim()) ? c.code : doorCode(c.flat,day(c.date)),
+             code: ((c.codeEdited||c.date<todayK)&&(c.code||'').trim()) ? c.code : doorCode(c.flat,day(c.date)),
              codeEdited: !!c.codeEdited,
              inTime:healIn, stayId:c.stayId, on:true, src:'confirmed', cleaner:c.cleaner||'amal' }; });
   props.forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=false; out.push(p); } });
@@ -305,13 +312,23 @@ var TYPES=['checkout','revision','midstay','weekly','custom','codechange'];
    gets the proposed ci−1 revision, which now CARRIES the code. 'codechange' is the standalone
    trip for when no visit covers an arrival — addable by hand, and the WhatsApp emits a derived
    safety-net line for any still-uncovered arrival (see waSection). */
+/* A visit covers an arrival only if it will actually SET that arrival's code (Sarah 2026-08-16).
+   Two days' proximity is not enough: a visit that has already happened carried whatever code it
+   carried on the day, and a booking made after it cannot be served by it. Mona Alqahtani booked
+   Zayed 2000 on the morning of her own check-in — the 15-Aug checkout had been and gone, leaving
+   the default 0107 — and because that trip sat inside the two-day window the screen called her
+   arrival covered and said nothing. A PAST visit therefore only counts when the code it carries is
+   already the code this arrival needs; a future visit still counts, because its code heals on the
+   next confirm and the person going has not gone yet. */
 function coveringVisit(flat,ci){                  // the ON visit (either week) that will set this arrival's code
-  var lists=[cleans||[],cleans2||[]], hit=null;
+  var lists=[cleans||[],cleans2||[]], hit=null, todayK=ymd(day(new Date().toISOString())), need=codeOf(ci);
   lists.forEach(function(L){ L.forEach(function(c){
     if(!c.on||c.flat!==flat) return;
     if(isStayClean(c)) return;                    // in-stay cleans can't set the lock (guest is in) — 2026-08-04
     var dd=day(c.date), diff=(ci-dd)/DAYMS;
-    if(diff>=0&&diff<=2&&(!hit||dd>day(hit.date))) hit=c;
+    if(!(diff>=0&&diff<=2)) return;
+    if(c.date<todayK && (c.code||'')!==need) return;   // already done, and not with this code
+    if(!hit||dd>day(hit.date)) hit=c;
   }); });
   return hit;
 }
@@ -541,15 +558,25 @@ function waLine(c){
 /* §5.5 safety net: an arrival TOMORROW with no ON visit in the 2 days before it means nobody is
    scheduled to set the guest's code — emit the code-change line anyway, derived at message time so
    toggling a revision off can never silently drop the arrival's code. */
+/* The safety-net line for an arrival no visit will serve. It used to look only at TOMORROW, so a
+   booking that lands on its own check-in day could never produce one: the day before is elapsed and
+   elapsed days are skipped entirely (Sarah 2026-08-16). Today's arrivals are now checked in today's
+   own section, worded النهارده and marked ⚠️ — it is the same trip, but it is late. No duplication:
+   the "tomorrow" line for today's arrival would have lived in yesterday's section, which is never
+   printed. */
 function waCodeFallback(d){
-  var out='', k1=addD(d,1);
-  airbnbFlats().forEach(function(f){
-    STAYS.forEach(function(s){
-      if(s.flat!==f||day(s.checkIn).getTime()!==k1.getTime()) return;
-      if(coveringVisit(f,k1)) return;
-      out+='• شقة '+flatAr(f)+': تغيير كود الباب إلى '+arrivalCode(f,k1)+' — دخول ضيف غدا\n';
+  var out='', k0=ymd(d), todayK=ymd(day(new Date().toISOString())), k1=addD(d,1);
+  function lines(target, word, warn){
+    airbnbFlats().forEach(function(f){
+      STAYS.forEach(function(s){
+        if(s.flat!==f||day(s.checkIn).getTime()!==target.getTime()) return;
+        if(coveringVisit(f,target)) return;
+        out+=(warn?'⚠️ ':'')+'• شقة '+flatAr(f)+': تغيير كود الباب إلى '+arrivalCode(f,target)+' — دخول ضيف '+word+'\n';
+      });
     });
-  });
+  }
+  if(k0===todayK) lines(d, 'النهارده', true);
+  lines(k1, 'غدا', false);
   return out;
 }
 /* Every line starts with an invisible RIGHT-TO-LEFT MARK: WhatsApp aligns each line by its first
