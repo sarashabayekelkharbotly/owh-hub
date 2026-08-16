@@ -207,10 +207,22 @@ function proposeWeek(ws){
        is the code, matching الكنترول's watcher exactly: covered only when some confirmed visit in
        the two-day window carries this arrival's code. */
     STAYS.forEach(function(s){ if(s.flat!==f)return;
-      var ci=day(s.checkIn); if(!inWk(ci)) return;
-      var need=codeOf(ci), from=ymd(addD(ci,-2)), ciK=ymd(ci);
-      var set=(D.cleans||[]).some(function(c){ return c.flat===f&&c.date>=from&&c.date<=ciK&&(c.code||'')===need; });
-      if(!set) out.push(mk(f,ci,'codechange',s));
+      var ci=day(s.checkIn), co=day(s.checkOut), tk=ymd(day(new Date().toISOString())), td=day(tk);
+      /* The trip belongs on the arrival day — EXCEPT when the guest is already in and no visit ever
+         recorded the change (Sarah 2026-08-16: Mona). A row dated before today is refused by the
+         server, which keeps elapsed days as history, so proposing it there proposes something that
+         can never be saved: the confirm reported "1 past day kept as history" and the row silently
+         never existed, which is why neither grid could show it. For a stay in progress the trip is
+         proposed TODAY — that is when it can be written, and when it was in fact done. */
+      /* The catch-up reaches back ONE day, no further. 8A's guest checked in on the 11th with no
+         visit carrying 1108 and has been inside ever since — they plainly got in, and changing a
+         lock under a settled guest locks them out. Past the first day the code is a fact, not a
+         job; only an arrival that is today or yesterday is still worth a trip. */
+      var when = (ci>=td) ? ci : ((co>td && (td-ci)/DAYMS<=1) ? td : null);
+      if(!when||!inWk(when)) return;
+      var need=codeOf(ci), from=ymd(addD(ci,-2)), upto=(ci>=td)?ymd(ci):tk;
+      var set=(D.cleans||[]).some(function(c){ return c.flat===f&&c.date>=from&&c.date<=upto&&(c.code||'')===need; });
+      if(!set) out.push(mk(f,when,'codechange',s));
     });
   });
   out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
