@@ -166,8 +166,16 @@ function inTimeFor(f,k){ var t=DEFAULT_IN; cleans.forEach(function(c){ if(c.flat
    Saturday-start week cut the plan in half: Thursday sat at the END of the old week and the days
    she was actually planning lived in the next one. Friday-start means "the week ahead" is exactly
    what she sees while planning. getDay(): Sun 0 … Fri 5 · Sat 6, so days-since-Friday = (day+2)%7. */
+/* TODAY IS CAIRO'S TODAY, NOT THIS LAPTOP'S (Sarah 2026-08-17). The business runs on Africa/Cairo
+   and so does every server rule — confirmCleans keeps "elapsed" days as history using the Cairo
+   date. This screen was asking the device, and the two are up to ten hours apart: the codechange
+   proposed on a laptop still showing the 16th was refused by a server already on the 17th, silently
+   filed as history, and came back unticked on the next load. "It doesn't stick" was exactly right.
+   meta.asOf is the server's own date, so the screen and the sheet now agree on which day it is. */
+function todayK(){ return (D&&D.meta&&D.meta.asOf) || ymd(day(new Date().toISOString())); }
+function todayD(){ return day(todayK()); }
 function friOf(d){ var x=new Date(d); x.setDate(x.getDate()-((x.getDay()+2)%7)); return x; }
-function defaultWeek(){ var t=day(new Date().toISOString()); var wd=t.getDay(); var base=friOf(t);
+function defaultWeek(){ var t=todayD(); var wd=t.getDay(); var base=friOf(t);
   if(wd===4) base=addD(base,7);    // Thursday = planning day → open the week that starts tomorrow
   return base; }
 function openRepairs(){ return (D.repairs||[]).filter(function(r){ return r.status==='open'; }); }
@@ -207,7 +215,7 @@ function proposeWeek(ws){
        is the code, matching الكنترول's watcher exactly: covered only when some confirmed visit in
        the two-day window carries this arrival's code. */
     STAYS.forEach(function(s){ if(s.flat!==f)return;
-      var ci=day(s.checkIn), co=day(s.checkOut), tk=ymd(day(new Date().toISOString())), td=day(tk);
+      var ci=day(s.checkIn), co=day(s.checkOut), tk=todayK(), td=todayD();
       /* The trip belongs on the arrival day — EXCEPT when the guest is already in and no visit ever
          recorded the change (Sarah 2026-08-16: Mona). A row dated before today is refused by the
          server, which keeps elapsed days as history, so proposing it there proposes something that
@@ -254,7 +262,7 @@ function mergeWeek(ws){
      Mona booked on the 16th and the heal quietly restated that past trip as 1608. The screen then
      believed her arrival was covered by a visit that had physically set a different code. Elapsed
      days keep the code they were confirmed with; only today-forward heals. */
-  var todayK=ymd(day(new Date().toISOString()));
+  var tK=todayK();
   var seen={}, out=confirmed.map(function(c){ seen[ckey(c)]=1;
     // door code is derived from current bookings — recompute so stale values heal on the next
     // confirm. EXCEPT a hand-set code (§5.5): the 'Code edited' flag marks it, and it must stick.
@@ -263,7 +271,7 @@ function mergeWeek(ws){
        guest arrives the same day — while a clean confirmed after the booking (7-Aug 17A) did. */
     var healIn = hm(c.inTime) || ((c.type==='checkout'&&sameDayIn(c.flat,c.date)) ? DEFAULT_IN : '');
     return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time)||'12:00',
-             code: ((c.codeEdited||c.date<todayK)&&(c.code||'').trim()) ? c.code : doorCode(c.flat,day(c.date)),
+             code: ((c.codeEdited||c.date<tK)&&(c.code||'').trim()) ? c.code : doorCode(c.flat,day(c.date)),
              codeEdited: !!c.codeEdited,
              inTime:healIn, stayId:c.stayId, on:true, src:'confirmed', cleaner:c.cleaner||'amal' }; });
   props.forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=false; out.push(p); } });
@@ -286,13 +294,19 @@ function bookedAfterConfirm(){
 /* ---------- fetch ---------- */
 function boot(){
   /* Which week we are on needs only today's date, so the drafts can be asked for BEFORE the payload
-     comes back — both requests overlap and the first paint is already complete. */
-  if(!weekStart) weekStart=defaultWeek();
+     comes back — both requests overlap and the first paint is already complete. The date used here
+     is the DEVICE's (no payload yet), so onData re-picks the week once the server's own date has
+     arrived; on a laptop in another timezone those are different days. */
+  if(!weekStart){ weekStart=defaultWeek(); WEEK_AUTO=true; }
+  BOOT_DRAFTS_WK=ymd(weekStart);
   BOOT_DRAFTS=Promise.all([draftRaw(weekStart),draftRaw(addD(weekStart,7))]);
   fetchOnce().then(onData).catch(function(){ setTimeout(function(){ fetchOnce().then(onData).catch(function(e){ showErr(e); }); },800); });
 }
 function fetchOnce(){ return api('props_get_all',{scope:'live'}).then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
-function onData(j){ D=j.data; STAYS=mergeStays(D.stays); if(!weekStart)weekStart=defaultWeek(); loadWeek();
+function onData(j){ D=j.data; STAYS=mergeStays(D.stays);
+  if(!weekStart) weekStart=defaultWeek();
+  else if(WEEK_AUTO) weekStart=defaultWeek();   // now dated by the server; the user has not paged
+  loadWeek();
   loadDrafts().then(function(){ render();
     document.getElementById('rib').innerHTML='data <b>'+new Date().toTimeString().slice(0,5)+'</b>'; }); }
 function showErr(e){ document.getElementById('app').innerHTML='<div class="err"><b>Couldn\'t load.</b> '+esc(e.message||e)+'</div>'; }
@@ -345,13 +359,13 @@ var TYPES=['checkout','revision','midstay','weekly','custom','codechange'];
    already the code this arrival needs; a future visit still counts, because its code heals on the
    next confirm and the person going has not gone yet. */
 function coveringVisit(flat,ci){                  // the ON visit (either week) that will set this arrival's code
-  var lists=[cleans||[],cleans2||[]], hit=null, todayK=ymd(day(new Date().toISOString())), need=codeOf(ci);
+  var lists=[cleans||[],cleans2||[]], hit=null, tK=todayK(), need=codeOf(ci);
   lists.forEach(function(L){ L.forEach(function(c){
     if(!c.on||c.flat!==flat) return;
     if(isStayClean(c)) return;                    // in-stay cleans can't set the lock (guest is in) — 2026-08-04
     var dd=day(c.date), diff=(ci-dd)/DAYMS;
     if(!(diff>=0&&diff<=2)) return;
-    if(c.date<todayK && (c.code||'')!==need) return;   // already done, and not with this code
+    if(c.date<tK && (c.code||'')!==need) return;   // already done, and not with this code
     if(!hit||dd>day(hit.date)) hit=c;
   }); });
   return hit;
@@ -386,8 +400,9 @@ var DAY_EN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 function render(){
   var ws=weekStart, days=[]; for(var i=0;i<7;i++)days.push(addD(ws,i));
-  document.getElementById('wlabel').textContent='Sat '+dm(ws)+' – Fri '+dm(days[6]);
-  var today=ymd(day(new Date().toISOString()));
+  // the week runs Friday → Thursday; this header still read "Sat … Fri" from before the change
+  document.getElementById('wlabel').textContent=DAY_EN[ws.getDay()]+' '+dm(ws)+' – '+DAY_EN[days[6].getDay()]+' '+dm(days[6]);
+  var today=todayK();
   var h='';
 
   var confAt=weekConfirmed(), newer=bookedAfterConfirm();
@@ -589,7 +604,7 @@ function waLine(c){
    the "tomorrow" line for today's arrival would have lived in yesterday's section, which is never
    printed. */
 function waCodeFallback(d){
-  var out='', k0=ymd(d), todayK=ymd(day(new Date().toISOString())), k1=addD(d,1);
+  var out='', k0=ymd(d), tK=todayK(), k1=addD(d,1);
   function lines(target, word, warn){
     airbnbFlats().forEach(function(f){
       STAYS.forEach(function(s){
@@ -599,7 +614,7 @@ function waCodeFallback(d){
       });
     });
   }
-  if(k0===todayK) lines(d, 'النهارده', true);
+  if(k0===tK) lines(d, 'النهارده', true);
   lines(k1, 'غدا', false);
   return out;
 }
@@ -609,7 +624,7 @@ function waCodeFallback(d){
 function waRtl(t){ return t.split('\n').map(function(l){ return l?'‏'+l.replace(/^‏+/,''):l; }).join('\n'); }
 function waSection(ws,list){
   var days=[]; for(var i=0;i<7;i++)days.push(addD(ws,i));
-  var todayW=ymd(day(new Date().toISOString()));
+  var todayW=todayK();
   var on=list.filter(function(c){return c.on;}), reps=openRepairs();
   /* Pass 1 — gather each day's lines. Done BEFORE the title so the title can name the first and
      last day that actually has work: a heading reading "من السبت … إلى الجمعة" when nothing happens
@@ -707,7 +722,8 @@ function copyWa(){
 }
 /* ---------- drafts (2026-08-03): the full editing state, server-side per week ---------- */
 var DRAFT_AT=null, DRAFT2_AT=null;   // DRAFT2_AT: the NEXT week is on the message too, from its own draft
-var BOOT_DRAFTS=null;                // both drafts, requested at boot in parallel with the payload
+var BOOT_DRAFTS=null, BOOT_DRAFTS_WK='';   // both drafts, requested at boot in parallel with the payload
+var WEEK_AUTO=false;                       // the week was picked for her, not chosen — re-pick it on the server's date
 function draftPayload(){
   return cleans.map(function(c){ return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code,
     codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal', on:!!c.on, src:c.src }; });
@@ -762,7 +778,8 @@ function applyDraft(ws,d,second){
 function loadDrafts(){
   DRAFT_AT=null; DRAFT2_AT=null;
   var ws=weekStart, ws2=addD(ws,7), late=false;
-  var got=BOOT_DRAFTS||Promise.all([draftRaw(ws),draftRaw(ws2)]); BOOT_DRAFTS=null;
+  // the boot pair is only usable if it was asked for THIS week (onData may have re-picked it)
+  var got=(BOOT_DRAFTS&&BOOT_DRAFTS_WK===ymd(ws))?BOOT_DRAFTS:Promise.all([draftRaw(ws),draftRaw(ws2)]); BOOT_DRAFTS=null;
   var p=got.then(function(ds){
     if(ws!==weekStart) return;                       // paged again while waiting — a stale answer must not land
     applyDraft(ws,ds[0],false); applyDraft(ws2,ds[1],true);
@@ -794,8 +811,8 @@ function guardNav(go){
   if(!dirty){ go(); return; }
   saveDraft().then(go).catch(function(){ if(confirm('Draft save failed — leave anyway and lose the changes?')) go(); });
 }
-document.getElementById('wprev').onclick=function(){ guardNav(function(){ weekStart=addD(weekStart,-7); loadWeek(); render(); loadDrafts(); }); };
-document.getElementById('wnext').onclick=function(){ guardNav(function(){ weekStart=addD(weekStart,7); loadWeek(); render(); loadDrafts(); }); };
+document.getElementById('wprev').onclick=function(){ WEEK_AUTO=false; guardNav(function(){ weekStart=addD(weekStart,-7); loadWeek(); render(); loadDrafts(); }); };
+document.getElementById('wnext').onclick=function(){ WEEK_AUTO=false; guardNav(function(){ weekStart=addD(weekStart,7); loadWeek(); render(); loadDrafts(); }); };
 
 AUTH_ON_LOGIN = boot; if (authGuard()) boot();   // signed in → load now; otherwise the sign-in form loads it
 </script>
