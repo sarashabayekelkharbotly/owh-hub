@@ -200,6 +200,18 @@ function proposeWeek(ws){
       var gap=Math.round((ci-pco)/DAYMS);
       if(gap>2){ var rev=addD(ci,-1); if(inWk(rev)) out.push(mk(f,rev,'revision',s)); }
     });
+    /* AN ARRIVAL NOBODY WILL LET IN (Sarah 2026-08-16). A WhatsApp line was not enough: Emad's
+       schedule, Malah's comms grid and الكنترول all read the Cleaning schedule, so an arrival with
+       no visit carrying its code existed nowhere they could see it — Mona was sent the old 0107.
+       The week now PROPOSES the trip, so confirming it puts a real row in front of all three. Test
+       is the code, matching الكنترول's watcher exactly: covered only when some confirmed visit in
+       the two-day window carries this arrival's code. */
+    STAYS.forEach(function(s){ if(s.flat!==f)return;
+      var ci=day(s.checkIn); if(!inWk(ci)) return;
+      var need=codeOf(ci), from=ymd(addD(ci,-2)), ciK=ymd(ci);
+      var set=(D.cleans||[]).some(function(c){ return c.flat===f&&c.date>=from&&c.date<=ciK&&(c.code||'')===need; });
+      if(!set) out.push(mk(f,ci,'codechange',s));
+    });
   });
   out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
   return out;
