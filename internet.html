@@ -26,7 +26,18 @@ body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink)
 .sub{font-size:11px;color:var(--soft);margin-bottom:8px}
 .bar{height:9px;background:#eee3e3;border-radius:6px;overflow:hidden;margin:8px 0 4px}
 .bar > i{display:block;height:100%;border-radius:6px}
-.stat{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:8px 0}
+/* Needs-you list: one block per thing to DO — what, why, and the action, red before amber */
+.act{border-radius:10px;padding:7px 10px;margin-bottom:6px;border-left:4px solid}
+.act.red{background:#f8e6e6;border-color:#cc5f5f}
+.act.amber{background:#fbf1dc;border-color:#e8b45f}
+.act.ok{background:#e8f0e9;border-color:#3a7d4d;font-size:12px;font-weight:700}
+.act .at{font-size:12.5px;font-weight:700}
+.act .aw{font-size:11px;color:#6b5d5d;margin-top:1px}
+.act .aa{font-size:11.5px;font-weight:700;margin-top:3px}
+.act .tgb{font-size:10px;opacity:.85}
+details.more{margin-top:6px}
+details.more>summary{font-size:10.5px;color:var(--soft);cursor:pointer;padding:2px 0}
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:8px 0}
 .stat .s{background:var(--grey);border-radius:9px;padding:6px 4px;text-align:center}
 .stat .sv{font-size:14px;font-weight:700;line-height:1.1}
 .stat .s.dep-b .sv{color:#a24a4a}
@@ -208,11 +219,104 @@ function netCalc(flat){
     if(rem<=0){ depl=dk; break; }
   }
   var ce=new Date(cs.getTime()+30*DAYMS), fairDaily=b.quota/30;
+  /* UNUSED GB DIES AT RENEWAL (Sarah 2026-08-18: "if guests are consuming below the quota then the
+     bundle days are those until the next renewal"). The walk above answers "how long would these GB
+     last", which is a different question and, past the cycle date, an imaginary one — you cannot
+     bank what the renewal wipes. So the headline is DAYS TO RENEWAL, and a depletion date is only
+     reported when it lands before that renewal, because only then does it cost you a bundle. */
+  var asOfD=day(D.meta.asOf);
+  /* Count CALENDAR days to the renewal DATE, not hours to a timestamp: a cycle that started at
+     12:00 renews on the 21st, and "4 days" from a 3.5-day gap reads as one day further off than
+     the date on the wall. */
+  var dRenew=Math.max(0,Math.round((day(ymd(ce))-asOfD)/DAYMS));
+  var dies = depl && depl < ce;                                   // will actually run out on this cycle
+  var dDeplete = dies ? Math.round((depl-asOfD)/DAYMS) : null;
+  /* The walk starts at the READING and burns forward, so with an old reading the depletion date can
+     already be behind us. That is not "runs out tomorrow" — it means the bundle is either empty
+     already or the reading is too old to trust, and both want the same thing: a fresh reading. */
+  var spent = dies && dDeplete<=0;
+  var ageD=Math.max(0,Math.round((asOfD-day(ymd(at)))/DAYMS));    // how old the reading behind all this is
   return { state:'live', bundle:b, reading:r, at:at, cycleStart:cs, cycleEnd:ce, cycleDays:30,
            consumed:consumed, remaining:r.remaining, burn:rate, rate:rate, rateSource:src, idle:idle, guest:st,
            fairDaily:fairDaily, pace: fairDaily>0?rate/fairDaily:0,
-           depletion:depl, lastsCycle: !depl||depl>=ce,
+           depletion:depl, dies:dies, spent:spent, daysToRenew:dRenew, daysToDeplete:Math.max(0,dDeplete||0),
+           readingAge:ageD, occupied:!!st, lastsCycle: !dies,
            pct: b.quota>0?Math.max(0,Math.min(1,r.remaining/b.quota)):0 };
+}
+
+/* ============================================================
+ * NEEDS YOU — the whole point of the page (Sarah 2026-08-18: "there is so much going on for each
+ * apartment and i honestly can't read the message to act on"). Every flat used to print eight
+ * blocks whether or not anything was wrong. Nothing here fires unless there is something to DO,
+ * each line says what · why · by when, and red outranks amber.
+ *
+ * WHICH ONES INTERRUPT YOU (Sarah asked, 2026-08-18). A Telegram is for something that costs money
+ * or a guest's evening if it waits until you next open the page — and that you would not otherwise
+ * see. Everything else sits here and waits, because a channel that pings for things that can wait
+ * stops being read. `tg:true` marks the three that earn it:
+ *   · the bundle dies before the guest leaves — no internet in an occupied flat
+ *   · it dies within two days, occupied or not — you must recharge before it goes
+ *   · the renewal is tomorrow — an errand in the real world, one ping the day before
+ * Not telegrammed: a depletion later this cycle, a stale reading, a greedy guest, a second renewal
+ * this month, a missing bundle. Each is real, none of them decays overnight.
+ * netWatchCandidates_ in Code.gs sends exactly these three, announce-once per bundle cycle.
+ * ============================================================ */
+function netActions(){
+  var out=[], asOf=day(D.meta.asOf);
+  flatsWithNet().forEach(function(f){
+    var c=netCalc(f), b=c.bundle;
+    // every flat is ours, 17B included — we buy the internet there too (Sarah 2026-08-18)
+    if(c.state==='nobundle'){
+      out.push({f:f,sev:'amber',ttl:'No bundle recorded',why:'nothing can be projected without a quota and a cycle date',act:'Set the bundle below'});
+      return;
+    }
+    // 1 · renewal due — it is Sarah who pays, so it is her action, not a fact
+    if(c.state!=='waiting' && c.daysToRenew<=3)
+      out.push({f:f,tg:c.daysToRenew<=1,sev:c.daysToRenew<=1?'red':'amber',ttl:'Renews '+(c.daysToRenew===0?'today':c.daysToRenew===1?'tomorrow':'in '+c.daysToRenew+' days')+' ('+dmon(c.cycleEnd)+')',
+                why:'the cycle ends and the quota resets',act:'Renew it, then record the new bundle below'});
+    // 2 · dies before the renewal — this is the one that costs a second bundle
+    if(c.state!=='waiting' && c.spent){
+      // the projection already ran past zero — the bundle is dead, or the reading is too old to trust
+      out.push({f:f,tg:true,sev:'red',ttl:'Should be empty by now',
+                why:'at '+fmtGB(c.rate)+' GB/guest-day the '+fmtGB(c.remaining)+' GB read on '+dmon(c.at)+' are already gone',
+                act:c.readingAge>=3?'Get a fresh reading first — it may be stale — then top up or renew':'Top up or renew now'});
+    } else if(c.state!=='waiting' && c.dies){
+      /* "Runs out before the guest leaves" is meaningless for a long stay (Sarah 2026-08-18: Iman
+         is in 17A until October). Of course it does — the bundle renews monthly and she is here for
+         three of them. A guest is only STRANDED when their stay also ends before the renewal, so
+         nothing can rescue them; when the renewal lands first, it is the renewal that matters and
+         the checkout date is noise. */
+      var gAt=curStay(f,day(ymd(c.depletion)));
+      var stranded = gAt && day(gAt.checkOut) <= c.cycleEnd;
+      var gapD=Math.max(1,Math.round((c.cycleEnd-c.depletion)/DAYMS));
+      out.push({f:f,tg:(c.daysToDeplete<=2||stranded),sev:(c.daysToDeplete<=2||stranded)?'red':'amber',
+                ttl:'Runs out '+dmon(c.depletion)+(c.daysToDeplete<=1?' — tomorrow':' ('+c.daysToDeplete+' days)'),
+                why:gapD+' days before it renews on '+dmon(c.cycleEnd)+
+                    (stranded?' — and the guest leaves '+dmon(day(gAt.checkOut))+', before the renewal could save them'
+                            :(gAt?' — a guest is in the flat for those days':'')),
+                act:stranded?'Top up now — a guest without internet is a review'
+                           :(gAt?'Top up, or leave it and let the renewal cover it':'Top up or renew early')});
+    }
+    // 3 · a stale reading makes every number above it a guess
+    if(c.state==='waiting')
+      out.push({f:f,sev:'amber',ttl:'No reading yet this cycle',why:'nothing to project from',act:'Take a reading from the WE app'});
+    else if(c.readingAge >= (c.occupied?4:7))
+      out.push({f:f,sev:'amber',ttl:'Reading is '+c.readingAge+' days old',why:'every figure for this flat is a projection from it',act:'Take a fresh reading from the WE app'});
+    // 4 · a guest well past their share — a conversation, not a colour
+    guestUsage(f).forEach(function(u){
+      if(!u.stay||u.fair<=0) return;
+      var ratio=u.consumed/u.fair;
+      if(ratio<1.3 || u.over < 0.2*b.quota) return;
+      out.push({f:f,sev:'amber',ttl:esc((u.guest||'guest').split(' ')[0])+' is '+fmtGB(u.over)+' GB over',
+                why:'used '+fmtGB(u.consumed)+' GB against a fair share of '+fmtGB(u.fair)+' ('+(Math.round(ratio*10)/10)+'×)',
+                act:'Worth a message — or let it ride if the bundle still lasts'});
+    });
+    // 5 · two cycle-starts in one calendar month = money you did not plan
+    if(overageThisMonth(f))
+      out.push({f:f,sev:'amber',ttl:'Renewed twice this month',why:'a second recharge lands as an overage in the P&L',act:'Check it was needed — the bundle may be too small for this flat'});
+  });
+  var rank={red:0,amber:1};
+  return out.sort(function(a,z){ return (rank[a.sev]-rank[z.sev]) || (a.f<z.f?-1:1); });
 }
 function rateChip(c){
   var m={guest:'measured — '+esc(((c.guest||{}).guest||'guest').split(' ')[0]),
@@ -263,6 +367,16 @@ function showErr(e){ document.getElementById('app').innerHTML='<div class="err">
 function render(){
   var asOf=day(D.meta.asOf), h='';
   __nh=null;                                     // rate history recomputes per render (fresh data)
+  /* --- what needs doing, before anything that merely reports --- */
+  var acts=netActions();
+  h+='<div class="card"><h3>Needs you<span class="rt">'+(acts.length?acts.length+' item'+(acts.length>1?'s':''):'all clear')+'</span></h3>';
+  if(!acts.length) h+='<div class="act ok">Every bundle is on pace and every reading is current. Nothing to do.</div>';
+  else acts.forEach(function(a){
+    h+='<div class="act '+a.sev+'"><div class="at"><b>'+esc(a.f)+'</b> — '+a.ttl+
+       (a.tg?' <span class="tgb" title="this one also reaches you on Telegram, once">📲</span>':'')+'</div>'+
+       '<div class="aw">'+a.why+'</div><div class="aa">→ '+a.act+'</div></div>';
+  });
+  h+='<div class="foot">📲 = also sent once on Telegram. Only three things interrupt you: the bundle dying before the guest leaves, dying within two days, or the renewal being tomorrow. Everything else waits here.</div></div>';
   flatsWithNet().forEach(function(f){
     var c=netCalc(f), b=c.bundle, over=overageThisMonth(f);
     h+='<div class="card"><h3>'+esc(f)+(b?'<span class="rt">'+esc(b.name)+' · '+b.quota+' GB</span>':'<span class="rt">no bundle</span>')+'</h3>';
@@ -277,24 +391,25 @@ function render(){
       else {
         var pctW=Math.round(c.pct*100), col=pctW<20?'#cc5f5f':(pctW<45?'#e8b45f':'#3a7d4d');
         h+='<div class="bar"><i style="width:'+pctW+'%;background:'+col+'"></i></div>';
-        var soon = c.depletion && (day(ymd(c.depletion))-asOf) <= DAYMS;   // 1 day before depletion (or sooner)
-        h+='<div class="stat"><div class="s"><div class="sv">'+fmtGB(c.remaining)+'</div><div class="sl">GB left</div></div>'+
-           '<div class="s"><div class="sv">'+fmtGB(c.rate)+'</div><div class="sl">GB/guest-day</div></div>'+
-           '<div class="s"><div class="sv">'+(c.depletion?Math.max(0,Math.round((c.depletion-nowLocal())/DAYMS)):'30+')+'</div><div class="sl">days left</div></div>'+
-           '<div class="s'+(soon?' dep-b':'')+'"><div class="sv" style="font-size:12.5px">'+(c.depletion?dmon(c.depletion):'past renewal')+'</div><div class="sl">depletes</div></div></div>';
-        var co=nextCheckout(f,asOf);
-        if(c.depletion){
-          var before = co && c.depletion < co, warn = soon || before;
-          var vsCycle = ce ? (c.depletion < ce ? ' · runs out '+Math.round((ce-c.depletion)/DAYMS)+'d before renewal ('+dmon(ce)+')' : ' · lasts the cycle (renews '+dmon(ce)+')') : '';
-          h+='<div class="dep '+(warn?'warn':'ok')+'">'+(
-                soon   ? '⚠ About to run out — depletes '+dmon(c.depletion)+'. Top up / renew.'
-              : before ? '⚠ May deplete '+dmon(c.depletion)+' — before check-out '+dmon(co)+'. Top up / renew.'
-              :          'Projected depletion '+dmon(c.depletion)+(co?' · check-out '+dmon(co)+' is safe':''))+vsCycle+'</div>';
-        } else h+='<div class="dep ok">Lasts past the renewal at the current pace ✓ (booked days at '+fmtGB(c.rate)+' GB/day, vacant at ~'+fmtGB(c.idle)+')</div>';
-        // pace vs fair (does usage keep the bundle within one cycle?)
+        /* THREE NUMBERS, NOT FOUR — and the middle one is days to RENEWAL unless the bundle will
+           actually die first, in which case that is the number that matters and it is red. The old
+           card showed "days left" from a projection that ignored the renewal, plus a "depletes"
+           date that was often past it: two figures that could not both be true. */
         var pb=paceBadge(c.pace);
-        h+='<div class="pace"><span class="fb '+pb.cls+'">'+pb.txt+'</span> pace '+fmtGB(c.rate)+' GB/guest-day vs fair '+fmtGB(c.fairDaily)+' ('+(Math.round(c.pace*10)/10)+'×) '+rateChip(c)+'</div>';
-        h+='<div class="foot">Last reading '+fmtGB(c.remaining)+' GB at '+(c.at?dmon(c.at)+' '+c.at.toTimeString().slice(0,5):'')+' · fair = quota ÷ '+Math.round(c.cycleDays)+' cycle-days</div>';
+        h+='<div class="stat"><div class="s"><div class="sv">'+fmtGB(c.remaining)+'</div><div class="sl">GB left of '+b.quota+'</div></div>'+
+           '<div class="s'+(c.dies?' dep-b':'')+'"><div class="sv">'+(c.spent?'0':(c.dies?c.daysToDeplete:c.daysToRenew))+'</div>'+
+             '<div class="sl">'+(c.spent?'should be empty':(c.dies?'days till it runs out':'days till renewal'))+'</div></div>'+
+           '<div class="s"><div class="sv">'+(Math.round(c.pace*10)/10)+'×</div><div class="sl">pace vs fair share</div></div></div>';
+        var co=nextCheckout(f,asOf);
+        h+='<div class="dep '+(c.dies?'warn':'ok')+'">'+(c.dies
+              ? '⚠ Runs out '+dmon(c.depletion)+', '+Math.max(1,Math.round((ce-c.depletion)/DAYMS))+' days before it renews on '+dmon(ce)+
+                (co&&c.depletion<co?' — and before the guest leaves '+dmon(co):'')
+              : 'Covers the cycle at '+fmtGB(c.rate)+' GB/guest-day — renews '+dmon(ce))+'</div>';
+        h+='<details class="more"><summary>pace, guests &amp; last reading</summary>'+
+           '<div class="pace"><span class="fb '+pb.cls+'">'+pb.txt+'</span> '+fmtGB(c.rate)+' GB/guest-day vs fair '+fmtGB(c.fairDaily)+' '+rateChip(c)+
+           ' · vacant days ~'+fmtGB(c.idle)+' GB</div>'+
+           '<div class="foot">Last reading '+fmtGB(c.remaining)+' GB at '+(c.at?dmon(c.at)+' '+c.at.toTimeString().slice(0,5):'')+
+             (c.readingAge?' — <b>'+c.readingAge+' day'+(c.readingAge>1?'s':'')+' old</b>':' — today')+' · fair = quota ÷ '+Math.round(c.cycleDays)+' cycle-days</div>';
         // per-guest fairness — WHOLE stay, across cycles (renewals don't reset a guest's ledger)
         var usage=guestUsage(f);
         if(usage.length){
@@ -307,6 +422,7 @@ function render(){
           });
           h+='</div>';
         }
+        h+='</details>';
       }
     }
 
