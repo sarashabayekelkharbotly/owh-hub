@@ -35,6 +35,12 @@ body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink)
 .act .aw{font-size:11px;color:#6b5d5d;margin-top:1px}
 .act .aa{font-size:11.5px;font-weight:700;margin-top:3px}
 .act .tgb{font-size:10px;opacity:.85}
+.act .seenb{float:left;font-size:10px;font-weight:700;color:var(--soft);cursor:pointer;padding:0 4px;opacity:.8}
+.act .seenb:hover{opacity:1;color:var(--ink)}
+details.seen{margin-top:2px;border:0;padding-top:0}
+details.seen>summary{font-size:11px;font-weight:700;color:var(--soft);padding:3px 0}
+.act.seenrow{background:var(--grey);border-color:#d8cccc;opacity:.75}
+.act.seenrow .at{font-weight:600}
 details.more{margin-top:6px}
 details.more>summary{font-size:10.5px;color:var(--soft);cursor:pointer;padding:2px 0}
 .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:8px 0}
@@ -267,17 +273,17 @@ function netActions(){
     var c=netCalc(f), b=c.bundle;
     // every flat is ours, 17B included — we buy the internet there too (Sarah 2026-08-18)
     if(c.state==='nobundle'){
-      out.push({f:f,sev:'amber',ttl:'No bundle recorded',why:'nothing can be projected without a quota and a cycle date',act:'Set the bundle below'});
+      out.push({f:f,key:f+'|nobundle',fp:'1',sev:'amber',ttl:'No bundle recorded',why:'nothing can be projected without a quota and a cycle date',act:'Set the bundle below'});
       return;
     }
     // 1 · renewal due — it is Sarah who pays, so it is her action, not a fact
     if(c.state!=='waiting' && c.daysToRenew<=3)
-      out.push({f:f,tg:c.daysToRenew<=1,sev:c.daysToRenew<=1?'red':'amber',ttl:'Renews '+(c.daysToRenew===0?'today':c.daysToRenew===1?'tomorrow':'in '+c.daysToRenew+' days')+' ('+dmon(c.cycleEnd)+')',
+      out.push({f:f,key:f+'|renew|'+ymd(c.cycleEnd),fp:'1',tg:c.daysToRenew<=1,sev:c.daysToRenew<=1?'red':'amber',ttl:'Renews '+(c.daysToRenew===0?'today':c.daysToRenew===1?'tomorrow':'in '+c.daysToRenew+' days')+' ('+dmon(c.cycleEnd)+')',
                 why:'the cycle ends and the quota resets',act:'Renew it, then record the new bundle below'});
     // 2 · dies before the renewal — this is the one that costs a second bundle
     if(c.state!=='waiting' && c.spent){
       // the projection already ran past zero — the bundle is dead, or the reading is too old to trust
-      out.push({f:f,tg:true,sev:'red',ttl:'Should be empty by now',
+      out.push({f:f,key:f+'|dies|'+ymd(c.cycleEnd),fp:ymd(c.depletion),tg:true,sev:'red',ttl:'Should be empty by now',
                 why:'at '+fmtGB(c.rate)+' GB/guest-day the '+fmtGB(c.remaining)+' GB read on '+dmon(c.at)+' are already gone',
                 act:c.readingAge>=3?'Get a fresh reading first — it may be stale — then top up or renew':'Top up or renew now'});
     } else if(c.state!=='waiting' && c.dies){
@@ -289,7 +295,7 @@ function netActions(){
       var gAt=curStay(f,day(ymd(c.depletion)));
       var stranded = gAt && day(gAt.checkOut) <= c.cycleEnd;
       var gapD=Math.max(1,Math.round((c.cycleEnd-c.depletion)/DAYMS));
-      out.push({f:f,tg:(c.daysToDeplete<=2||stranded),sev:(c.daysToDeplete<=2||stranded)?'red':'amber',
+      out.push({f:f,key:f+'|dies|'+ymd(c.cycleEnd),fp:ymd(c.depletion),tg:(c.daysToDeplete<=2||stranded),sev:(c.daysToDeplete<=2||stranded)?'red':'amber',
                 ttl:'Runs out '+dmon(c.depletion)+(c.daysToDeplete<=1?' — tomorrow':' ('+c.daysToDeplete+' days)'),
                 why:gapD+' days before it renews on '+dmon(c.cycleEnd)+
                     (stranded?' — and the guest leaves '+dmon(day(gAt.checkOut))+', before the renewal could save them'
@@ -299,25 +305,40 @@ function netActions(){
     }
     // 3 · a stale reading makes every number above it a guess
     if(c.state==='waiting')
-      out.push({f:f,sev:'amber',ttl:'No reading yet this cycle',why:'nothing to project from',act:'Take a reading from the WE app'});
+      out.push({f:f,key:f+'|stale',fp:'none',sev:'amber',ttl:'No reading yet this cycle',why:'nothing to project from',act:'Take a reading from the WE app'});
     else if(c.readingAge >= (c.occupied?4:7))
-      out.push({f:f,sev:'amber',ttl:'Reading is '+c.readingAge+' days old',why:'every figure for this flat is a projection from it',act:'Take a fresh reading from the WE app'});
-    // 4 · a guest well past their share — a conversation, not a colour
+      out.push({f:f,key:f+'|stale',fp:String(Math.floor(c.readingAge/3)),sev:'amber',ttl:'Reading is '+c.readingAge+' days old',why:'every figure for this flat is a projection from it',act:'Take a fresh reading from the WE app'});
+    /* 4 · a guest well past their share — a conversation, not a colour. Only while there is still a
+       conversation to have: once they have checked out and a couple of days have passed the number
+       is history, and history does not belong in a list of things to do (Sarah 2026-08-18: Amjed
+       and Ryen both left and were still sitting there). The figure stays in the per-guest ledger
+       inside the card, which is where past guests belong. */
     guestUsage(f).forEach(function(u){
       if(!u.stay||u.fair<=0) return;
+      var gone=Math.round((asOf-day(u.stay.checkOut))/DAYMS);
+      if(gone>2) return;
       var ratio=u.consumed/u.fair;
       if(ratio<1.3 || u.over < 0.2*b.quota) return;
-      out.push({f:f,sev:'amber',ttl:esc((u.guest||'guest').split(' ')[0])+' is '+fmtGB(u.over)+' GB over',
-                why:'used '+fmtGB(u.consumed)+' GB against a fair share of '+fmtGB(u.fair)+' ('+(Math.round(ratio*10)/10)+'×)',
-                act:'Worth a message — or let it ride if the bundle still lasts'});
+      out.push({f:f,key:f+'|over|'+u.stay.id, fp:String(Math.round(u.over/10)),
+                sev:'amber',ttl:esc((u.guest||'guest').split(' ')[0])+' is '+fmtGB(u.over)+' GB over',
+                why:'used '+fmtGB(u.consumed)+' GB against a fair share of '+fmtGB(u.fair)+' ('+(Math.round(ratio*10)/10)+'×)'+(gone>0?' — checked out '+dmon(day(u.stay.checkOut)):''),
+                act:gone>0?'Last chance to raise it before they are gone':'Worth a message — or let it ride if the bundle still lasts'});
     });
     // 5 · two cycle-starts in one calendar month = money you did not plan
     if(overageThisMonth(f))
-      out.push({f:f,sev:'amber',ttl:'Renewed twice this month',why:'a second recharge lands as an overage in the P&L',act:'Check it was needed — the bundle may be too small for this flat'});
+      out.push({f:f,key:f+'|twice|'+String(D.meta.asOf).slice(0,7),fp:'1',sev:'amber',ttl:'Renewed twice this month',why:'a second recharge lands as an overage in the P&L',act:'Check it was needed — the bundle may be too small for this flat'});
   });
   var rank={red:0,amber:1};
   return out.sort(function(a,z){ return (rank[a.sev]-rank[z.sev]) || (a.f<z.f?-1:1); });
 }
+/* the "seen" ledger — {alertKey: the fingerprint that was seen}. localStorage, so it survives
+   logins on this device; a different device starts with a clean slate, which is the honest trade
+   for not needing a server round-trip to fold away a line you have read. */
+var NET_SEEN_KEY='owh_net_seen';
+function netSeen(){ try{ return JSON.parse(localStorage.getItem(NET_SEEN_KEY)||'{}')||{}; }catch(e){ return {}; } }
+function netSeenSave(o){ try{ localStorage.setItem(NET_SEEN_KEY,JSON.stringify(o)); }catch(e){} }
+function netMarkSeen(k,fp){ var s=netSeen(); s[k]=fp; netSeenSave(s); render(); }
+function netUnsee(k){ var s=netSeen(); delete s[k]; netSeenSave(s); render(); }
 function rateChip(c){
   var m={guest:'measured — '+esc(((c.guest||{}).guest||'guest').split(' ')[0]),
          history:'estimate · flat history', portfolio:'estimate · portfolio', fair:'estimate · fair share'};
@@ -368,15 +389,33 @@ function render(){
   var asOf=day(D.meta.asOf), h='';
   __nh=null;                                     // rate history recomputes per render (fresh data)
   /* --- what needs doing, before anything that merely reports --- */
-  var acts=netActions();
-  h+='<div class="card"><h3>Needs you<span class="rt">'+(acts.length?acts.length+' item'+(acts.length>1?'s':''):'all clear')+'</span></h3>';
-  if(!acts.length) h+='<div class="act ok">Every bundle is on pace and every reading is current. Nothing to do.</div>';
-  else acts.forEach(function(a){
+  var acts=netActions(), seen=netSeen(), open=[], hid=[];
+  acts.forEach(function(a){ (a.key && seen[a.key]===a.fp ? hid : open).push(a); });
+  h+='<div class="card"><h3>Needs you<span class="rt">'+(open.length?open.length+' item'+(open.length>1?'s':''):'all clear')+'</span></h3>';
+  if(!open.length) h+='<div class="act ok">'+(hid.length?'Nothing new — '+hid.length+' item'+(hid.length>1?'s':'')+' you have already seen below.':'Every bundle is on pace and every reading is current. Nothing to do.')+'</div>';
+  open.forEach(function(a){
     h+='<div class="act '+a.sev+'"><div class="at"><b>'+esc(a.f)+'</b> — '+a.ttl+
-       (a.tg?' <span class="tgb" title="this one also reaches you on Telegram, once">📲</span>':'')+'</div>'+
+       (a.tg?' <span class="tgb" title="this one also reaches you on Telegram, once">📲</span>':'')+
+       (a.key?'<span class="seenb" onclick="netMarkSeen(\''+a.key+'\',\''+a.fp+'\')" title="I have read this — tuck it away until it changes">✓ seen</span>':'')+'</div>'+
        '<div class="aw">'+a.why+'</div><div class="aa">→ '+a.act+'</div></div>';
   });
-  h+='<div class="foot">📲 = also sent once on Telegram. Only three things interrupt you: the bundle dying before the guest leaves, dying within two days, or the renewal being tomorrow. Everything else waits here.</div></div>';
+  /* SEEN, NOT DISMISSED (Sarah 2026-08-18: "if i dismiss then i would not remember, but if i
+     minimize i have to minimize every time i log in"). Marking one seen remembers it in this
+     browser, so it stays tucked away across logins — and it comes BACK on its own the moment the
+     situation changes for the worse: each item carries a fingerprint of its own substance (the
+     depletion date, how many GB over, how stale the reading is in 3-day steps), and a changed
+     fingerprint is a different problem wearing the same name. Nothing is ever deleted; they sit
+     folded underneath, counted. */
+  if(hid.length){
+    h+='<details class="seen"><summary>✓ '+hid.length+' already seen — show</summary>';
+    hid.forEach(function(a){
+      h+='<div class="act seenrow"><div class="at"><b>'+esc(a.f)+'</b> — '+a.ttl+
+         '<span class="seenb" onclick="netUnsee(\''+a.key+'\')" title="bring it back to the top">↩ unsee</span></div>'+
+         '<div class="aw">'+a.why+'</div></div>';
+    });
+    h+='</details>';
+  }
+  h+='<div class="foot">📲 = also sent once on Telegram. Only three things interrupt you: a bundle dying while it strands a guest, dying within two days, or a renewal tomorrow. <b>✓ seen</b> folds an item away until its facts change — it is remembered on this device, never deleted.</div></div>';
   flatsWithNet().forEach(function(f){
     var c=netCalc(f), b=c.bundle, over=overageThisMonth(f);
     h+='<div class="card"><h3>'+esc(f)+(b?'<span class="rt">'+esc(b.name)+' · '+b.quota+' GB</span>':'<span class="rt">no bundle</span>')+'</h3>';
