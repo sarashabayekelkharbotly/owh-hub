@@ -645,9 +645,17 @@ var WA_AUD=(function(){ try{ return localStorage.getItem('owh_wa_aud')||'emad'; 
 function setWaAud(a){ WA_AUD=a; try{ localStorage.setItem('owh_wa_aud',a); }catch(e){} render(); }
 function waForAmal(){ return WA_AUD==='amal'; }
 function waLine(c){
-  // §5.5: the standalone code-change trip — approved wording, no cleaning implied
-  if(c.type==='codechange')
-    return waForAmal() ? '' : '• شقة '+flatAr(c.flat)+': تغيير كود الباب إلى '+c.code+' — دخول ضيف غدا\n';
+  // §5.5: the standalone code-change trip — approved wording, no cleaning implied.
+  /* «غدا» was hardcoded from when this trip always sat the day BEFORE the arrival. Since 2026-08-16
+     the proposal lands ON the arrival day (and the catch-up can too), so the message said a guest
+     comes tomorrow who was walking in that same day (Sarah 2026-08-21). Worded relative to the
+     VISIT's date now: same day · tomorrow · or the named day. */
+  if(c.type==='codechange'){
+    if(waForAmal()) return '';
+    var nn=nextCheckIn(c.flat,day(c.date)), dfC=nn?Math.round((nn-day(c.date))/DAYMS):null;
+    var whenTxt=dfC===0?'نفس اليوم':dfC===1?'غدا':(nn?'يوم '+DAY_AR[nn.getDay()]+' '+dm(nn):'');
+    return '• شقة '+flatAr(c.flat)+': تغيير كود الباب إلى '+c.code+(whenTxt?' — دخول ضيف '+whenTxt:'')+'\n';
+  }
   var label = isStayClean(c) ? 'نظافة اثناء وجود ضيف'
             : c.type==='checkout' ? 'تنظيف خروج'
             : c.type==='revision' ? 'إعادة' : 'تنظيف إضافي';
@@ -692,7 +700,20 @@ function waCodeFallback(d){
 /* Every line starts with an invisible RIGHT-TO-LEFT MARK: WhatsApp aligns each line by its first
    strong character, so a line starting with "8A" flips to the left while Arabic lines sit right —
    the zigzag Sarah saw. The mark sits BEFORE the *bold* asterisk, so formatting is untouched. */
-function waRtl(t){ return t.split('\n').map(function(l){ return l?'‏'+l.replace(/^‏+/,''):l; }).join('\n'); }
+/* The RTL mark alone is NOT enough (the Telegram lesson, relearned here 2026-08-21: "the last line
+   does not have the proper right to left direction"). A line whose tail is Latin or digits — a
+   flat token, a code, a time — lets the renderer flip the ending however the mark opened it. Every
+   Latin/digit run is wrapped in its own LTR isolate (U+2066…U+2069) so it reads left-to-right
+   INSIDE a line that stays right-to-left. Idempotent: old marks/isolates are stripped first, so
+   regenerating never stacks them. */
+function waRtl(t){
+  return t.split('\n').map(function(l){
+    if(!l) return l;
+    l=l.replace(/^‏+/,'').replace(/[⁦⁩]/g,'');
+    l=l.replace(/[A-Za-z0-9][A-Za-z0-9:.\/\- ]*[A-Za-z0-9]|[A-Za-z0-9]/g,function(m){ return '⁦'+m+'⁩'; });
+    return '‏'+l;
+  }).join('\n');
+}
 function waSection(ws,list){
   var days=[]; for(var i=0;i<7;i++)days.push(addD(ws,i));
   var todayW=todayK();
