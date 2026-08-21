@@ -161,7 +161,7 @@ function doorCode(flat,dt){ var cur=occStayOn(flat,dt); if(cur) return codeOf(da
   if((n-dt)/DAYMS > 2) return '0107';            // no check-in within 2 days → default code
   return codeOf(n); }
 function sameDayIn(flat,k){ return innStayOn(flat,k); }
-/* THE TIME THE GUEST ACTUALLY GAVE WINS (Sarah 2026-08-18). Malah asks every guest when they are
+/* THE TIME THE GUEST ACTUALLY GAVE WINS (Sarah 2026-08-18). Dani asks every guest when they are
    arriving and ticks the answer into الكنترول; that answer now rides in the payload as
    arrivals[flat|date]. Everything else here is an assumption — the cleaning row's stored value, or
    the 15:00 house default — so a real answer outranks both, and askedIn() says which it is so the
@@ -216,7 +216,7 @@ function proposeWeek(ws){
       if(gap>2){ var rev=addD(ci,-1); if(inWk(rev)) out.push(mk(f,rev,'revision',s)); }
     });
     /* AN ARRIVAL NOBODY WILL LET IN (Sarah 2026-08-16). A WhatsApp line was not enough: Emad's
-       schedule, Malah's comms grid and الكنترول all read the Cleaning schedule, so an arrival with
+       schedule, Dani's comms grid and الكنترول all read the Cleaning schedule, so an arrival with
        no visit carrying its code existed nowhere they could see it — Mona was sent the old 0107.
        The week now PROPOSES the trip, so confirming it puts a real row in front of all three. Test
        is the code, matching الكنترول's watcher exactly: covered only when some confirmed visit in
