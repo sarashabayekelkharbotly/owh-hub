@@ -195,7 +195,8 @@ function cleanPlan(s){ var N=s.nights||0; if(N<=12||!s.checkIn)return []; var ci
 function mk(flat,d,type,s){
   var k=ymd(d), inn=(type==='checkout')?sameDayIn(flat,k):null;
   return { date:k, flat:flat, type:type, time:'12:00', code:doorCode(flat,d),
-           inTime: inn?DEFAULT_IN:'', stayId:s?s.id:'', on:true, src:'auto', cleaner:'amal' };
+           inTime: inn?DEFAULT_IN:'', stayId:s?s.id:'', booked:s?String(s.booked||'').slice(0,10):'',
+           on:true, src:'auto', cleaner:'amal' };
 }
 /* who cleans (2026-08-03): أمل = in-house (salary, no per-session row) · جيني = paid per session →
    confirming writes a pending WeShare row per جيني session (payer default Sarah) */
@@ -233,6 +234,16 @@ function proposeWeek(ws){
          lock under a settled guest locks them out. */
       var when = (ci>=td || (co>td && (td-ci)/DAYMS<=1)) ? ci : null;
       if(!when||!inWk(when)) return;
+      /* THE REVISION OWNS THE ARRIVAL (Sarah 2026-08-21: Mohannad, 8A 28/08 — "they should have
+         been a revision clean including a lockcode change", not a bare code trip). When the gap
+         since the previous checkout is >2 days, the ci−1 revision is already the designated visit
+         and it CARRIES the code (§5.5, waLine prints it). Proposing a codechange beside it offered
+         Sarah two trips for one arrival — and because the revision lives in the PREVIOUS week's
+         list, on next week's screen the codechange was the only one visible and read as the plan.
+         The codechange stays for what it was built for: an arrival close behind a checkout that
+         already happened with the wrong code (Mona), where no future revision exists to carry it. */
+      var pcoC=prevCheckOut(f,ci);
+      if(pcoC && Math.round((ci-pcoC)/DAYMS)>2 && ymd(addD(ci,-1))>=tk) return;
       var need=codeOf(ci), from=ymd(addD(ci,-2)), upto=(ci>=td)?ymd(ci):tk;
       var set=(D.cleans||[]).some(function(c){ return c.flat===f&&c.date>=from&&c.date<=upto&&(c.code||'')===need; });
       if(!set) out.push(mk(f,when,'codechange',s));
@@ -279,7 +290,14 @@ function mergeWeek(ws){
              code: ((c.codeEdited||c.date<tK)&&(c.code||'').trim()) ? c.code : doorCode(c.flat,day(c.date)),
              codeEdited: !!c.codeEdited,
              inTime:healIn, stayId:c.stayId, on:true, src:'confirmed', cleaner:c.cleaner||'amal' }; });
-  props.forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=false; out.push(p); } });
+  /* A BOOKING MADE AFTER THE DECISION ARRIVES SWITCHED ON (Sarah 2026-08-21: Afefy booked 8A on
+     the 21st, after the week was confirmed — his 23/08 checkout appeared as an unticked 'new' row
+     and never reached the WhatsApp, which read as "not generated at all"). Off-by-default exists
+     so a clean Sarah deliberately removed cannot resurrect itself — but she cannot have removed a
+     clean for a booking that did not exist when she decided. Booked after the latest confirm →
+     on, loud, in the message; booked before → off as ever, because its absence may be a choice. */
+  var confD=''; confirmed.forEach(function(c){ var d=String(c.confirmedAt||'').slice(0,10); if(d>confD) confD=d; });
+  props.forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=!!(p.booked&&confD&&p.booked>=confD); out.push(p); } });
   out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
   return out;
 }
@@ -514,6 +532,10 @@ function render(){
 
   /* --- WhatsApp (two-week span) --- */
   h+='<div class="card"><h3>WhatsApp<span class="rt">Arabic · two weeks · edit before copy</span></h3>';
+  h+='<div class="btnrow" style="margin:0 0 6px"><div class="seg" style="display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden">'+
+     '<button style="border:0;padding:4px 14px;font:inherit;font-weight:700;cursor:pointer;background:'+(WA_AUD==='emad'?'var(--red)':'#fff')+';color:'+(WA_AUD==='emad'?'#fff':'inherit')+'" onclick="setWaAud(\'emad\')">نسخة عماد</button>'+
+     '<button style="border:0;padding:4px 14px;font:inherit;font-weight:700;cursor:pointer;background:'+(WA_AUD==='amal'?'var(--red)':'#fff')+';color:'+(WA_AUD==='amal'?'#fff':'inherit')+'" onclick="setWaAud(\'amal\')">نسخة أمل</button></div>'+
+     '<span class="muted">'+(WA_AUD==='amal'?'من غير أكواد ولا صيانة — جدول النظافة بس':'كاملة — أكواد + صيانة + تغيير الأكواد')+'</span></div>';
   h+='<textarea class="wa" id="wa" oninput="waCapture()"></textarea>';
   h+='<div class="btnrow"><button class="btn sec" onclick="regenWa()">↻ Regenerate</button><button class="btn sec" onclick="copyWa()">📋 Copy</button>'+
      '<span class="muted">covers '+dm(days[0])+' → '+dm(addD(ws,13))+' · your edits and notes are kept per week and follow you between weeks — only Regenerate rebuilds</span> <span class="muted" id="wamsg"></span></div>';
@@ -583,22 +605,32 @@ function addClean(){
 /* ---------- WhatsApp: two-week, bold, no blank lines; in-stay clean = نظافة اثناء وجود ضيف (once);
    code only on check-out; same-day arrival appends دخول ضيف ---------- */
 function isStayClean(c){ return c.type==='midstay'||c.type==='weekly'||(c.type==='custom'&&occStayOn(c.flat,day(c.date))); }
+/* TWO AUDIENCES, ONE SCHEDULE (Sarah 2026-08-21: "i have to always manually delete from the screen
+   the lockcode and the repairs because they are not shared with Amal"). عماد gets everything —
+   codes, code-change trips, repairs. أمل gets the cleaning schedule alone: what, where, when, who
+   cleans, when the guest walks in — never a lock code and never a repair, because those are not
+   hers to know. The toggle above the box picks the audience; edits are kept per week PER AUDIENCE. */
+var WA_AUD=(function(){ try{ return localStorage.getItem('owh_wa_aud')||'emad'; }catch(e){ return 'emad'; } })();
+function setWaAud(a){ WA_AUD=a; try{ localStorage.setItem('owh_wa_aud',a); }catch(e){} render(); }
+function waForAmal(){ return WA_AUD==='amal'; }
 function waLine(c){
   // §5.5: the standalone code-change trip — approved wording, no cleaning implied
   if(c.type==='codechange')
-    return '• شقة '+flatAr(c.flat)+': تغيير كود الباب إلى '+c.code+' — دخول ضيف غدا\n';
+    return waForAmal() ? '' : '• شقة '+flatAr(c.flat)+': تغيير كود الباب إلى '+c.code+' — دخول ضيف غدا\n';
   var label = isStayClean(c) ? 'نظافة اثناء وجود ضيف'
             : c.type==='checkout' ? 'تنظيف خروج'
             : c.type==='revision' ? 'إعادة' : 'تنظيف إضافي';
   var t='• شقة '+flatAr(c.flat)+': '+label+' الساعة '+hmAr(c.time);
   t+=' — النظافة: '+CLEANER_LBL[c.cleaner||'amal'];               // من ينظف — أمل / جيني / الاثنين (2026-08-03)
-  if(c.type==='checkout') t+=' — كود الباب '+c.code;
-  /* §5.5: a non-checkout visit covers an arrival within 2 days → it carries the code change —
-     but NEVER an in-stay clean (Sarah 2026-08-04): while a guest is in, the lock keeps THEIR
-     code, so a mid-stay/custom clean can't announce a future guest's code. The uncovered
-     arrival then gets its own standalone code-change line via waCodeFallback. */
-  else if(!isStayClean(c)){ var n=nextCheckIn(c.flat,day(c.date));
-        if(n&&(n-day(c.date))/DAYMS<=2) t+=' — تغيير كود الباب إلى '+c.code; }
+  if(!waForAmal()){
+    if(c.type==='checkout') t+=' — كود الباب '+c.code;
+    /* §5.5: a non-checkout visit covers an arrival within 2 days → it carries the code change —
+       but NEVER an in-stay clean (Sarah 2026-08-04): while a guest is in, the lock keeps THEIR
+       code, so a mid-stay/custom clean can't announce a future guest's code. The uncovered
+       arrival then gets its own standalone code-change line via waCodeFallback. */
+    else if(!isStayClean(c)){ var n=nextCheckIn(c.flat,day(c.date));
+          if(n&&(n-day(c.date))/DAYMS<=2) t+=' — تغيير كود الباب إلى '+c.code; }
+  }
   if(c.inTime) t+=' — دخول ضيف الساعة '+hmAr(c.inTime);
   return t+'\n';
 }
@@ -633,7 +665,7 @@ function waRtl(t){ return t.split('\n').map(function(l){ return l?'‏'+l.replac
 function waSection(ws,list){
   var days=[]; for(var i=0;i<7;i++)days.push(addD(ws,i));
   var todayW=todayK();
-  var on=list.filter(function(c){return c.on;}), reps=openRepairs();
+  var on=list.filter(function(c){return c.on;}), reps=waForAmal()?[]:openRepairs();   // repairs are Emad's, never Amal's
   /* Pass 1 — gather each day's lines. Done BEFORE the title so the title can name the first and
      last day that actually has work: a heading reading "من السبت … إلى الجمعة" when nothing happens
      until Monday and nothing after Wednesday just confuses the reader. */
@@ -644,7 +676,7 @@ function waSection(ws,list){
        starts from today and the title follows (the sheet keeps the past rows untouched) */
     if(k<todayW){ perDay.push(null); return; }
     var dayCleans=on.filter(function(c){return c.date===k;}), dayReps=reps.filter(function(r){return r.date===k;});
-    var fallback=waCodeFallback(d);                                    // §5.5 — uncovered arrival tomorrow
+    var fallback=waForAmal()?'':waCodeFallback(d);                      // §5.5 — code lines are Emad-only
     if(!dayCleans.length&&!dayReps.length&&!fallback){ perDay.push(null); return; }
     /* Everything on one day is ordered BY TIME — cleans and repairs interleaved, not cleans
        first then repairs. hm() gives zero-padded HH:MM so a plain string sort is correct;
@@ -699,8 +731,9 @@ function waSplit(txt){
   if(second<0) return [txt];
   return [txt.slice(0,second).replace(/\s+$/,'')+'\n', txt.slice(second)];
 }
+function waAudKey(ws){ return ymd(ws)+(waForAmal()?'|amal':''); }   // legacy keys stay Emad's, so old notes survive
 function waSectionText(ws,list){
-  var k=ymd(ws), e=waEdits();
+  var k=waAudKey(ws), e=waEdits();
   return (typeof e[k]==='string' && e[k].length) ? e[k] : waSection(ws,list);
 }
 function waText(){
@@ -710,15 +743,15 @@ function waText(){
 function waCapture(){
   var ta=document.getElementById('wa'); if(!ta) return;
   var parts=waSplit(ta.value), e=waEdits();
-  e[ymd(weekStart)]=parts[0];
-  if(parts.length>1) e[ymd(addD(weekStart,7))]=parts[1];
+  e[waAudKey(weekStart)]=parts[0];
+  if(parts.length>1) e[waAudKey(addD(weekStart,7))]=parts[1];
   waEditsSave(e);
   var m=document.getElementById('wamsg'); if(m) m.textContent='edits kept';
 }
 /* Rebuild from the schedule, discarding saved notes for the two weeks on screen only. */
 function regenWa(){
   if(!confirm('Rebuild the message from the schedule?\n\nAny notes you typed for these two weeks will be lost.')) return;
-  var e=waEdits(); delete e[ymd(weekStart)]; delete e[ymd(addD(weekStart,7))]; waEditsSave(e);
+  var e=waEdits(); delete e[waAudKey(weekStart)]; delete e[waAudKey(addD(weekStart,7))]; waEditsSave(e);
   document.getElementById('wa').value=waText();
   var m=document.getElementById('wamsg'); if(m){ m.textContent='rebuilt from the schedule'; setTimeout(function(){ m.textContent=''; },4000); }
 }
@@ -750,7 +783,7 @@ function saveDraftBtn(){
    every Regenerate, because the draft replaced the healed list verbatim). Hand-set codes and
    everything the draft says stay; only derived facts refresh, and new bookings' proposed
    cleans appear as off-by-default 'new' rows, exactly like mergeWeek. */
-function healDraftList(ws,list){
+function healDraftList(ws,list,savedAt){
   var out=list.map(function(c){
     c.on=(c.on!==false); c.cleaner=c.cleaner||'amal';
     if(!c.codeEdited && (c.src!=='manual')) c.code=doorCode(c.flat,day(c.date));
@@ -758,7 +791,10 @@ function healDraftList(ws,list){
     return c;
   });
   var seen={}; out.forEach(function(c){ seen[ckey(c)]=1; });
-  proposeWeek(ws).forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=false; out.push(p); } });
+  // same rule as mergeWeek: a stay booked AFTER this draft was saved cannot have been rejected
+  // by it — its cleans arrive ON (Sarah 2026-08-21, the Mohannad revision that a stale draft hid)
+  var savD=String(savedAt||'').slice(0,10);
+  proposeWeek(ws).forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=!!(p.booked&&savD&&p.booked>=savD); out.push(p); } });
   out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
   return out;
 }
@@ -771,8 +807,8 @@ function applyDraft(ws,d,second){
   if(!d) return false;
   var confAt=weekConfirmedFor(ws);
   if(confAt && new Date(d.savedAt) <= new Date(confAt)) return false;   // an older draft never beats a newer confirm
-  if(second){ cleans2=healDraftList(ws,d.cleans); DRAFT2_AT=d.savedAt; }
-  else      { cleans =healDraftList(ws,d.cleans); DRAFT_AT =d.savedAt; dirty=false; }
+  if(second){ cleans2=healDraftList(ws,d.cleans,d.savedAt); DRAFT2_AT=d.savedAt; }
+  else      { cleans =healDraftList(ws,d.cleans,d.savedAt); DRAFT_AT =d.savedAt; dirty=false; }
   return true;
 }
 /* ONE paint, not two (Sarah 2026-08-14: "whenever i refresh i see the old version first and then it
