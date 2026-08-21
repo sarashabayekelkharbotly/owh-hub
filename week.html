@@ -190,8 +190,22 @@ function cleansForDay(f,k){ var o=[]; cleans.forEach(function(c,idx){ if(c.flat=
 function primaryClean(list){ for(var i=0;i<list.length;i++)if(list[i].c.type==='checkout')return list[i]; return list[0]; }
 
 /* ---------- proposal engine (same rules as Today / RULE A6) ---------- */
+/* 📌 THE PINNED DAY WINS (Sarah 2026-08-21). The mechanical rule — ci+6, then weekly — lands on
+   whatever weekday the check-in dictates: Iman arrived on a Friday, so the engine proposed
+   Thursdays forever, and every re-proposal regenerated them however often Sarah moved them to the
+   Friday Iman actually asked for. A stay with a pin in D.cleanPrefs gets its weeklies ON that
+   weekday: first occurrence at least 4 nights in, last at least 5 before checkout — the same
+   spacing the mechanical rule keeps. Proposals then land exactly on the confirmed rows, so the
+   phantom Thursday twins stop appearing. */
+function cleanPref(s){ var p=(D&&D.cleanPrefs)||{}; var v=p[s.id]; return (v===0||v>0)?Number(v):null; }
 function cleanPlan(s){ var N=s.nights||0; if(N<=12||!s.checkIn)return []; var ci=day(s.checkIn),plan=[],j=0;
-  for(var off=6; N-off>4; off+=7,j++){ var d=addD(ci,off); plan.push({d:d,type:j===0?'midstay':'weekly'}); } return plan; }
+  var pin=cleanPref(s);
+  if(pin!==null){
+    var d0=addD(ci,4); while(d0.getDay()!==pin) d0=addD(d0,1);        // first pinned weekday ≥ ci+4
+    for(var d=d0; (day(s.checkOut)-d)/DAYMS>=5; d=addD(d,7),j++) plan.push({d:d,type:j===0?'midstay':'weekly'});
+    return plan;
+  }
+  for(var off=6; N-off>4; off+=7,j++){ var dd=addD(ci,off); plan.push({d:dd,type:j===0?'midstay':'weekly'}); } return plan; }
 function mk(flat,d,type,s){
   var k=ymd(d), inn=(type==='checkout')?sameDayIn(flat,k):null;
   return { date:k, flat:flat, type:type, time:'12:00', code:doorCode(flat,d),
@@ -517,7 +531,11 @@ function render(){
        '<td><input class="codei" value="'+esc(c.code)+'" maxlength="4" onchange="edit('+idx+',\'code\',this.value)" '+
          (c.codeEdited?'style="border-color:#8a6fa8" title="hand-set — will not be recomputed"':'')+'>'+(c.codeEdited?'<span title="hand-set">✎</span>':'')+'</td>'+
        '<td>'+(hasIn?'<input type="time" value="'+(hm(c.inTime)||DEFAULT_IN)+'" onchange="edit('+idx+',\'inTime\',this.value)">':'<span class="muted">—</span>')+'</td>'+
-       '<td><span class="rm" onclick="tog('+idx+')">'+(c.on?'✕':'↩')+'</span></td></tr>';
+       '<td>'+((c.type==='midstay'||c.type==='weekly')&&c.stayId
+          ? (function(){ var pd=(D.cleanPrefs||{})[c.stayId], wd=day(c.date).getDay(), pin=(pd===wd);
+              return '<span title="'+(pin?'يوم النظافة الأسبوعي مثبّت على '+DAY_AR[wd]+' — اضغط للإلغاء':'ثبّت النظافة الأسبوعية يوم '+DAY_AR[wd]+' لكل مدة الإقامة')+'" style="cursor:pointer;padding:0 3px;'+(pin?'':'opacity:.35;filter:grayscale(1)')+'" onclick="pinDay('+idx+')">📌</span>'; })()
+          : '')+
+       '<span class="rm" onclick="tog('+idx+')">'+(c.on?'✕':'↩')+'</span></td></tr>';
   });
   h+='</tbody></table>';
   /* The add row starts EMPTY (Sarah 2026-08-13): pre-filled flat/day/type read like a suggestion,
@@ -572,6 +590,19 @@ function render(){
 }
 
 /* ---------- interactions ---------- */
+/* 📌 pin/unpin a stay's weekly cleaning day — saved on the SERVER so it survives every re-proposal
+   and every device. Ticking the same pin again clears it (back to the mechanical rule). */
+function pinDay(i){
+  var c=cleans[i]; if(!c||!c.stayId) return;
+  var wd=day(c.date).getDay(), cur=(D.cleanPrefs||{})[c.stayId];
+  var clearing=(cur===wd);
+  api('props_clean_pref',{user:(ME&&ME.user)||'',stayId:c.stayId,weekday:clearing?'':String(wd)}).then(function(j){
+    if(!j||!j.ok) throw new Error((j&&j.error)||'failed');
+    D.cleanPrefs=j.prefs||{};
+    loadWeek(); render();
+    var m=document.getElementById('cmsg'); if(m) m.textContent=clearing?'📌 الغي التثبيت — رجعنا للقاعدة الآلية':'📌 اتثبّت يوم '+DAY_AR[wd]+' — كل الاقتراحات الجاية هتنزل عليه';
+  }).catch(function(e){ var m=document.getElementById('cmsg'); if(m) m.textContent='📌 فشل: '+(e.message||e); });
+}
 function tog(i){ cleans[i].on=!cleans[i].on; dirty=true; render(); }
 function edit(i,field,v){
   var c=cleans[i]; c[field]=v;
