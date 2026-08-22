@@ -259,7 +259,13 @@ function proposeWeek(ws){
       var pcoC=prevCheckOut(f,ci);
       if(pcoC && Math.round((ci-pcoC)/DAYMS)>2 && ymd(addD(ci,-1))>=tk) return;
       var need=codeOf(ci), from=ymd(addD(ci,-2)), upto=(ci>=td)?ymd(ci):tk;
-      var set=(D.cleans||[]).some(function(c){ return c.flat===f&&c.date>=from&&c.date<=upto&&(c.code||'')===need; });
+      /* A HAND-SET CODE IS COVERAGE (Sarah 2026-08-22: she set 2108 deliberately and the engine
+         kept generating 2208 beside it — her decision lost to the default). The DDMM code is only
+         a DEFAULT; a visit whose code Sarah edited by hand covers the arrival with whatever she
+         chose, and proposing the mechanical code next to it manufactures a second trip and a
+         second task for Emad. */
+      var set=(D.cleans||[]).some(function(c){ return c.flat===f&&c.date>=from&&c.date<=upto&&
+        ((c.code||'')===need || (c.codeEdited && ['codechange','revision','checkout'].indexOf(c.type)>-1)); });
       if(!set) out.push(mk(f,when,'codechange',s));
     });
   });
@@ -267,6 +273,78 @@ function proposeWeek(ws){
   return out;
 }
 function ckey(c){ return c.date+'|'+c.flat+'|'+c.type; }
+/* A MOVED ROW IS STILL THE SAME TRIP (Sarah 2026-08-22: she moved 28A's checkout clean to 30/08 to
+   stage the staff — the guest still leaves the 29th — and every reload re-added the engine's 29/08
+   proposal, "the old version comes back"). Proposals match by exact date, so an edited date makes
+   the original look missing. A proposal is therefore suppressed when a row for the SAME STAY and
+   TYPE already exists nearby — she did not reject that trip, she rescheduled it, and her date wins.
+   Windows: ±3 days for the weekly rhythm, ±7 for one-off trips (checkout/revision/codechange). */
+/* THE LEGITIMATE RANGE PER TRIP TYPE (Sarah 2026-08-22, verbatim spec — these are business rules,
+   not tuning): a checkout clean happens on the departure day or +1 at most, because an apartment
+   cannot sit dirty for days; a lockcode change at most 2 days before check-in and NEVER after; a
+   revision at most 2 days before check-in; mid-stay/weekly moves ±3 around the rhythm. A manual
+   row INSIDE its range is a legitimate rescheduling and covers the trip; a row OUTSIDE it is not a
+   preference — it is stale, because only a booking change (extension, cancellation) can put it
+   there, and the booking is the referee. */
+function validFor_(c,st){
+  if(!st) return false;
+  if(c.type==='checkout')  return c.date>=ymd(day(st.checkOut)) && c.date<=ymd(addD(day(st.checkOut),1));
+  if(c.type==='revision'||c.type==='codechange')
+                           return c.date>=ymd(addD(day(st.checkIn),-2)) && c.date<=ymd(day(st.checkIn));
+  return true;
+}
+function coveredByExisting_(p,list){
+  if(!p.stayId) return null;
+  var hit=null, st=findStay_(p.stayId);
+  list.some(function(c){
+    if(c.src==='shadow'||c.stayId!==p.stayId||c.type!==p.type) return false;
+    var ok=(p.type==='midstay'||p.type==='weekly')
+      ? Math.abs((day(c.date)-day(p.date))/DAYMS)<=3      // the rhythm bends ±3
+      : validFor_(c,st);                                  // one-offs: the row must sit in its range
+    if(ok){ hit=c; return true; }
+    return false;
+  });
+  return hit;
+}
+/* SUPPRESSED ≠ INVISIBLE (Sarah 2026-08-22: "the proposals are included somewhere so that i can see
+   if there is a conflict… they stay dimmed, unless something changes i can turn it on"). A proposal
+   whose trip Sarah rescheduled joins the list as a SHADOW: off, dimmed, labelled with the manual row
+   it defers to. It never reaches the WhatsApp, never auto-switches on, never re-saves into the
+   draft (it regrows fresh from the engine every load) — but it is on screen, and one tap turns it
+   on if she decides the engine was right after all. */
+function shadowOf_(p,match){ p.src='shadow'; p.on=false; p.shadowOf=match.date; return p; }
+/* …AND THE BOOKING ITSELF IS THE REFEREE (same message: "if another booking or a booking change —
+   an extension or a cancellation — the system doesn't solely rely on my manual inputs which could
+   be outdated"). Every ON row with a stay behind it is checked against the CURRENT stays on every
+   render: the stay vanished (cancelled) → red; a checkout clean now sits BEFORE the guest actually
+   leaves (an extension moved the checkout past her manual date) → red. Flags only — her row stays
+   hers until she acts — but they cannot be missed. */
+function findStay_(id){ if(!id) return null;
+  for(var i=0;i<STAYS.length;i++){ var s=STAYS[i];
+    if(s.id===id || (s.ids&&s.ids.indexOf(id)>-1)) return s; }
+  return null; }
+/* A BOOKING CHANGE CHANGES THE CALENDAR — it is not an alert (Sarah 2026-08-22). Rows whose stay
+   was cancelled switch OFF; one-off rows pushed outside their legitimate range by an extension or
+   a moved arrival switch OFF, and the engine's corrected proposal arrives ON in their place. The
+   red banner exists for a different reason: to say the schedule changed underneath what was
+   already communicated, so Sarah/Khaled review and RE-CONFIRM. The server does the same
+   reconciliation at sync time; this is the same rule applied between syncs, on screen. */
+function applyBookingFacts_(list){
+  var changed=[];
+  list.forEach(function(c){
+    if(!c.stayId||c.src==='shadow') return;
+    var st=findStay_(c.stayId);
+    if(!st){ if(c.on){ c.on=false; c.stale='الحجز اتلغى'; changed.push(c); } return; }
+    if((c.type==='checkout'||c.type==='revision'||c.type==='codechange') && !validFor_(c,st) && c.on){
+      c.on=false;
+      c.stale=(c.type==='checkout')
+        ? 'الضيف بيمشي '+ymd(day(st.checkOut))+' — الميعاد ده بقى غلط'
+        : 'ميعاد الوصول '+ymd(day(st.checkIn))+' — الميعاد ده بره المدى المسموح';
+      changed.push(c);
+    }
+  });
+  return changed;
+}
 /* A week is a RANGE OF DAYS, never a label (Sarah 2026-08-13). Rows carry the Week key they were
    confirmed under, and the day the week starts on has changed (Saturday → Friday) — so matching on
    that label made every previously confirmed clean invisible the moment the start moved, and let a
@@ -311,7 +389,13 @@ function mergeWeek(ws){
      clean for a booking that did not exist when she decided. Booked after the latest confirm →
      on, loud, in the message; booked before → off as ever, because its absence may be a choice. */
   var confD=''; confirmed.forEach(function(c){ var d=String(c.confirmedAt||'').slice(0,10); if(d>confD) confD=d; });
-  props.forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=!!(p.booked&&confD&&p.booked>=confD); out.push(p); } });
+  applyBookingFacts_(out);                        // the booking is the referee — stale rows switch off HERE
+  props.forEach(function(p){ if(seen[ckey(p)]) return;
+    var cov=coveredByExisting_(p,out);
+    if(cov){ out.push(shadowOf_(p,cov)); return; }
+    // replacing a row the booking-change just invalidated → arrives ON, it IS the correction
+    var repl=out.some(function(c){ return c.stale&&c.stayId===p.stayId&&c.type===p.type; });
+    p.src='new'; p.on=repl||!!(p.booked&&confD&&p.booked>=confD); out.push(p); });
   out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
   return out;
 }
@@ -447,6 +531,14 @@ function render(){
     h+='<div class="alert"><b>Re-confirm needed:</b> '+newer.length+' booking'+(newer.length>1?'s':'')+' arrived after this week was confirmed ('+
        newer.map(function(s){return esc(s.flat)+' '+dm(day(s.checkIn));}).join(', ')+'). Review &amp; save again.</div>';
   }
+  /* the calendar corrected itself to the bookings — the banner exists so the change gets REVIEWED
+     and RE-CONFIRMED, because the WhatsApp that went out was built on the old schedule */
+  var staleRows=cleans.concat(cleans2).filter(function(c){ return c.stale; });
+  if(staleRows.length){
+    h+='<div class="alert" style="background:#f6dede;border-color:#e6b9b9"><b>📖 الجدول اتغيّر مع الحجوزات:</b> '+
+       staleRows.map(function(c){ return esc(c.flat)+' '+dm(day(c.date))+' ('+c.type+') — '+esc(c.stale); }).join(' · ')+
+       '<br>البدائل الصح متعلّمة ON تحت — راجعي وأكدي الأسبوع من جديد عشان عماد وأمل ياخدوا النسخة الجديدة.</div>';
+  }
 
   /* --- grid --- */
   h+='<div class="card"><h3>Week grid<span class="rt">'+(confAt?'confirmed '+new Date(confAt).toLocaleDateString():'not confirmed yet')+'</span></h3><div class="gridwrap"><table class="grid"><thead><tr><th></th>';
@@ -524,7 +616,9 @@ function render(){
     h+='<tr style="'+(c.on?'':'opacity:.45')+'">'+
        '<td><select onchange="edit('+idx+',\'date\',this.value)">'+days.map(function(d){var k=ymd(d);return '<option value="'+k+'"'+(k===c.date?' selected':'')+'>'+DAY_EN[d.getDay()]+' '+dm(d)+'</option>';}).join('')+'</select></td>'+
        '<td><select onchange="edit('+idx+',\'flat\',this.value)">'+airbnbFlats().map(function(f){return '<option'+(f===c.flat?' selected':'')+'>'+esc(f)+'</option>';}).join('')+'</select></td>'+
-       '<td><select onchange="edit('+idx+',\'type\',this.value)">'+TYPES.map(function(t){return '<option'+(t===c.type?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+(c.src==='new'?' <span class="badge b-warn">new</span>':'')+'</td>'+
+       '<td><select onchange="edit('+idx+',\'type\',this.value)">'+TYPES.map(function(t){return '<option'+(t===c.type?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+(c.src==='new'?' <span class="badge b-warn">new</span>':'')+
+       (c.src==='shadow'?' <span class="badge" style="background:#eee;color:#888" title="الاقتراح الآلي — عندك نسخة معدّلة يوم '+esc(c.shadowOf||'')+'. شغّليه لو الآلي أصح">آلي</span>':'')+
+       (c.stale?' <span class="badge" style="background:#f6dede;color:#a24a4a" title="'+esc(c.stale)+'">⚠️ اتغيّر الحجز</span>':'')+'</td>'+
        '<td><input type="time" value="'+hm(c.time)+'" onchange="edit('+idx+',\'time\',this.value)"></td>'+
        '<td><select onchange="edit('+idx+',\'cleaner\',this.value)"'+((c.cleaner||'amal')!=='amal'?' style="border-color:#b8860b;font-weight:700"':'')+'>'+
          CLEANERS.map(function(cl){return '<option value="'+cl+'"'+(cl===(c.cleaner||'amal')?' selected':'')+'>'+CLEANER_LBL[cl]+'</option>';}).join('')+'</select></td>'+
@@ -603,7 +697,9 @@ function pinDay(i){
     var m=document.getElementById('cmsg'); if(m) m.textContent=clearing?'📌 الغي التثبيت — رجعنا للقاعدة الآلية':'📌 اتثبّت يوم '+DAY_AR[wd]+' — كل الاقتراحات الجاية هتنزل عليه';
   }).catch(function(e){ var m=document.getElementById('cmsg'); if(m) m.textContent='📌 فشل: '+(e.message||e); });
 }
-function tog(i){ cleans[i].on=!cleans[i].on; dirty=true; render(); }
+function tog(i){ var c=cleans[i]; c.on=!c.on;
+  if(c.on&&c.src==='shadow') c.src='manual';   // an adopted shadow becomes a real row — it must save
+  dirty=true; render(); }
 function edit(i,field,v){
   var c=cleans[i]; c[field]=v;
   if(field==='code') c.codeEdited=true;                    // §5.5: a hand-set code sticks from now on
@@ -818,7 +914,7 @@ var DRAFT_AT=null, DRAFT2_AT=null;   // DRAFT2_AT: the NEXT week is on the messa
 var BOOT_DRAFTS=null, BOOT_DRAFTS_WK='';   // both drafts, requested at boot in parallel with the payload
 var WEEK_AUTO=false;                       // the week was picked for her, not chosen — re-pick it on the server's date
 function draftPayload(){
-  return cleans.map(function(c){ return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code,
+  return cleans.filter(function(c){ return c.src!=='shadow'; }).map(function(c){ return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code,
     codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal', on:!!c.on, src:c.src }; });
 }
 function saveDraft(){
@@ -846,7 +942,12 @@ function healDraftList(ws,list,savedAt){
   // same rule as mergeWeek: a stay booked AFTER this draft was saved cannot have been rejected
   // by it — its cleans arrive ON (Sarah 2026-08-21, the Mohannad revision that a stale draft hid)
   var savD=String(savedAt||'').slice(0,10);
-  proposeWeek(ws).forEach(function(p){ if(!seen[ckey(p)]){ p.src='new'; p.on=!!(p.booked&&savD&&p.booked>=savD); out.push(p); } });
+  applyBookingFacts_(out);
+  proposeWeek(ws).forEach(function(p){ if(seen[ckey(p)]) return;
+    var cov=coveredByExisting_(p,out);
+    if(cov){ out.push(shadowOf_(p,cov)); return; }
+    var repl=out.some(function(c){ return c.stale&&c.stayId===p.stayId&&c.type===p.type; });
+    p.src='new'; p.on=repl||!!(p.booked&&savD&&p.booked>=savD); out.push(p); });
   out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
   return out;
 }
