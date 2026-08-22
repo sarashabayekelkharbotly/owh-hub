@@ -360,8 +360,21 @@ function weekRows(ws){
   });
   return Object.keys(best).map(function(k){ return best[k]; });
 }
+/* Exact twins (same day, flat, type AND time) are one visit, not three — drafts saved during the
+   resurrect bug carried copies and the confirmed sheet took them (28A's 30/08 checkout stood on
+   record three times, 2026-08-22). Keep the first; a hand-set code on ANY twin survives the
+   collapse. The server's confirm dedupes the same way, so screen and sheet agree. */
+function dedupeExact_(list){
+  var seen={}, out=[];
+  (list||[]).forEach(function(c){
+    var k=ckey(c)+'|'+hm(c.time), f=seen[k];
+    if(f){ if(c.codeEdited&&!f.codeEdited){ f.code=c.code; f.codeEdited=true; } return; }
+    seen[k]=c; out.push(c);
+  });
+  return out;
+}
 function mergeWeek(ws){
-  var confirmed=weekRows(ws);
+  var confirmed=dedupeExact_(weekRows(ws));
   var props=proposeWeek(ws);
   if(!confirmed.length) return props;
   /* A visit that has ALREADY HAPPENED is a record, not a plan (Sarah 2026-08-16). Healing re-derives
@@ -941,6 +954,7 @@ function healDraftList(ws,list,savedAt){
     if(!hm(c.inTime) && c.type==='checkout' && sameDayIn(c.flat,c.date)) c.inTime=DEFAULT_IN;
     return c;
   });
+  out=dedupeExact_(out);
   var seen={}; out.forEach(function(c){ seen[ckey(c)]=1; });
   // same rule as mergeWeek: a stay booked AFTER this draft was saved cannot have been rejected
   // by it — its cleans arrive ON (Sarah 2026-08-21, the Mohannad revision that a stale draft hid)
@@ -998,8 +1012,9 @@ function confirmWeek(){
     DRAFT_AT=null;
     var jy=j.result&&j.result.jinny;
     // no telegram for jinny money (2026-08-04) — this line + WeShare's pending list are the record
-    var sk=(j.result&&j.result.skipped)||[], lt=(j.result&&j.result.late)||[];
+    var sk=(j.result&&j.result.skipped)||[], lt=(j.result&&j.result.late)||[], fx=(j.result&&j.result.fixedCodes)||[];
     document.getElementById('cmsg').textContent='confirmed ✓ ('+j.result.count+' cleans'+
+      (fx.length?' · code corrected on record: '+fx.join(', '):'')+
       (lt.length?' · recorded '+lt.length+' past visit: '+lt.join(', '):'')+
       (sk.length?' · '+sk.length+' past day already on record: '+sk.join(', '):'')+
       (jy&&jy.created.length?' · '+jy.created.length+' جيني → WeShare pending':'')+
