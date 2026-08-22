@@ -265,7 +265,7 @@ function proposeWeek(ws){
          chose, and proposing the mechanical code next to it manufactures a second trip and a
          second task for Emad. */
       var set=(D.cleans||[]).some(function(c){ return c.flat===f&&c.date>=from&&c.date<=upto&&
-        ((c.code||'')===need || (c.codeEdited && ['codechange','revision','checkout'].indexOf(c.type)>-1)); });
+        ((c.code||'')===need || (c.codeEdited && ['codechange','revision','checkout','custom'].indexOf(c.type)>-1)); });   // custom too — Sarah's 2108 sat on a custom visit and 2208 got proposed beside it (2026-08-22)
       if(!set) out.push(mk(f,when,'codechange',s));
     });
   });
