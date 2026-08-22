@@ -950,7 +950,10 @@ function saveDraftBtn(){
 function healDraftList(ws,list,savedAt){
   var out=list.map(function(c){
     c.on=(c.on!==false); c.cleaner=c.cleaner||'amal';
-    if(!c.codeEdited && (c.src!=='manual')) c.code=doorCode(c.flat,day(c.date));
+    /* same elapsed-row rule mergeWeek got on 2026-08-16 — the draft path never had it, so a saved
+       draft kept re-stamping the 21/8 custom row with doorCode's 2208 (Amina within 2 days) on
+       every load: "the custom row with the default code keeps reappearing" (2026-08-22) */
+    if(!c.codeEdited && (c.src!=='manual') && c.date>=todayK()) c.code=doorCode(c.flat,day(c.date));
     if(!hm(c.inTime) && c.type==='checkout' && sameDayIn(c.flat,c.date)) c.inTime=DEFAULT_IN;
     return c;
   });
@@ -1007,14 +1010,19 @@ function confirmWeek(){
   document.getElementById('cmsg').textContent='confirming…';
   var payload=cleans.filter(function(c){return c.on;}).map(function(c){
     return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code, codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal' }; });
-  api('props_confirm_cleans',{user:(ME&&ME.user)||'',week:ymd(weekStart),cleans:JSON.stringify(payload)}).then(function(j){
+  /* a past CONFIRMED row she toggled off = a deliberate rectification of the record: the server
+     deletes exactly those rows (they can't travel the normal path — the rewrite is today-forward) */
+  var removePast=cleans.filter(function(c){ return !c.on && c.src==='confirmed' && c.date<todayK(); })
+    .map(function(c){ return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time) }; });
+  api('props_confirm_cleans',{user:(ME&&ME.user)||'',week:ymd(weekStart),cleans:JSON.stringify(payload),removePast:JSON.stringify(removePast)}).then(function(j){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
     DRAFT_AT=null;
     var jy=j.result&&j.result.jinny;
     // no telegram for jinny money (2026-08-04) — this line + WeShare's pending list are the record
-    var sk=(j.result&&j.result.skipped)||[], lt=(j.result&&j.result.late)||[], fx=(j.result&&j.result.fixedCodes)||[];
+    var sk=(j.result&&j.result.skipped)||[], lt=(j.result&&j.result.late)||[], fx=(j.result&&j.result.fixedCodes)||[], rp=(j.result&&j.result.removedPast)||[];
     document.getElementById('cmsg').textContent='confirmed ✓ ('+j.result.count+' cleans'+
       (fx.length?' · code corrected on record: '+fx.join(', '):'')+
+      (rp.length?' · removed from record: '+rp.join(', '):'')+
       (lt.length?' · recorded '+lt.length+' past visit: '+lt.join(', '):'')+
       (sk.length?' · '+sk.length+' past day already on record: '+sk.join(', '):'')+
       (jy&&jy.created.length?' · '+jy.created.length+' جيني → WeShare pending':'')+
