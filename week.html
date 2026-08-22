@@ -486,7 +486,10 @@ function coveringVisit(flat,ci){                  // the ON visit (either week) 
     if(isStayClean(c)) return;                    // in-stay cleans can't set the lock (guest is in) — 2026-08-04
     var dd=day(c.date), diff=(ci-dd)/DAYMS;
     if(!(diff>=0&&diff<=2)) return;
-    if(c.date<tK && (c.code||'')!==need) return;   // already done, and not with this code
+    /* A visit already in the past only counts if it actually set THIS arrival's code. The old test
+       assumed that code is always DDMM — but a HAND-SET code (✎) IS the arrival's code by decision
+       (Amina 2026-08-22: Emad set 2108 yesterday per the schedule, and the cell claimed 2208). */
+    if(c.date<tK && !c.codeEdited && (c.code||'')!==need) return;   // already done, and not with this code
     if(!hit||dd>day(hit.date)) hit=c;
   }); });
   return hit;
