@@ -125,9 +125,12 @@ function render(){
   if(!closed.length) h+='<span class="muted">Nothing closed yet.</span>';
   closed.forEach(function(r){
     h+='<div class="tick"><div class="top"><span dir="ltr"><b>'+esc(r.flat)+'</b> — closed '+(r.closedDate?dmon(r.closedDate):'')+(r.cost?' · '+r.cost+' EGP':'')+' · <bdi>'+esc(r.trade)+'</bdi></span>'+
-       '<span class="badge b-closed">closed</span></div>'+(r.done||r.what?'<div class="what">'+esc(r.done||r.what)+'</div>':'')+'</div>';
+       '<span class="badge b-closed">closed</span></div>'+(r.done||r.what?'<div class="what">'+esc(r.done||r.what)+'</div>':'')+
+       '<div><span class="act edit" onclick="editClosedForm(\''+esc(r.id)+'\')">✎ edit</span>'+
+       '<span class="act del" onclick="delClosed(\''+esc(r.id)+'\',\''+esc(r.flat)+'\',\''+esc(r.trade)+'\','+(r.cost||0)+')">🗑 delete</span></div>'+
+       '<div id="edc_'+esc(r.id)+'"></div></div>';
   });
-  h+='</div>';
+  h+='<div class="legend">Editing cost, date, trade or the note rewrites the WeShare Maintenance row with it; a confirmed row whose amount changes goes back to pending for Khaled. Deleting removes the WeShare row too — both are telegrammed.</div></div>';
 
   document.getElementById('app').innerHTML=h;
 }
@@ -168,6 +171,39 @@ function saveEdit(id){
 }
 function delTicket(id,flat,trade){
   if(!confirm('Delete this open ticket?\n'+flat+' · '+trade))return;
+  api('props_delete_repair',{id:id}).then(function(j){
+    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+    return fetchOnce().then(onData);
+  }).catch(function(e){ alert('failed: '+(e.message||e)); });
+}
+/* closed tickets (2026-08-23): the server keeps the WeShare Maintenance row in step — see the
+   legend under the closed log for the money rules */
+function editClosedForm(id){
+  var box=document.getElementById('edc_'+id); if(!box)return;
+  if(box.innerHTML){ box.innerHTML=''; return; }
+  var r=(D.repairs||[]).filter(function(x){return x.id===id;})[0]; if(!r)return;
+  box.innerHTML='<div class="editbox"><div class="frm">'+
+    '<div><label>Flat</label><select id="c_flat_'+id+'">'+allFlats().map(function(f){return '<option'+(f===r.flat?' selected':'')+'>'+esc(f)+'</option>';}).join('')+'</select></div>'+
+    '<div><label>Trade</label><select id="c_trade_'+id+'">'+TRADES.map(function(t){return '<option'+(t===r.trade?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>'+
+    '<div><label>Closed date</label><input type="date" id="c_cdate_'+id+'" value="'+esc(String(r.closedDate||'').slice(0,10))+'"></div>'+
+    '<div><label>Cost EGP</label><input type="number" min="0" step="1" id="c_cost_'+id+'" value="'+esc(String(r.cost!=null?r.cost:''))+'"></div>'+
+    '<div class="full"><label>What was done</label><textarea id="c_done_'+id+'">'+esc(r.done||'')+'</textarea></div>'+
+    '<div class="full"><button class="btn" onclick="saveClosed(\''+id+'\')">Save changes</button> '+
+    '<button class="btn" style="background:#fff;color:#1a1a1a;border:1px solid var(--line)" onclick="editClosedForm(\''+id+'\')">Cancel</button> '+
+    '<span class="muted" id="c_msg_'+id+'"></span></div></div></div>';
+}
+function saveClosed(id){
+  var g=function(k){return document.getElementById('c_'+k+'_'+id).value;};
+  if(g('cost')===''){ document.getElementById('c_msg_'+id).textContent='cost required (0 is allowed)'; return; }
+  document.getElementById('c_msg_'+id).textContent='saving…';
+  api('props_edit_repair',{id:id,flat:g('flat'),trade:g('trade'),closedDate:g('cdate'),cost:g('cost'),done:g('done')}).then(function(j){
+    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+    return fetchOnce().then(onData);
+  }).catch(function(e){ document.getElementById('c_msg_'+id).textContent='failed: '+(e.message||e); });
+}
+function delClosed(id,flat,trade,cost){
+  if(!confirm('Delete this CLOSED repair from the record?\n'+flat+' · '+trade+(cost?' · '+cost+' EGP':'')+
+              '\n\nIts WeShare Maintenance row is deleted with it. Sarah + Khaled get a telegram.'))return;
   api('props_delete_repair',{id:id}).then(function(j){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
     return fetchOnce().then(onData);
