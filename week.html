@@ -206,6 +206,23 @@ function cleanPlan(s){ var N=s.nights||0; if(N<=12||!s.checkIn)return []; var ci
     return plan;
   }
   for(var off=6; N-off>4; off+=7,j++){ var dd=addD(ci,off); plan.push({d:dd,type:j===0?'midstay':'weekly'}); } return plan; }
+/* ONE ARRIVAL = ONE PRE-ARRIVAL VISIT (Sarah 2026-08-23). The search ignores week boundaries —
+   Mohannad's Thursday ci−1 revision was filed under week 1, week 2's list couldn't see it, and a
+   second revision was confirmable on the Friday. This looks at every confirmed row (D.cleans spans
+   ±60 days) plus both on-screen lists. A ✎ hand-set custom counts: her code IS the arrival's plan.
+   Flat + window is the whole test — only one arrival can occupy [ci−2, ci] for a flat, so a manual
+   row with no stayId still belongs to it. */
+function preArrivalRow_(flat,s){
+  var ci=day(s.checkIn), from=ymd(addD(ci,-2)), upto=ymd(ci), hit=null;
+  [D.cleans||[],(typeof cleans!=='undefined'&&cleans)||[],(typeof cleans2!=='undefined'&&cleans2)||[]].forEach(function(L){
+    L.forEach(function(c){
+      if(c.flat!==flat||c.src==='shadow'||c.on===false) return;
+      if(c.date<from||c.date>upto) return;
+      if(c.type==='revision'||c.type==='codechange'||(c.codeEdited&&c.type==='custom')) hit=c;
+    });
+  });
+  return hit;
+}
 function mk(flat,d,type,s){
   var k=ymd(d), inn=(type==='checkout')?sameDayIn(flat,k):null;
   return { date:k, flat:flat, type:type, time:'12:00', code:doorCode(flat,d),
@@ -228,7 +245,7 @@ function proposeWeek(ws){
     STAYS.forEach(function(s){ if(s.flat!==f)return;
       var ci=day(s.checkIn), pco=prevCheckOut(f,ci); if(!pco)return;
       var gap=Math.round((ci-pco)/DAYMS);
-      if(gap>2){ var rev=addD(ci,-1); if(inWk(rev)) out.push(mk(f,rev,'revision',s)); }
+      if(gap>2){ var rev=addD(ci,-1); if(inWk(rev)&&!preArrivalRow_(f,s)) out.push(mk(f,rev,'revision',s)); }
     });
     /* AN ARRIVAL NOBODY WILL LET IN (Sarah 2026-08-16). A WhatsApp line was not enough: Emad's
        schedule, Dani's comms grid and الكنترول all read the Cleaning schedule, so an arrival with
@@ -264,7 +281,7 @@ function proposeWeek(ws){
          a DEFAULT; a visit whose code Sarah edited by hand covers the arrival with whatever she
          chose, and proposing the mechanical code next to it manufactures a second trip and a
          second task for Emad. */
-      var set=(D.cleans||[]).some(function(c){ return c.flat===f&&c.date>=from&&c.date<=upto&&
+      var set=!!preArrivalRow_(f,s) || (D.cleans||[]).some(function(c){ return c.flat===f&&c.date>=from&&c.date<=upto&&
         ((c.code||'')===need || (c.codeEdited && ['codechange','revision','checkout','custom'].indexOf(c.type)>-1)); });   // custom too — Sarah's 2108 sat on a custom visit and 2208 got proposed beside it (2026-08-22)
       if(!set) out.push(mk(f,when,'codechange',s));
     });
@@ -1019,10 +1036,11 @@ function confirmWeek(){
     DRAFT_AT=null;
     var jy=j.result&&j.result.jinny;
     // no telegram for jinny money (2026-08-04) — this line + WeShare's pending list are the record
-    var sk=(j.result&&j.result.skipped)||[], lt=(j.result&&j.result.late)||[], fx=(j.result&&j.result.fixedCodes)||[], rp=(j.result&&j.result.removedPast)||[];
+    var sk=(j.result&&j.result.skipped)||[], lt=(j.result&&j.result.late)||[], fx=(j.result&&j.result.fixedCodes)||[], rp=(j.result&&j.result.removedPast)||[], bk=(j.result&&j.result.blocked)||[];
     document.getElementById('cmsg').textContent='confirmed ✓ ('+j.result.count+' cleans'+
       (fx.length?' · code corrected on record: '+fx.join(', '):'')+
       (rp.length?' · removed from record: '+rp.join(', '):'')+
+      (bk.length?' · ⚠️ refused, arrival already has its visit: '+bk.join(' · '):'')+
       (lt.length?' · recorded '+lt.length+' past visit: '+lt.join(', '):'')+
       (sk.length?' · '+sk.length+' past day already on record: '+sk.join(', '):'')+
       (jy&&jy.created.length?' · '+jy.created.length+' جيني → WeShare pending':'')+
