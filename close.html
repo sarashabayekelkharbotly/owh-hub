@@ -316,9 +316,14 @@ function initControls(){
   $('#controls').style.display='flex';
   var flats=DATA.meta.flatsOrder.slice();
   FLAT=FLAT||(flats.indexOf('28A')>-1?'28A':flats[0]);
-  var months=monthsFor(FLAT); MONTH=(MONTH&&months.indexOf(MONTH)>-1)?MONTH:months[months.length-1];
+  /* default to the CURRENT month, not the last one on file — bookings pull future months open now
+     (v152) and "last" jumped to December (2026-08-26). Future months stay reachable in the picker. */
+  function defMonth(ms){ var cm=(DATA.meta&&DATA.meta.currentMonth)||'';
+    if(ms.indexOf(cm)>-1) return cm;
+    var past=ms.filter(function(m){return !cm||m<=cm;}); return past.length?past[past.length-1]:ms[ms.length-1]; }
+  var months=monthsFor(FLAT); MONTH=(MONTH&&months.indexOf(MONTH)>-1)?MONTH:defMonth(months);
   var fs=$('#flatSel'); fs.innerHTML=flats.map(function(f){return '<option'+(f===FLAT?' selected':'')+'>'+f+'</option>';}).join('');
-  fs.onchange=function(){ FLAT=fs.value; FXMSG=''; var ms=monthsFor(FLAT); if(ms.indexOf(MONTH)<0)MONTH=ms[ms.length-1]; fillMonths(); render(); };
+  fs.onchange=function(){ FLAT=fs.value; FXMSG=''; var ms=monthsFor(FLAT); if(ms.indexOf(MONTH)<0)MONTH=defMonth(ms); fillMonths(); render(); };
   fillMonths();
   $('#viewSeg').onclick=function(e){ if(!e.target.dataset.view)return; VIEW=e.target.dataset.view; seg('#viewSeg','view',VIEW); $('#flatSel').style.display=VIEW==='review'?'':'none'; render(); };
   $('#curSeg').onclick=function(e){ if(!e.target.dataset.cur)return; CUR=e.target.dataset.cur; seg('#curSeg','cur',CUR); render(); };
