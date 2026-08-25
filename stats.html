@@ -156,12 +156,16 @@ function mergeStays(stays){
 }
 
 /* ---------- months / ranges ---------- */
+/* Future months with bookings SHOW (Sarah 2026-08-23: "any month with a booking already shows in
+   stats") — but they are never anyone's "now": relative ranges (3M/6M/12M/YTD) and default
+   analysis months anchor on the CALENDAR month, so December being open doesn't drag the lens. */
 function allMonths(){ var set={}; Object.keys(D.pnl).forEach(function(f){ Object.keys(D.pnl[f]).forEach(function(m){ set[m]=1; }); });
-  return Object.keys(set).filter(function(m){ return m<=D.meta.currentMonth; }).sort(); }
-function monthsInRange(rng){ var all=allMonths(), cm=D.meta.currentMonth;
+  return Object.keys(set).sort(); }
+function monthsPast_(){ var cm=D.meta.currentMonth; return allMonths().filter(function(m){ return !cm||m<=cm; }); }
+function monthsInRange(rng){ var all=allMonths(), past=monthsPast_(), cm=D.meta.currentMonth;
   if(rng==='all') return all;
-  if(rng==='YTD'){ var y=cm.slice(0,4); return all.filter(function(m){ return m.slice(0,4)===y; }); }
-  var n=rng==='3M'?3:(rng==='6M'?6:12); return all.slice(-n); }
+  if(rng==='YTD'){ var y=cm.slice(0,4); return past.filter(function(m){ return m.slice(0,4)===y; }); }
+  var n=rng==='3M'?3:(rng==='6M'?6:12); return past.slice(-n); }
 function daysIn(m){ var y=+m.slice(0,4),mo=+m.slice(5,7); return Math.round((new Date(y,mo,1)-new Date(y,mo-1,1))/DAYMS); }
 
 /* ---------- pnl aggregation ---------- */
@@ -404,7 +408,7 @@ function sumEarn(field, rng){ var t=0; monthsInRange(rng).forEach(function(m){ v
    category deltas sum EXACTLY to its Costs Δ (costs derive from the sheet's own identity
    revenue − net, and the category split reconciles to that identity by construction). */
 function secDelta(){
-  var all=allMonths(); if(all.length<2) return '';
+  var all=monthsPast_(); if(all.length<2) return '';   // deltas compare lived months — a future booked month has no story yet
   /* analysis month + comparison are both CHOSEN (Sarah 2026-08-04): any month vs any month,
      or vs its previous month / the 3-month average before it. */
   var mNow=(dMA&&all.indexOf(dMA)>-1)?dMA:all[all.length-1];
