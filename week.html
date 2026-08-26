@@ -1009,15 +1009,20 @@ function applyDraft(ws,d,second){
    next to props_get_all, so nothing got slower. Paging between weeks still paints immediately —
    there the old content is visibly a different week, not a stale version of this one.
    The SECOND week's draft matters as much as the first: it is half the WhatsApp. */
-function loadDrafts(){
+function loadDrafts(repaint){
   DRAFT_AT=null; DRAFT2_AT=null;
   var ws=weekStart, ws2=addD(ws,7), late=false;
   // the boot pair is only usable if it was asked for THIS week (onData may have re-picked it)
   var got=(BOOT_DRAFTS&&BOOT_DRAFTS_WK===ymd(ws))?BOOT_DRAFTS:Promise.all([draftRaw(ws),draftRaw(ws2)]); BOOT_DRAFTS=null;
   var p=got.then(function(ds){
     if(ws!==weekStart) return;                       // paged again while waiting — a stale answer must not land
-    applyDraft(ws,ds[0],false); applyDraft(ws2,ds[1],true);
-    if(late) render();                               // arrived after we stopped holding the page
+    var a1=applyDraft(ws,ds[0],false), a2=applyDraft(ws2,ds[1],true);
+    /* PAGING MUST REPAINT WHEN THE DRAFT LANDS (Sarah 2026-08-26: week-3 edits "revert" on
+       refresh). Paging paints immediately by design (the one-paint rule covers only the boot
+       pair), then the draft applied here IN MEMORY — but the repaint only fired on the >6s path,
+       so a fast draft was applied and never shown: the saved work existed, invisibly, behind a
+       stale paint. Boot passes no flag and keeps its single paint. */
+    if(late||(repaint&&(a1||a2))) render();
   }).catch(function(){});
   // a hung draft call must never leave the screen on "Loading…" — give up holding after 6s
   return Promise.race([p,new Promise(function(r){ setTimeout(function(){ late=true; r(); },6000); })]);
@@ -1053,8 +1058,8 @@ function guardNav(go){
   if(!dirty){ go(); return; }
   saveDraft().then(go).catch(function(){ if(confirm('Draft save failed — leave anyway and lose the changes?')) go(); });
 }
-document.getElementById('wprev').onclick=function(){ WEEK_AUTO=false; guardNav(function(){ weekStart=addD(weekStart,-7); loadWeek(); render(); loadDrafts(); }); };
-document.getElementById('wnext').onclick=function(){ WEEK_AUTO=false; guardNav(function(){ weekStart=addD(weekStart,7); loadWeek(); render(); loadDrafts(); }); };
+document.getElementById('wprev').onclick=function(){ WEEK_AUTO=false; guardNav(function(){ weekStart=addD(weekStart,-7); loadWeek(); render(); loadDrafts(true); }); };
+document.getElementById('wnext').onclick=function(){ WEEK_AUTO=false; guardNav(function(){ weekStart=addD(weekStart,7); loadWeek(); render(); loadDrafts(true); }); };
 
 AUTH_ON_LOGIN = boot; if (authGuard()) boot();   // signed in → load now; otherwise the sign-in form loads it
 </script>
