@@ -666,19 +666,28 @@ function secChannel(){
     stackedChart(rows,groups.map(function(g){return {k:g,color:chColor(g)};}),{unit:chanMode==='revenue'?curU():''})+
     '<div class="legend">'+groups.map(function(g){return '<span><i style="background:'+chColor(g)+'"></i>'+g+'</span>';}).join('')+'</div></div>';
 }
-/* 7 · Money by account — money / nights toggle, stacked per-month */
+/* 7 · Money by account — revenue / nights / net-profit toggle, stacked per-month.
+   NET (Sarah 2026-08-28): money IN lands per account, and ALL money OUT leaves from Instapay —
+   so net mode shows each account's revenue while Instapay additionally bears every cost of the
+   scoped flats. The stacked chart already draws negatives below the axis, so a heavy-cost month
+   shows Instapay diving under zero and the bar's total label IS the net profit — the columns sum
+   to revenue − costs by construction (tables must reconcile). */
 function secPay(){
   var ms=monthsInRange(R.pay);
   var accSet={}; scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; if(!channelGroup(s.portal).inRev)return; accSet[accountOf(s)]=1; }); });
+  if(payMode==='net') accSet['Instapay']=1;            // the costs account exists in net mode even with no Instapay guest
   var accs=Object.keys(accSet);
   var PC={HSBC:'#4a7fb5',Stripe:'#6f9a76',Instapay:'#d9a441',Cash:'#c98f8f','(unconfirmed)':'#bbb'};
   var rows=ms.map(function(m){ var vals={}; accs.forEach(function(a){vals[a]=0;}); scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s)||!channelGroup(s.portal).inRev)return;
-    if(payMode==='money'){ vals[accountOf(s)]+=disp(earnedIn(s,m),m); } else { vals[accountOf(s)]+=overlapNights(s,m); } }); }); return {m:m,vals:vals}; });
-  return '<div class="card"><h3>Money by account<span class="rt">'+(payMode==='money'?'revenue '+CUR:'nights')+' by account · Test excluded</span></h3>'+
+    if(payMode==='nights'){ vals[accountOf(s)]+=overlapNights(s,m); } else { vals[accountOf(s)]+=disp(earnedIn(s,m),m); } }); });
+    if(payMode==='net'){ var mOut=0; scopeStayFlats().forEach(function(f){ mOut+=disp(costsUSD(f,m).total,m); }); vals['Instapay']=(vals['Instapay']||0)-mOut; }
+    return {m:m,vals:vals}; });
+  return '<div class="card"><h3>Money by account<span class="rt">'+(payMode==='money'?'revenue '+CUR:(payMode==='net'?'net profit '+CUR:'nights'))+' by account · Test excluded</span></h3>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
-    '<div class="rowbtns">'+seg([['money','Revenue'],['nights','Nights']],payMode,'setPay')+timeSeg('pay')+'</div>'+
-    stackedChart(rows,accs.map(function(a){return {k:a,color:PC[a]||'#9aa7b5'};}),{unit:payMode==='money'?curU():''})+
-    '<div class="legend">'+accs.map(function(a){return '<span><i style="background:'+(PC[a]||'#9aa7b5')+'"></i>'+esc(a)+'</span>';}).join('')+'</div></div>';
+    '<div class="rowbtns">'+seg([['money','Revenue'],['nights','Nights'],['net','Net profit']],payMode,'setPay')+timeSeg('pay')+'</div>'+
+    stackedChart(rows,accs.map(function(a){return {k:a,color:PC[a]||'#9aa7b5'};}),{unit:payMode==='nights'?'':curU()})+
+    '<div class="legend">'+accs.map(function(a){return '<span><i style="background:'+(PC[a]||'#9aa7b5')+'"></i>'+esc(a)+'</span>';}).join('')+'</div>'+
+    (payMode==='net'?'<div class="legend">net = each account\'s money in · ALL money out (the scoped flats\' costs) leaves from Instapay — the bar total is the month\'s net profit</div>':'')+'</div>';
 }
 /* 8 · ADR per channel per flat (table) */
 function secAdrTable(){
