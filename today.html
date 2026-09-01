@@ -270,19 +270,28 @@ function phoneMatch(p,q){ var a=normPh(p), b=normPh(q); if(!a||!b) return false;
   if(b.length>=7){ var ta=a.slice(-10), tb=b.slice(-10);
     return ta.slice(-tb.length)===tb || tb.slice(-ta.length)===ta || a.indexOf(b)>-1; }
   return a.indexOf(b)>-1; }
+/* the lookup sees ALL history (2026-08-31): this screen's payload is trimmed to recent stays for
+   speed, so the search fetches its own thin full index once and reuses it */
+var GIDX=null, GIDX_BUSY=false;
+function loadGuestIndex(){
+  if(GIDX||GIDX_BUSY) return; GIDX_BUSY=true;
+  api('props_guest_index').then(function(j){ GIDX_BUSY=false;
+    if(j&&j.ok){ GIDX=j.stays||[]; guestSearch(); } }).catch(function(){ GIDX_BUSY=false; });
+}
 function guestSearch(){
   var el=$('#gsr'); if(!el) return;
   var q=String(window._gsq||'').trim();
   if(q.length<2){ el.innerHTML=q?'<div class="muted" style="padding:6px 0">اكتب حرفين على الأقل</div>':''; return; }
+  if(!GIDX) loadGuestIndex();
   var ql=q.toLowerCase(), isPhone=normPh(q).length>=4&&normPh(q).length>=q.replace(/[\s+\-()]/g,'').length-1;
   var today=ymd(day(D.meta.asOf));
-  var hits=(rawStays()||[]).filter(function(s){
+  var hits=(GIDX||rawStays()||[]).filter(function(s){
     var byName=String(s.guest||'').toLowerCase().indexOf(ql)>-1;
     var byPhone=phoneMatch(s.phone,q);
     var byConf=String(s.conf||'').toLowerCase()===ql;
     return byName||byPhone||byConf;
   }).sort(function(a,b){ return (a.checkIn||'')<(b.checkIn||'')?1:-1; });
-  if(!hits.length){ el.innerHTML='<div class="muted" style="padding:6px 0">no guest matches'+(isPhone?' — try fewer digits':'')+'</div>'; return; }
+  if(!hits.length){ el.innerHTML='<div class="muted" style="padding:6px 0">'+(GIDX?'no guest matches'+(isPhone?' — try fewer digits':''):'searching full history…')+'</div>'; return; }
   el.innerHTML='<table style="margin-top:6px"><thead><tr><th style="text-align:left">Guest</th><th>Flat</th><th style="text-align:left">Stay</th><th>Portal</th><th style="text-align:left">Phone</th></tr></thead><tbody>'+
     hits.slice(0,15).map(function(s){
       var st=/cancel/i.test(s.status||'')?'<span class="pill p-out">cancelled</span>'
