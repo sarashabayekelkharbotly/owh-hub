@@ -292,8 +292,9 @@ function guestSearch(){
     return byName||byPhone||byConf;
   }).sort(function(a,b){ return (a.checkIn||'')<(b.checkIn||'')?1:-1; });
   if(!hits.length){ el.innerHTML='<div class="muted" style="padding:6px 0">'+(GIDX?'no guest matches'+(isPhone?' — try fewer digits':''):'searching full history…')+'</div>'; return; }
+  var lim=(window._gsAll===q)?hits.length:15;   // «show all» sticks to ITS query — a new search resets to 15
   el.innerHTML='<table style="margin-top:6px"><thead><tr><th style="text-align:left">Guest</th><th>Flat</th><th style="text-align:left">Stay</th><th>Portal</th><th style="text-align:left">Phone</th></tr></thead><tbody>'+
-    hits.slice(0,15).map(function(s){
+    hits.slice(0,lim).map(function(s){
       var st=/cancel/i.test(s.status||'')?'<span class="pill p-out">cancelled</span>'
             :(s.checkOut&&s.checkOut<=today?'<span class="pill p-gap">departed</span>'
             :(s.checkIn&&s.checkIn<=today?'<span class="pill p-in">in-house</span>':'<span class="pill p-stay">upcoming</span>'));
@@ -304,7 +305,7 @@ function guestSearch(){
         '<td>'+esc(s.portal||'')+'</td>'+
         '<td style="text-align:left" dir="ltr">'+(ph?'<a href="https://wa.me/'+normPh(ph)+'" target="_blank">'+esc(ph)+'</a>':'—')+'</td></tr>';
     }).join('')+'</tbody></table>'+
-    (hits.length>15?'<div class="muted">showing 15 of '+hits.length+' — narrow the search</div>':'');
+    (hits.length>lim?'<div class="muted">showing '+lim+' of '+hits.length+' — <a href="#" onclick="window._gsAll=window._gsq.trim();guestSearch();return false">show all '+hits.length+'</a></div>':'');
 }
 
 function mLabel(ym){ return MON[+ym.slice(5,7)-1]; }
