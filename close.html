@@ -576,10 +576,34 @@ function saveFx(){
     boot();
   }).catch(function(e){ if(btn)btn.disabled=false; if(msg)msg.textContent='failed: '+(e.message||e); });
 }
+/* laundry readiness — fetched once per month, cached; the checklist and Mark-final read it */
+var CLOSERD={}, CLOSERD_BUSY={};
+function loadCloseReadiness(){
+  var m=MONTH; if(CLOSERD[m]||CLOSERD_BUSY[m]) return; CLOSERD_BUSY[m]=1;
+  api('props_close_readiness',{month:m}).then(function(j){
+    CLOSERD_BUSY[m]=0; if(j&&j.ok){ CLOSERD[m]=j; render(); }
+  }).catch(function(){ CLOSERD_BUSY[m]=0; });
+}
 function checklist(rec){
   var fxSet=fxIsSet(MONTH), isOpen=rec.status!=='final';
   var missing=rec.revenue.total===0 && rec.costs.every(function(c){return !c.amount;});
+  /* NOTHING OUTSTANDING MAY CLOSE (Sarah 2026-08-31): a submission still at the laundry — or
+     returned-unpaid, or pending Khaled's confirm — is money dated THIS month that has not landed;
+     closing now means the partner's "final" changes when it does. The button waits. */
+  var rd=CLOSERD[MONTH]; if(!rd&&isOpen) loadCloseReadiness();
+  var laundryHold=isOpen&&(!rd||rd.count>0);
   var h='<div class="card checklist"><h1 style="font-size:14px;margin-bottom:6px">Close checklist · '+MONTH+'</h1>';
+  if(isOpen){
+    if(!rd) h+='<div><span class="warn">…</span> Checking outstanding laundry…</div>';
+    else if(rd.count===0) h+='<div><span class="ok">✓</span> All laundry landed & confirmed — nothing will back-date into this month</div>';
+    else{
+      var PH={'at-laundry':'at the laundry','returned-unpaid':'returned, not paid','pending-confirm':'pending confirm in WeShare','ordered':'ordered, not delivered'};
+      h+='<div style="flex-direction:column;align-items:stretch"><div><span class="warn">!</span> <b>'+rd.count+' item'+(rd.count>1?'s':'')+
+         ' not landed — EGP '+fmt(rd.total)+'</b> <span class="muted">— will back-date into '+(rd.items.some(function(x){return x.prior;})?'closed months':'this month')+' when confirmed</span></div>'+
+         rd.items.map(function(x){ return '<div class="muted" style="padding-left:22px">'+(x.kind==='supplies'?'📦':'🧺')+' '+x.date+' · '+esc(x.flat)+' · EGP '+fmt(x.amount)+' · '+(PH[x.phase]||x.phase)+(x.prior?' · <b style="color:var(--rr)">from an earlier month</b>':'')+'</div>'; }).join('')+
+         '</div>';
+    }
+  }
   /* Editable for as long as the month is open, and saveable on its own — the rate used to be
      readable only by "Mark final", so recording it and closing the month were the same act and you
      could not put a rate in early or correct one (Sarah 2026-08-14). */
@@ -591,8 +615,10 @@ function checklist(rec){
             :'used '+fmt1(fxOf(MONTH)||fx()))+'</div>';
   h+='<div><span class="'+(missing?'warn':'ok')+'">'+(missing?'!':'✓')+'</span> '+(missing?'No data this month — check WeShare':'Revenue & costs present')+'</div>';
   h+='<div><span class="ok">✓</span> Reconciled from the sheet (formulas, not the app)</div>';
-  h+='<button class="mark" id="markbtn" '+(isOpen?'':'disabled')+' onclick="doMarkFinal()">'+(isOpen?'Mark '+MONTH+' final':MONTH+' is final ✓')+'</button>';
-  h+='<p class="muted" id="markmsg" style="margin:8px 0 0">Writes the FX rate + marks the month final in the sheet (and flips the partner view to final).</p></div>';
+  h+='<button class="mark" id="markbtn" '+((isOpen&&!laundryHold)?'':'disabled')+' onclick="doMarkFinal()">'+(isOpen?'Mark '+MONTH+' final':MONTH+' is final ✓')+'</button>';
+  h+='<p class="muted" id="markmsg" style="margin:8px 0 0">'+
+     (laundryHold&&rd&&rd.count>0?'Closing waits until every submission above lands (returns → paid → confirmed) — عماد is being nagged to collect.':
+      'Writes the FX rate + marks the month final in the sheet (and flips the partner view to final).')+'</p></div>';
   return h;
 }
 function writeCall(fn,params){
