@@ -599,7 +599,7 @@ function checklist(rec){
     else{
       var PH={'at-laundry':'at the laundry','returned-unpaid':'returned, not paid','pending-confirm':'pending confirm in WeShare','ordered':'ordered, not delivered'};
       h+='<div style="flex-direction:column;align-items:stretch"><div><span class="warn">!</span> <b>'+rd.count+' item'+(rd.count>1?'s':'')+
-         ' not landed — EGP '+fmt(rd.total)+'</b> <span class="muted">— will back-date into '+(rd.items.some(function(x){return x.prior;})?'closed months':'this month')+' when confirmed</span></div>'+
+         ' not landed — EGP '+fmt(rd.total)+'</b> <span class="muted">— already accrued in the P&L at known prices (totals are complete); closing waits for the actuals to land</span></div>'+
          rd.items.map(function(x){ return '<div class="muted" style="padding-left:22px">'+(x.kind===`supplies`?`📦`:(x.kind===`laundry`?`🧺`:`💳`))+' '+x.date+' · '+esc(x.flat)+' · EGP '+fmt(x.amount)+' · '+(PH[x.phase]||x.phase)+(x.prior?' · <b style="color:var(--rr)">from an earlier month</b>':'')+'</div>'; }).join('')+
          '</div>';
     }
