@@ -487,6 +487,10 @@ function render(){
        '<label style="font-weight:400"><input type="radio" name="pay_'+f+'" value="balance" onchange="payTgl(\''+f+'\')"> from WE balance</label>'+
        '<input type="number" step="0.1" id="cash_'+f+'" placeholder="cash EGP (blank = price)" style="width:150px" title="cash actually paid — may exceed the bundle price; the excess stays as WE balance"></div>'+
        '<div style="align-self:end"><button class="btn sec" onclick="saveBundle(\''+f+'\')">Renew / set bundle</button></div>'+
+       '<div class="full" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">'+
+       '<button class="btn sec" onclick="prechargeNet(\''+f+'\')" title="cash paid ahead of an auto-renewal — WeShare card only; the P&L cost lands at renewal, at bundle price">💳 Pre-charge (cash ahead)</button>'+
+       '<button class="btn sec" style="color:#cc5f5f" onclick="delLastBundle(\''+f+'\')" title="remove the latest bundle entry — its P&L row and pending cash card go with it">🗑 Delete latest entry</button>'+
+       '</div>'+
        '<div class="full"><span class="msg" id="bmsg_'+f+'"></span></div>'+
        '</div></details>';
     h+='</div>';
@@ -567,6 +571,27 @@ function saveBundle(f){
   document.getElementById('bmsg_'+f).textContent='saving…';
   post('props_set_bundle', {flat:f, name:name, quota:q, price:p, cycleStart:cs, payMode:mode, cashAmount:cash}, 'bmsg_'+f);
 }
+/* 🗑 undo a wrong renewal END-TO-END (Sarah 2026-09-01, the 3-Sep 8A entry): one act removes the
+   bundles row, its NetBundle P&L row (the mirror reconciles inside the call), and its pending
+   WeShare cash card — a confirmed card is only reported for review. */
+function delLastBundle(f){
+  var bs=(D.internet.bundles||[]).filter(function(x){return x.flat===f;})
+    .sort(function(a,z){return String(a.cycleStart)<String(z.cycleStart)?-1:1;});
+  if(!bs.length){ alert('no bundle entries for '+f); return; }
+  var last=bs[bs.length-1];
+  if(!confirm('Delete the LATEST bundle entry for '+f+'?\n\n'+(last.name||'')+' · '+(last.quota||'?')+'GB · '+(last.price||'?')+' EGP · cycle start '+last.cycleStart+
+              '\n\nIts P&L row is removed with it, and its pending WeShare cash card (if any) is deleted too.')) return;
+  document.getElementById('bmsg_'+f).textContent='deleting…';
+  post('props_del_bundle',{flat:f, cycleStart:last.cycleStart},'bmsg_'+f);
+}
+/* 💳 cash ahead of an auto-renewal: money now, cost later — at the renewal pick "from balance" */
+function prechargeNet(f){
+  var a=prompt('Cash paid ahead for '+f+' (EGP).\n\nRecorded as a pending Internet-recharge card in WeShare (confirm the payer there). The P&L is untouched — the cost lands at the next renewal, at bundle price. When you enter that renewal, pick "from WE balance" so the cash is not counted twice.','');
+  if(a===null) return; a=parseFloat(String(a).replace(/[^\d.]/g,''));
+  if(!(a>0)){ alert('enter an amount'); return; }
+  document.getElementById('bmsg_'+f).textContent='saving…';
+  post('props_net_precharge',{flat:f, amount:a},'bmsg_'+f);
+}
 function post(fn, params, msgId){
   var body={user:(ME&&ME.user)||''};
   for(var k in params) body[k]=params[k];
@@ -576,6 +601,10 @@ function post(fn, params, msgId){
     var m='saved ✓';
     if(fn==='props_set_bundle'&&j.result)
       m=j.result.weshare?'saved ✓ — cash → WeShare pending (confirm payer there)':'saved ✓ — no cash row (from balance)';
+    if(fn==='props_del_bundle'&&j.result)
+      m=j.result.deleted?('deleted ✓'+(j.result.weshare==='deleted'?' — pending cash card removed too':(j.result.weshare==='confirmed'?' — ⚠ its cash card is already confirmed; review it in WeShare':''))):(j.result.error||'not found');
+    if(fn==='props_net_precharge'&&j.result)
+      m='recorded ✓ — pending cash card in WeShare; at the next renewal pick "from balance"';
     boot();
     setTimeout(function(){ var el=document.getElementById(msgId); if(el) el.textContent=m; },600);
   }).catch(function(e){ document.getElementById(msgId).textContent='failed: '+(e.message||e); });
