@@ -253,7 +253,49 @@ function render(){
   // ---- needs you
   h+=needs(cm,pmY);
 
+  /* 🔍 guest lookup (Sarah 2026-08-31: "i have a phone number and a first name") — searches every
+     stay in the payload, cancelled included. Phone matching is FORMAT-BLIND: both sides reduce to
+     digits, a leading 00 drops, and the comparison runs on the last-10-digit tails — so
+     "+20 101 234 5678", "0101-234-5678" and "20101234 5678" all find the same guest. */
+  h+='<div class="card"><h3>Guest lookup<span class="rt">name or phone · any format</span></h3>'+
+     '<input id="gsq" value="'+esc(window._gsq||'')+'" placeholder="e.g. Amina · 0101 234 5678 · +20 101…" '+
+     'oninput="window._gsq=this.value;guestSearch()" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:9px;padding:8px 10px">'+
+     '<div id="gsr"></div></div>';
+
   $('#app').innerHTML=h;
+  if(window._gsq) guestSearch();
+}
+function normPh(x){ var d=String(x||'').replace(/\D/g,''); if(d.slice(0,2)==='00') d=d.slice(2); return d; }
+function phoneMatch(p,q){ var a=normPh(p), b=normPh(q); if(!a||!b) return false;
+  if(b.length>=7){ var ta=a.slice(-10), tb=b.slice(-10);
+    return ta.slice(-tb.length)===tb || tb.slice(-ta.length)===ta || a.indexOf(b)>-1; }
+  return a.indexOf(b)>-1; }
+function guestSearch(){
+  var el=$('#gsr'); if(!el) return;
+  var q=String(window._gsq||'').trim();
+  if(q.length<2){ el.innerHTML=q?'<div class="muted" style="padding:6px 0">اكتب حرفين على الأقل</div>':''; return; }
+  var ql=q.toLowerCase(), isPhone=normPh(q).length>=4&&normPh(q).length>=q.replace(/[\s+\-()]/g,'').length-1;
+  var today=ymd(day(D.meta.asOf));
+  var hits=(rawStays()||[]).filter(function(s){
+    var byName=String(s.guest||'').toLowerCase().indexOf(ql)>-1;
+    var byPhone=phoneMatch(s.phone,q);
+    var byConf=String(s.conf||'').toLowerCase()===ql;
+    return byName||byPhone||byConf;
+  }).sort(function(a,b){ return (a.checkIn||'')<(b.checkIn||'')?1:-1; });
+  if(!hits.length){ el.innerHTML='<div class="muted" style="padding:6px 0">no guest matches'+(isPhone?' — try fewer digits':'')+'</div>'; return; }
+  el.innerHTML='<table style="margin-top:6px"><thead><tr><th style="text-align:left">Guest</th><th>Flat</th><th style="text-align:left">Stay</th><th>Portal</th><th style="text-align:left">Phone</th></tr></thead><tbody>'+
+    hits.slice(0,15).map(function(s){
+      var st=/cancel/i.test(s.status||'')?'<span class="pill p-out">cancelled</span>'
+            :(s.checkOut&&s.checkOut<=today?'<span class="pill p-gap">departed</span>'
+            :(s.checkIn&&s.checkIn<=today?'<span class="pill p-in">in-house</span>':'<span class="pill p-stay">upcoming</span>'));
+      var ph=String(s.phone||'');
+      return '<tr><td style="text-align:left"><bdi>'+esc(s.guest||'—')+'</bdi> '+st+(s.conf?'<div class="soft" style="font-size:10px">'+esc(s.conf)+'</div>':'')+'</td>'+
+        '<td>'+esc(s.flat)+'</td>'+
+        '<td style="text-align:left" dir="ltr">'+(s.checkIn||'?')+' → '+(s.checkOut||'?')+' · '+(s.nights||0)+'n</td>'+
+        '<td>'+esc(s.portal||'')+'</td>'+
+        '<td style="text-align:left" dir="ltr">'+(ph?'<a href="https://wa.me/'+normPh(ph)+'" target="_blank">'+esc(ph)+'</a>':'—')+'</td></tr>';
+    }).join('')+'</tbody></table>'+
+    (hits.length>15?'<div class="muted">showing 15 of '+hits.length+' — narrow the search</div>':'');
 }
 
 function mLabel(ym){ return MON[+ym.slice(5,7)-1]; }
