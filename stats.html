@@ -41,7 +41,8 @@ svg text{font-family:'Cairo',sans-serif}
 .bdrill td{padding:3px 6px;border-bottom:1px solid #f0e6e6;text-align:right;white-space:nowrap}
 .bdrill td.bdate{width:88px;text-align:left;color:var(--soft);font-size:10.5px}
 .bdrill td.bguest{text-align:left;overflow:hidden;text-overflow:ellipsis}
-.bdrill td:nth-child(3){width:64px}
+.bdrill td.bnum,.bdrill th.bnum{width:64px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.bdrill th{padding:3px 6px;color:var(--soft);font-weight:600;font-size:10px;text-align:right;border-bottom:1px solid #e8dcdc}
 .bdrill td.bval{width:86px;font-weight:600}
 .bdrill .bname{unicode-bidi:isolate}
 .bdrill .bnote{font-size:10px;color:var(--soft);font-weight:400}
@@ -505,26 +506,31 @@ function bookingsCard(kind){
     list.forEach(function(s){
       var nn=overlapNights(s,m), val=disp(earnedIn(s,m),m);
       fsum+=val; fn+=nn;
+      /* fixed columns for eye-scan (Sarah 2026-08-31): total nights · nights in month · ADR ·
+         earnings — every row aligns, no prose to re-read */
       rows+='<tr><td class="bdate">'+dspan(s)+'</td>'+
         '<td class="bguest"><bdi class="bname">'+esc(s.guest||s.id||'—')+'</bdi>'+
         '<span class="bnote"> · '+esc(s.portal||'')+'</span></td>'+
-        '<td>'+nn+(s.nights&&s.nights!==nn?' <span class="bnote">of '+s.nights+'</span>':'')+'n</td>'+
+        '<td class="bnum">'+(s.nights||nn)+'</td>'+
+        '<td class="bnum">'+nn+'</td>'+
+        '<td class="bnum">'+(kind==='rev'&&nn>0?money(val/nn):'—')+'</td>'+
         '<td class="bval">'+money(val)+'</td></tr>';
     });
     sum+=fsum; nsum+=fn; count+=list.length;
-    body+=(port?'<tr class="bflat"><td colspan="2">'+esc(f)+'</td><td>'+fn+'n</td><td class="bval">'+money(fsum)+'</td></tr>':'')+rows;
+    body+=(port?'<tr class="bflat"><td colspan="2">'+esc(f)+'</td><td class="bnum"></td><td class="bnum">'+fn+'</td><td class="bnum">'+(kind==='rev'&&fn>0?money(fsum/fn):'—')+'</td><td class="bval">'+money(fsum)+'</td></tr>':'')+rows;
   });
   var h='<div class="bdrill"><h4><span>Bookings · '+esc(mlbl)+(kind==='rev'?' <span class="bnote">earnings · '+CUR+'</span>':'')+'</span>'+
         '<span class="x" onclick="statDrill(\''+kind+'\',\''+DRILL.m+'\')">✕ close</span></h4>';
   if(!count) return h+'<div class="muted">no bookings touch this month</div></div>';
-  h+='<table><tbody>'+body;
+  h+='<table><tbody>'+
+     '<tr class="bhead"><th colspan="2"></th><th class="bnum">total n</th><th class="bnum">in month</th><th class="bnum">ADR</th><th class="bnum">'+(kind==='rev'?'earnings':'')+'</th></tr>'+body;
   if(kind==='rev'){
     var rent=0; scopeFlats().forEach(function(f){ if(!isLongLet(f))return; var p=pnlOf(f,m); if(p)rent+=disp(p.revenue.earnings,m); });
-    if(rent>0.005){ sum+=rent; h+='<tr class="bflat"><td colspan="3">long-term rent · 17B</td><td class="bval">'+money(rent)+'</td></tr>'; }
-    h+='<tr class="btot"><td colspan="2">'+count+' booking'+(count===1?'':'s')+(rent>0.005?' + rent':'')+' = the month\'s earnings</td><td>'+nsum+'n</td><td class="bval">'+money(sum)+'</td></tr>';
+    if(rent>0.005){ sum+=rent; h+='<tr class="bflat"><td colspan="5">long-term rent · 17B</td><td class="bval">'+money(rent)+'</td></tr>'; }
+    h+='<tr class="btot"><td colspan="2">'+count+' booking'+(count===1?'':'s')+(rent>0.005?' + rent':'')+' = the month\'s earnings</td><td class="bnum"></td><td class="bnum">'+nsum+'</td><td class="bnum">'+(nsum>0?money((sum-rent)/nsum):'—')+'</td><td class="bval">'+money(sum)+'</td></tr>';
   } else {
-    h+='<tr class="btot"><td colspan="2">'+count+' booking'+(count===1?'':'s')+'</td><td>'+nsum+'n</td><td class="bval">'+money(sum)+'</td></tr>';
-    h+='<tr><td colspan="4" class="bnote">the bar also counts long-let, blocked and free nights — none of those has a booking to list</td></tr>';
+    h+='<tr class="btot"><td colspan="2">'+count+' booking'+(count===1?'':'s')+'</td><td class="bnum"></td><td class="bnum">'+nsum+'</td><td class="bnum">—</td><td class="bval">'+money(sum)+'</td></tr>';
+    h+='<tr><td colspan="6" class="bnote">the bar also counts long-let, blocked and free nights — none of those has a booking to list</td></tr>';
   }
   return h+'</tbody></table></div>';
 }
