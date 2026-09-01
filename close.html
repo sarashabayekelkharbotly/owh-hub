@@ -61,6 +61,14 @@ textarea{width:100%;min-height:90px;font-family:monospace;font-size:11px;border:
 .drillable:hover{background:#faf5f5}
 .tri{display:inline-block;width:12px;color:var(--soft)}
 .drill td{background:#fbf7f7;padding:1px 8px;border-bottom:0}
+/* the earnings drill as an eye-scannable table (Sarah 2026-08-31): fixed numeric columns,
+   right-aligned, one muted header — compare rows without re-reading prose */
+.dtab{width:100%;border-collapse:collapse;background:#fbf7f7}
+.dtab td,.dtab th{padding:3px 8px;border-bottom:1px solid #f0e9e9;font-size:12px}
+.dtab .dth th{color:var(--soft);font-weight:600;font-size:10.5px;text-align:right;border-bottom:1px solid #e8dede;padding-top:5px}
+.dtab .dth th:first-child{text-align:left}
+.dtab .dtg{text-align:left;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dtab .dtn{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 /* Drill rows carry guest names in Arabic and English side by side. Left to itself the browser
    reorders a mixed line — "عبدالعزيز السعدون 5 of 7 nights" put the 5 on the wrong side of the
    name — so every name is wrapped in <bdi>, which isolates its direction from the text around it.
@@ -255,17 +263,25 @@ function earnDrillRows(){
   var rec=DATA.pnl[FLAT][MONTH]||{}, rows='', sum=0;
   (d.accommodation||[]).slice().sort(function(a,b){ return (a.checkIn||'')<(b.checkIn||'')?-1:1; }).forEach(function(a){
     sum+=a.amount;
-    var split=(a.nights===''||a.nights==null)?'as recorded':(a.nights+' of '+a.total+' night'+(a.total===1?'':'s'));
-    rows+='<tr class="drill"><td class="ditem" title="'+esc((a.guest||'')+'  '+(a.checkIn||'')+' → '+(a.checkOut||'')+'  ·  '+a.accommodation+' over '+a.total+' nights')+'">'+
+    /* COLUMNS, NOT PROSE (Sarah 2026-08-31: "a table that is readable... in a way that i can
+       easily compare with my eyes when i go row by row") — total nights · nights in month · ADR ·
+       earnings, aligned, one header. Uniform per-night rule → the month ADR IS the stay ADR. */
+    var nn=Number(a.nights), asRec=(a.nights===''||a.nights==null);
+    rows+='<tr><td class="dtg" title="'+esc((a.guest||'')+'  '+(a.checkIn||'')+' → '+(a.checkOut||'')+'  ·  '+a.accommodation+' over '+a.total+' nights')+'">'+
       '<span class="ddate">'+dday(a.checkIn)+'</span><bdi class="dname">'+esc(a.guest||a.stayId||'—')+'</bdi>'+
-      '<div class="dmeta">'+split+(a.portal?' · '+esc(a.portal):'')+'</div>'+
-      '</td><td class="damt">'+fmt(toCur(a.amount,'USD'))+'</td><td class="prevcol"></td></tr>';
+      (a.portal?'<span class="dmeta"> · '+esc(a.portal)+'</span>':'')+'</td>'+
+      '<td class="dtn">'+(a.total||'—')+'</td>'+
+      '<td class="dtn">'+(asRec?'—':nn)+'</td>'+
+      '<td class="dtn">'+((!asRec&&nn>0)?fmt(toCur(a.amount/nn,'USD')):'—')+'</td>'+
+      '<td class="dtn">'+fmt(toCur(a.amount,'USD'))+'</td></tr>';
   });
   if(d.rent){ sum+=d.rent;
-    rows+='<tr class="drill"><td class="ditem"><span class="ddate"></span>long-term rent</td>'+
-      '<td class="damt">'+fmt(toCur(d.rent,'USD'))+'</td><td class="prevcol"></td></tr>'; }
+    rows+='<tr><td class="dtg">long-term rent</td><td class="dtn">—</td><td class="dtn">—</td><td class="dtn">—</td>'+
+      '<td class="dtn">'+fmt(toCur(d.rent,'USD'))+'</td></tr>'; }
   if(!rows) return '<tr class="drill"><td class="dnote" colspan="3">no stays and no rent this month</td></tr>';
-  return rows+rdFoot((d.accommodation||[]).length+' stay'+((d.accommodation||[]).length===1?'':'s')+
+  var tab='<tr class="drill"><td colspan="3" style="padding:0"><table class="dtab">'+
+    '<tr class="dth"><th></th><th>total n</th><th>in month</th><th>ADR</th><th>earnings</th></tr>'+rows+'</table></td></tr>';
+  return tab+rdFoot((d.accommodation||[]).length+' stay'+((d.accommodation||[]).length===1?'':'s')+
     (d.rent?' + rent':'')+' · = earnings', sum, rec.revenue?rec.revenue.earnings:sum);
 }
 function otherDrillRows(){
@@ -368,7 +384,14 @@ function ribbon(){ var g=DATA._gen?new Date(DATA._gen):null;
 function deltaCell(v,p){ if(p==null||isNaN(p))return ''; var d=v-p; if(Math.abs(d)<0.5)return '<span class="muted">—</span>'; var pct=p?Math.round(d/Math.abs(p)*100):null; return '<span class="delta '+(d>0?'up':'down')+'">'+(d>0?'+':'')+fmt(d)+(pct!=null?' ('+(pct>0?'+':'')+pct+'%)':'')+'</span>'; }
 
 /* ---------- render ---------- */
-function render(){ ribbon(); $('#app').innerHTML=VIEW==='review'?renderReview():renderCompare();
+function render(){ ribbon();
+  /* PREFETCH the drill-down (Sarah 2026-08-31: "takes a longer time to load than stats"). Stats
+     builds its drill from stays already on the client; this screen asks the server — a full
+     round trip that used to START at the moment of the tap. Fetching here, on every flat/month
+     change, means the answer is normally waiting before the ▼ is pressed. Idempotent + cached
+     per flat|month, so this line costs nothing when the data is already in. */
+  try{ loadRevDetail(); }catch(e){}
+  $('#app').innerHTML=VIEW==='review'?renderReview():renderCompare();
   if(VIEW==='review'){ if(RECUR&&RECUR.month===MONTH) renderRecurring(); else loadRecurring();
                        if(OREV&&OREV.month===MONTH) renderOtherRev(); else loadOtherRev(); } }
 
