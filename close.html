@@ -69,6 +69,8 @@ textarea{width:100%;min-height:90px;font-family:monospace;font-size:11px;border:
 .dtab .dth th:first-child{text-align:left}
 .dtab .dtg{text-align:left;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dtab .dtn{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dtab .dtp{text-align:left;color:var(--soft);font-size:11px;white-space:nowrap}
+.dtab .dtt td{font-weight:700;border-top:2px solid #e8dcdc;border-bottom:0;padding-top:5px}
 /* Drill rows carry guest names in Arabic and English side by side. Left to itself the browser
    reorders a mixed line — "عبدالعزيز السعدون 5 of 7 nights" put the 5 on the wrong side of the
    name — so every name is wrapped in <bdi>, which isolates its direction from the text around it.
@@ -260,29 +262,39 @@ function rdFoot(label,shown,line){
 }
 function earnDrillRows(){
   var d=RDET[rdKey()]; if(!d){ loadRevDetail(); return rdWait(); }
-  var rec=DATA.pnl[FLAT][MONTH]||{}, rows='', sum=0;
+  var rec=DATA.pnl[FLAT][MONTH]||{}, rows='', sum=0, nIn=0;
   (d.accommodation||[]).slice().sort(function(a,b){ return (a.checkIn||'')<(b.checkIn||'')?-1:1; }).forEach(function(a){
     sum+=a.amount;
     /* COLUMNS, NOT PROSE (Sarah 2026-08-31: "a table that is readable... in a way that i can
        easily compare with my eyes when i go row by row") — total nights · nights in month · ADR ·
        earnings, aligned, one header. Uniform per-night rule → the month ADR IS the stay ADR. */
     var nn=Number(a.nights), asRec=(a.nights===''||a.nights==null);
+    if(!asRec) nIn+=nn;
     rows+='<tr><td class="dtg" title="'+esc((a.guest||'')+'  '+(a.checkIn||'')+' → '+(a.checkOut||'')+'  ·  '+a.accommodation+' over '+a.total+' nights')+'">'+
-      '<span class="ddate">'+dday(a.checkIn)+'</span><bdi class="dname">'+esc(a.guest||a.stayId||'—')+'</bdi>'+
-      (a.portal?'<span class="dmeta"> · '+esc(a.portal)+'</span>':'')+'</td>'+
+      '<span class="ddate">'+dday(a.checkIn)+'</span><bdi class="dname">'+esc(a.guest||a.stayId||'—')+'</bdi></td>'+
+      '<td class="dtp">'+esc(a.portal||'')+'</td>'+
       '<td class="dtn">'+(a.total||'—')+'</td>'+
       '<td class="dtn">'+(asRec?'—':nn)+'</td>'+
       '<td class="dtn">'+((!asRec&&nn>0)?fmt(toCur(a.amount/nn,'USD')):'—')+'</td>'+
       '<td class="dtn">'+fmt(toCur(a.amount,'USD'))+'</td></tr>';
   });
   if(d.rent){ sum+=d.rent;
-    rows+='<tr><td class="dtg">long-term rent</td><td class="dtn">—</td><td class="dtn">—</td><td class="dtn">—</td>'+
+    rows+='<tr><td class="dtg">long-term rent</td><td class="dtp"></td><td class="dtn">—</td><td class="dtn">—</td><td class="dtn">—</td>'+
       '<td class="dtn">'+fmt(toCur(d.rent,'USD'))+'</td></tr>'; }
   if(!rows) return '<tr class="drill"><td class="dnote" colspan="3">no stays and no rent this month</td></tr>';
+  /* totals INSIDE the table, each under its own column (Sarah 2026-08-31): Σ nights in month,
+     blended ADR (stays only — rent has no nights), Σ earnings under earnings */
+  var nSt=(d.accommodation||[]).length;
+  rows+='<tr class="dtt"><td colspan="2" class="dtg">'+nSt+' stay'+(nSt===1?'':'s')+(d.rent?' + rent':'')+' · = earnings</td>'+
+    '<td class="dtn"></td><td class="dtn">'+nIn+'</td>'+
+    '<td class="dtn">'+(nIn>0?fmt(toCur((sum-(d.rent||0))/nIn,'USD')):'—')+'</td>'+
+    '<td class="dtn">'+fmt(toCur(sum,'USD'))+'</td></tr>';
   var tab='<tr class="drill"><td colspan="3" style="padding:0"><table class="dtab">'+
-    '<tr class="dth"><th></th><th>total n</th><th>in month</th><th>ADR</th><th>earnings</th></tr>'+rows+'</table></td></tr>';
-  return tab+rdFoot((d.accommodation||[]).length+' stay'+((d.accommodation||[]).length===1?'':'s')+
-    (d.rent?' + rent':'')+' · = earnings', sum, rec.revenue?rec.revenue.earnings:sum);
+    '<tr class="dth"><th></th><th>portal</th><th>total n</th><th>in month</th><th>ADR</th><th>earnings</th></tr>'+rows+'</table></td></tr>';
+  var line=rec.revenue?rec.revenue.earnings:sum, gap=line-sum;
+  if(Math.abs(gap)>0.005) tab+='<tr class="drill"><td class="ditem"><span class="ddate"></span>'+
+    '<b>not explained — check the apportionment</b></td><td class="damt">'+fmt(toCur(gap,'USD'))+'</td><td class="prevcol"></td></tr>';
+  return tab;
 }
 function otherDrillRows(){
   var d=RDET[rdKey()]; if(!d){ loadRevDetail(); return rdWait(); }
