@@ -181,7 +181,8 @@ function txFor(flat,ym,key){
   return own.concat(pool.map(function(t){
     var c={}; for(var k in t) c[k]=t[k];
     c.amount=Math.round((t.amount||0)*share*100)/100;
-    c.desc=(t.desc||'')+' · shared ('+Math.round(share*100)+'% to '+flat+')';
+    // the category is the section header — "Supplies:" on every line was noise (Sarah 2026-09-01)
+    c.desc=String(t.desc||'').replace(/^Supplies:\s*/,'').replace(/^Dry-clean · /,'')+' · '+Math.round(share*100)+'%';
     return c;
   }));
 }
@@ -314,8 +315,9 @@ function drillRows(key){
   var list=txFor(FLAT,MONTH,key);
   if(!list.length) return '<tr class="drill"><td class="dnote" colspan="3">no itemised entries</td></tr>';
   var rows=list.map(function(t){
+    var dd=String(t.desc||'—').replace(/^Supplies:\s*/,'');   // the section header already says it (Sarah 2026-09-01)
     return '<tr class="drill"><td class="ditem" title="'+esc(t.desc||'')+'"><span class="ddate">'+dday(t.date)+'</span>'+
-      '<bdi class="dname">'+esc(t.desc||'—')+'</bdi></td><td class="damt">'+fmt(toCur(t.amount,t.currency))+'</td><td class="prevcol"></td></tr>';
+      '<bdi class="dname">'+esc(dd)+'</bdi></td><td class="damt">'+fmt(toCur(t.amount,t.currency))+'</td><td class="prevcol"></td></tr>';
   }).join('');
   var sum=list.reduce(function(a,t){return a+toCur(t.amount||0,t.currency);},0);
   var foot=key==='supplies'
@@ -408,6 +410,24 @@ function render(){ ribbon();
                        if(OREV&&OREV.month===MONTH) renderOtherRev(); else loadOtherRev(); } }
 
 /* 4a — Review one flat: PORTRAIT (phone-first), current + previous month columns */
+/* THE ALLOCATION, STATED UP FRONT (Sarah 2026-09-01: "specify the allocation — how many
+   submissions leading to how much allocation, somewhere visible"). The dc-share basis is laundry
+   submissions: this flat's count over everyone's, and that ratio is what splits the pooled
+   cleaning and supplies. One line says all of it. */
+function allocLine(){
+  var mine=0, tot=0;
+  (DATA.tx||[]).forEach(function(t){ if(t.ym!==MONTH||t.cat!=='laundry')return; tot++; if(t.flat===FLAT)mine++; });
+  if(!tot) return '';
+  var share=mine/tot, pc=Math.round(share*1000)/10;
+  var pools={'cleaning-labor':'cleaning','supplies':'supplies'}, parts=[];
+  Object.keys(pools).forEach(function(cat){
+    var p=0; (DATA.tx||[]).forEach(function(t){ if(t.flat===POOL_FLAT&&t.ym===MONTH&&t.cat===cat)p+=(t.amount||0); });
+    if(p>0.005) parts.push(pools[cat]+' '+fmt(toCur(p,'EGP'))+' → '+fmt(toCur(p*share,'EGP')));
+  });
+  return '<div style="background:#fbf7f7;border:1px solid var(--line);border-radius:9px;padding:6px 10px;margin-bottom:8px;font-size:11.5px;color:#5a4d4d"><b>Allocation basis:</b> '+
+    mine+' of '+tot+' laundry submissions → <b>'+pc+'%</b> of pooled costs'+
+    (parts.length?' ('+parts.join(' · ')+')':'')+'</div>';
+}
 function renderReview(){
   var rec=DATA.pnl[FLAT][MONTH]; if(!rec)return '<div class="frame port"><div class="card">No data.</div></div>';
   var pm=prevMonth(MONTH), prev=DATA.pnl[FLAT][pm]||null;
@@ -445,6 +465,7 @@ function renderReview(){
   var badge=rec.status==='final'?'<span class="badge b-final">final</span>':'<span class="badge b-open">'+(rec.status==='open'?'open':'in&nbsp;progress')+'</span>';
   return '<div class="frame port"><span class="orient o-port">portrait · phone-first</span>'
     +'<div class="card"><h1>'+FLAT+' · '+MONTH+badge+'</h1><p class="sub">all values in '+CUR+'</p>'
+    +allocLine()
     +'<table><thead><tr><th>Line</th><th>'+MONTH+'</th><th>'+pm+'</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
     +checklist(rec)+'<div id="orevBox"></div><div id="recurBox"></div></div>';
 }
