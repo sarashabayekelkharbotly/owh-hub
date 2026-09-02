@@ -93,6 +93,7 @@ summary::-webkit-details-marker{display:none}
 </div>
 
 <script src="auth.js"></script>
+<script src="net_model.js"></script>
 <script>
 /* CONFIG (ENDPOINT + session) lives in auth.js */
 /* Bundle catalog lives ONLY in the sheet ("Internet catalog" tab) — no code-side defaults, nothing fabricated. */
@@ -123,24 +124,14 @@ function rawStays(){ return D.stays || []; }
 function ymd(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
 function dmon(d){ return d.getDate()+' '+MON[d.getMonth()]; }
 function isLive(s){ var st=(s.status||'').toLowerCase(); return st.indexOf('cancel')<0 && st.indexOf('block')<0; }
-function flatsWithNet(){ return D.meta.flatsOrder; }   // internet covers all flats incl 17B
+/* flatsWithNet · curBundle · lastReading · curStay · netHistory · netCalc live in net_model.js
+   (ONE model shared with today.html — Sarah 2026-09-02: "so that we don't have several
+   calculations"). Do not re-define them here: a page-level copy would shadow the shared one. */
 function nowLocal(){ return new Date(D.meta.asOf+'T'+new Date().toTimeString().slice(0,5)+':00'); }
 
-function curBundle(flat){
-  var b=null; (D.internet.bundles||[]).forEach(function(x){ if(x.flat!==flat)return; var d=pdt(x.cycleStart); if(!d)return;
-    if(!b||d>pdt(b.cycleStart))b=x; }); return b;
-}
-function lastReading(flat, sinceDt){
-  var r=null; (D.internet.readings||[]).forEach(function(x){ if(x.flat!==flat)return; var d=pdt(x.at); if(!d)return;
-    if(sinceDt&&d<sinceDt)return; if(!r||d>pdt(r.at))r=x; }); return r;
-}
 function nextCheckout(flat, from){
   var next=null; STAYS.forEach(function(s){ if(s.flat!==flat)return; var co=day(s.checkOut);
     if(co>=from&&(!next||co<next))next=co; }); return next;
-}
-function curStay(flat, dt){
-  var cur=null; STAYS.forEach(function(s){ if(s.flat!==flat)return;
-    if(day(s.checkIn)<=dt&&dt<day(s.checkOut))cur=s; }); return cur;
 }
 function overageThisMonth(flat){
   var m={}; (D.internet.bundles||[]).forEach(function(x){ if(x.flat!==flat)return; var d=pdt(x.cycleStart); if(!d)return;
@@ -148,107 +139,8 @@ function overageThisMonth(flat){
   for(var k in m) if(m[k]>=2) return true; return false;
 }
 
-/* ============================================================
- * §5.4 — the occupancy-aware pace model (agreed with Sarah 2026-08-02).
- * The old model divided consumption by CALENDAR days since cycle start: vacant days diluted the
- * rate, and a renewal reset everything to zero (the "∞" — Ryen's 15 GB/day vanished the moment
- * 17A's bundle renewed, though the guest never changed).
- * Rate priority: current guest's own measured GB/occupied-day (across renewals) → flat history →
- * portfolio → quota/30, each labelled. Vacant days burn at the flat's measured idle trickle
- * (Zayed's real data: ~2 GB/day). Projection walks the BOOKED calendar day by day.
- * KEEP IN STEP with netWatchCandidates_ in Code.gs — same model drives the Telegram alert.
- * ============================================================ */
-var __nh=null;
-function netHistory(){
-  if(__nh) return __nh;
-  var H={guest:{},flat:{},vac:{},port:{gb:0,days:0}};
-  flatsWithNet().forEach(function(f){
-    var bs=(D.internet.bundles||[]).filter(function(x){return x.flat===f;})
-      .map(function(x){return {b:x,cs:pdt(x.cycleStart)};}).filter(function(x){return x.cs;})
-      .sort(function(a,z){return a.cs-z.cs;});
-    bs.forEach(function(x,bi){
-      var ceN=bs[bi+1]?bs[bi+1].cs:null;
-      var reads=(D.internet.readings||[]).filter(function(r){ var t=pdt(r.at);
-          return r.flat===f&&t&&t>=x.cs&&(!ceN||t<ceN); })
-        .map(function(r){return {t:pdt(r.at),rem:r.remaining};}).sort(function(a,z){return a.t-z.t;});
-      var pts=[{t:x.cs,rem:x.b.quota}].concat(reads);
-      /* THE HOUSE CLOCK (Sarah 2026-08-07). Ownership used to be decided per DAY, at noon — and on
-         a changeover day the incoming guest owns the date, so Ryen's last morning plus the empty
-         12:00→15:00 gap landed on Iman, who had been in the flat 49 minutes: 8.3 GB she never
-         used, which then became her "measured" pace. A stay actually occupies 15:00 check-in day →
-         12:00 check-out day, so each interval is now sliced at those boundaries and every slice
-         charged to whoever really held the flat; the changeover gap burns as vacant idle. A reading
-         taken just after check-in therefore becomes the new guest's true baseline. */
-      var occs=STAYS.filter(function(st){return st.flat===f;}).map(function(st){
-        return {st:st, s0:day(st.checkIn).getTime()+15*3600000, s1:day(st.checkOut).getTime()+12*3600000};
-      }).filter(function(o){return o.s1>o.s0;});
-      function ownerAt(T){ for(var oi=0;oi<occs.length;oi++){ if(T>=occs[oi].s0&&T<occs[oi].s1) return occs[oi].st; } return null; }
-      for(var i=0;i<pts.length-1;i++){
-        var a=pts[i],z=pts[i+1],delta=Math.max(0,a.rem-z.rem),tot=z.t-a.t; if(tot<=0)continue;
-        var cuts=[a.t.getTime(),z.t.getTime()];
-        occs.forEach(function(o){ if(o.s0>a.t.getTime()&&o.s0<z.t.getTime())cuts.push(o.s0);
-                                  if(o.s1>a.t.getTime()&&o.s1<z.t.getTime())cuts.push(o.s1); });
-        cuts.sort(function(p,q){return p-q;});
-        for(var c2=0;c2<cuts.length-1;c2++){
-          var s1=cuts[c2], s2=cuts[c2+1]; if(s2<=s1)continue;
-          var gb=delta*(s2-s1)/tot, df=(s2-s1)/DAYMS;
-          var st=ownerAt((s1+s2)/2);
-          if(st){ var gk=f+'|'+st.id;
-            (H.guest[gk]=H.guest[gk]||{gb:0,days:0}); H.guest[gk].gb+=gb; H.guest[gk].days+=df;
-            (H.flat[f]=H.flat[f]||{gb:0,days:0});     H.flat[f].gb+=gb;   H.flat[f].days+=df;
-            H.port.gb+=gb; H.port.days+=df; }
-          else { (H.vac[f]=H.vac[f]||{gb:0,days:0}); H.vac[f].gb+=gb; H.vac[f].days+=df; }
-        }
-      }
-    });
-  });
-  return (__nh=H);
-}
-function netCalc(flat){
-  var b=curBundle(flat); if(!b) return {state:'nobundle'};
-  var cs=pdt(b.cycleStart); var r=lastReading(flat, cs);
-  var H=netHistory(), asOfD=day(D.meta.asOf);
-  var st=curStay(flat, asOfD), gk=st?flat+'|'+st.id:null;
-  var rate, src;
-  if(gk&&H.guest[gk]&&H.guest[gk].days>=0.5){ rate=H.guest[gk].gb/H.guest[gk].days; src='guest'; }
-  else if(H.flat[flat]&&H.flat[flat].days>=3){ rate=H.flat[flat].gb/H.flat[flat].days; src='history'; }
-  else if(H.port.days>=3){ rate=H.port.gb/H.port.days; src='portfolio'; }
-  else { rate=b.quota/30; src='fair'; }
-  var idle=(H.vac[flat]&&H.vac[flat].days>=1)?Math.min(4,H.vac[flat].gb/H.vac[flat].days):1.5;
-  if(!r) return {state:'waiting', bundle:b, rate:rate, rateSource:src, guest:st};
-  var at=pdt(r.at)||nowLocal(), consumed=Math.max(0,b.quota-r.remaining);
-  // walk the booked calendar from the reading: occupied days at the rate, vacant at the idle trickle
-  var rem=r.remaining, depl=null, walk0=day(ymd(at));
-  for(var k=0;k<60&&rem>0;k++){
-    var dk=new Date(walk0.getTime()+k*DAYMS);
-    rem -= curStay(flat,dk) ? rate : idle;
-    if(rem<=0){ depl=dk; break; }
-  }
-  var ce=new Date(cs.getTime()+30*DAYMS), fairDaily=b.quota/30;
-  /* UNUSED GB DIES AT RENEWAL (Sarah 2026-08-18: "if guests are consuming below the quota then the
-     bundle days are those until the next renewal"). The walk above answers "how long would these GB
-     last", which is a different question and, past the cycle date, an imaginary one — you cannot
-     bank what the renewal wipes. So the headline is DAYS TO RENEWAL, and a depletion date is only
-     reported when it lands before that renewal, because only then does it cost you a bundle. */
-  var asOfD=day(D.meta.asOf);
-  /* Count CALENDAR days to the renewal DATE, not hours to a timestamp: a cycle that started at
-     12:00 renews on the 21st, and "4 days" from a 3.5-day gap reads as one day further off than
-     the date on the wall. */
-  var dRenew=Math.max(0,Math.round((day(ymd(ce))-asOfD)/DAYMS));
-  var dies = depl && depl < ce;                                   // will actually run out on this cycle
-  var dDeplete = dies ? Math.round((depl-asOfD)/DAYMS) : null;
-  /* The walk starts at the READING and burns forward, so with an old reading the depletion date can
-     already be behind us. That is not "runs out tomorrow" — it means the bundle is either empty
-     already or the reading is too old to trust, and both want the same thing: a fresh reading. */
-  var spent = dies && dDeplete<=0;
-  var ageD=Math.max(0,Math.round((asOfD-day(ymd(at)))/DAYMS));    // how old the reading behind all this is
-  return { state:'live', bundle:b, reading:r, at:at, cycleStart:cs, cycleEnd:ce, cycleDays:30,
-           consumed:consumed, remaining:r.remaining, burn:rate, rate:rate, rateSource:src, idle:idle, guest:st,
-           fairDaily:fairDaily, pace: fairDaily>0?rate/fairDaily:0,
-           depletion:depl, dies:dies, spent:spent, daysToRenew:dRenew, daysToDeplete:Math.max(0,dDeplete||0),
-           readingAge:ageD, occupied:!!st, lastsCycle: !dies,
-           pct: b.quota>0?Math.max(0,Math.min(1,r.remaining/b.quota)):0 };
-}
+/* §5.4 occupancy-aware pace model → net_model.js (one copy shared with today.html, 2026-09-02).
+   KEEP IN STEP with netWatchCandidates_ in Code.gs — same model drives the Telegram alert. */
 
 /* ============================================================
  * NEEDS YOU — the whole point of the page (Sarah 2026-08-18: "there is so much going on for each
