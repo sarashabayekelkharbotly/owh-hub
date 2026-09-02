@@ -486,22 +486,32 @@ function renderRecurring(){
   Object.keys(r.rent||{}).sort().forEach(function(f){
     rows+='<tr><td style="padding:3px 8px 3px 0">Rent · '+f+'</td><td>'+inp('rc_'+f,Math.round(r.rent[f]))+' <span class="muted">EGP</span></td></tr>'; });
   if(r.rent17b) rows+='<tr><td style="padding:3px 8px 3px 0">Rent income · '+r.rent17b.flat+'</td><td>'+inp('rc17b',Math.round(r.rent17b.amount))+' <span class="muted">EGP</span></td></tr>';
-  rows+='<tr><td style="padding:3px 8px 3px 0">Ops fee · per flat</td><td>'+inp('rcops',r.ops==null?'':Math.round(r.ops))+' <span class="muted">EGP</span></td></tr>';
+  rows+='<tr><td style="padding:3px 8px 3px 0">Ops fee · per flat</td><td>'+inp('rcops',r.ops==null?'':Math.round(r.ops))+' <span class="muted">EGP'+
+        (r.emad?' · Emad card ×flats = '+Math.round(r.emad.amount)+(r.emad.confirmed?' ✓ paid':''):'')+'</span></td></tr>';
   rows+='<tr><td style="padding:3px 8px 3px 0">Landline · per flat</td><td>'+inp('rcll',r.landline==null?'':Math.round(r.landline*100)/100)+' <span class="muted">EGP</span></td></tr>';
   var s=r.sub||{};
   rows+='<tr><td style="padding:3px 8px 3px 0">Smoobu · total &amp; EUR/USD</td><td>'+inp('rceur',s.eur,58)+' <span class="muted">EUR</span> × '+inp('rcrate',s.rate,52)+
         ' <span class="muted">= $'+(s.perFlatUSD==null?'—':s.perFlatUSD)+' × '+(s.n||'?')+' flats</span></td></tr>';
+  if(r.chm&&r.chm.egp!=null) rows+='<tr><td style="padding:3px 8px 3px 0">Dani · channel mgmt</td><td>'+inp('rcchm',r.chm.egp)+
+        ' <span class="muted">EGP ÷ flats = $'+(r.chm.perFlatUSD==null?'—':r.chm.perFlatUSD)+' each</span></td></tr>';
+  var railCard=function(label,card,id){ if(!card)return'';
+    return '<tr><td style="padding:3px 8px 3px 0">'+label+'</td><td>'+
+      (card.confirmed?Math.round(card.amount).toLocaleString()+' <span class="muted">EGP · ✓ paid — fix in WeShare</span>'
+                     :inp(id,Math.round(card.amount))+' <span class="muted">EGP</span>')+'</td></tr>'; };
+  rows+=railCard('Amal · cleaning salary',r.amal,'rcamal');
+  rows+=railCard('Gardener · 17A',r.grdn,'rcgrdn');
   el.innerHTML='<div class="card"><h3 style="margin:0 0 6px">Recurring · '+r.month+'</h3>'+
     '<table style="font-size:12.5px">'+rows+'</table>'+
     '<div class="btnrow" style="margin-top:8px"><button class="btn sec" onclick="saveRecurring()">Save</button><span class="muted" id="rcmsg"></span></div>'+
-    '<div class="legend">Carried forward each month automatically. Change a figure here and every later month follows it. Rent and the Smoobu fee also appear in WeShare to confirm who paid; the landline appears there on its quarterly due date.</div></div>';
+    '<div class="legend">Carried forward each month automatically. Change a figure here and every later month follows it. Rent, Smoobu, Amal, Dani, the gardener and Emad’s card (ops fee × flats) also appear in WeShare as pending cards to confirm who paid; the landline appears there on its quarterly due date. A card already confirmed ✓ is a record of money that moved — fix those in WeShare itself. 17B’s rent income also lands in WeShare each month as a confirmed record: Khaled received it, it is Sarah’s, and he pays Zayed 2000’s rent from it (that card defaults to him as payer).</div></div>';
 }
 function saveRecurring(){
   var rent={}; Object.keys(RECUR.rent||{}).forEach(function(f){ var e=document.getElementById('rc_'+f); if(e)rent[f]=e.value.trim(); });
   var g=function(id){ var e=document.getElementById(id); return e?e.value.trim():''; };
   document.getElementById('rcmsg').textContent='saving…';
   api('props_set_recurring',{month:MONTH,user:(ME&&ME.user)||'',rent:JSON.stringify(rent),
-      rent17b:g('rc17b'),ops:g('rcops'),landline:g('rcll'),subEur:g('rceur'),subRate:g('rcrate')})
+      rent17b:g('rc17b'),ops:g('rcops'),landline:g('rcll'),subEur:g('rceur'),subRate:g('rcrate'),
+      chmEgp:g('rcchm'),amal:g('rcamal'),grdn:g('rcgrdn')})
     .then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad');
       RECUR=j.recurring; renderRecurring();
       document.getElementById('rcmsg').textContent='saved ✓ — refresh to see the P&L follow';
