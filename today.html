@@ -81,6 +81,7 @@ a.tab{font-size:11px;color:var(--red);text-decoration:none;font-weight:700}
 </div>
 
 <script src="auth.js"></script>
+<script src="net_model.js"></script>
 <script>
 /* CONFIG lives in auth.js: ENDPOINT + the session token. No password or shared
    secret in this file — who you are comes from the signed-in session. */
@@ -381,21 +382,21 @@ function dotp(portal){ var p=(portal||'').toLowerCase(); var c=p.indexOf('airbnb
 
 /* ---- internet depletion (Screen 8 mirrors here, §13.2) ---- */
 function pdt(s){ s=(s||'').toString().trim(); if(!s)return null; s=s.replace(' ','T'); if(s.length<=10)s+='T00:00'; var d=new Date(s); return isNaN(d)?null:d; }
+/* ONE model — net_model.js, shared with internet.html (Sarah 2026-09-02: Today said 12 Sep where
+   the internet screen said 14 Sep, because Today ran its own cruder calendar-day burn model; "so
+   that we don't have several calculations"). Today surfaces only the interrupt tier: a renewal
+   today/tomorrow (a real-world errand — 8A's cash card needs a pre-charge), a bundle about to die
+   (≤2 days), or one dying before its renewal while a guest is in the flat for those dark days.
+   The internet screen remains the place with the full countdowns. */
 function netAlerts(){
-  if(!D.internet) return [];
-  var asOf=day(D.meta.asOf), out=[];
+  if(!D.internet||!window.netCalc) return [];
+  var out=[];
   (D.meta.flatsOrder||[]).forEach(function(f){
-    var b=null; D.internet.bundles.forEach(function(x){ if(x.flat!==f)return; var d=pdt(x.cycleStart); if(d&&(!b||d>pdt(b.cycleStart)))b=x; });
-    if(!b)return;
-    var cs=pdt(b.cycleStart), r=null;
-    D.internet.readings.forEach(function(x){ if(x.flat!==f)return; var d=pdt(x.at); if(!d||(cs&&d<cs))return; if(!r||d>pdt(r.at))r=x; });
-    if(!r)return;
-    var at=pdt(r.at)||asOf, consumed=Math.max(0,b.quota-r.remaining), elapsed=(at-cs)/DAYMS;
-    if(elapsed<=0.05)return; var burn=consumed/elapsed; if(burn<=0)return;
-    var depl=new Date(at.getTime()+(r.remaining/burn)*DAYMS), deplDay=day(ymd(depl));
-    var co=null; STAYS.forEach(function(s){ if(s.flat!==f)return; var c=day(s.checkOut); if(c>=asOf&&(!co||c<co))co=c; });
-    var soon=(deplDay-asOf)<=DAYMS, before=co&&deplDay<co;               // soon = 1 day before depletion (or sooner)
-    if(soon||before) out.push({flat:f,depl:depl,co:co,soon:soon,before:before});
+    var c=netCalc(f); if(c.state!=='live')return;
+    if(c.daysToRenew<=1){ out.push({flat:f,toRen:c.daysToRenew,renew:c.cycleEnd}); return; }
+    if(!c.dies)return;                                    // outlives its cycle — the renewal wipes the rest
+    var st=c.depletion?curStay(f,c.depletion):null;       // someone in the flat on the day it dies?
+    if(c.daysToDeplete<=2||st) out.push({flat:f,depl:c.depletion,ren:c.cycleEnd,soon:c.daysToDeplete<=2});
   });
   return out;
 }
@@ -499,8 +500,9 @@ function needs(cm,pmY){
   if(anyOpen) items.push({t:'info',txt:'<b>'+pmY+' not closed</b> — review &amp; mark final on the close screen.'});
   var pays=directNeedsPay(), nets=netAlerts();
   nets.forEach(function(a){ items.unshift({t:'warn',txt:'<b>Internet — '+esc(a.flat)+'</b> '+
-    (a.soon ? 'about to run out — depletes <b>'+dmon(ymd(a.depl))+'</b>.'
-            : 'may deplete <b>'+dmon(ymd(a.depl))+'</b>, before check-out '+dmon(ymd(a.co))+'.')+
+    (a.toRen!=null ? 'renews '+(a.toRen===0?'<b>today</b>':'<b>tomorrow</b> ('+dmon(ymd(a.renew))+')')+' — the cycle ends and the quota resets.'
+     : a.soon ? 'about to run out — depletes <b>'+dmon(ymd(a.depl))+'</b>.'
+            : 'may deplete <b>'+dmon(ymd(a.depl))+'</b>, before it renews '+dmon(ymd(a.ren))+' — a guest is in the flat.')+
     ' <a class="tab" href="internet.html">Top up / renew →</a>'}); });
   if(ALERTS && ALERTS.pendingCount>0) items.unshift({t:'warn',txt:'<b>'+ALERTS.pendingCount+' expense'+(ALERTS.pendingCount>1?'s':'')+' awaiting confirmation</b> in WeShare — confirm who paid and they flow to the P&amp;L.'});
   /* §5.2d — a big bill touching closed months is a DECISION, not a sync step. Both choices spelled
