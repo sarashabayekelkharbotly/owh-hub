@@ -46,6 +46,8 @@ thead th{font-size:10.5px;color:var(--soft);font-weight:700}
 .attr td{color:var(--soft)}
 .prevcol{color:#9a8c8c}
 .zero{color:#cabcbc}.pos{color:var(--g)}.neg{color:var(--rr)}
+.momg{color:var(--g);font-weight:700;font-size:11px;white-space:nowrap}
+.momb{color:var(--rr);font-weight:700;font-size:11px;white-space:nowrap}
 .delta.up{color:var(--g)}.delta.down{color:var(--rr)}
 .checklist div{padding:5px 0;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;font-size:12.5px}
 .ok{color:var(--g);font-weight:700}.warn{color:var(--amber);font-weight:700}
@@ -253,7 +255,7 @@ function loadRevDetail(){
     RDET_BUSY[k]=0; if(j&&j.ok){ RDET[k]=j; render(); }
   }).catch(function(){ RDET_BUSY[k]=0; });
 }
-function rdWait(){ return '<tr class="drill"><td class="dnote" colspan="3">loading…</td></tr>'; }
+function rdWait(){ return '<tr class="drill"><td class="dnote" colspan="4">loading…</td></tr>'; }
 function rdFoot(label,shown,line){
   var gap=line-shown, h='<tr class="drill dfootr"><td class="dnote">'+label+'</td>'+
     '<td class="damt">'+fmt(toCur(shown,'USD'))+'</td><td class="prevcol"></td></tr>';
@@ -282,7 +284,7 @@ function earnDrillRows(){
   if(d.rent){ sum+=d.rent;
     rows+='<tr><td class="dtg">long-term rent</td><td class="dtp"></td><td class="dtn">—</td><td class="dtn">—</td><td class="dtn">—</td>'+
       '<td class="dtn">'+fmt(toCur(d.rent,'USD'))+'</td></tr>'; }
-  if(!rows) return '<tr class="drill"><td class="dnote" colspan="3">no stays and no rent this month</td></tr>';
+  if(!rows) return '<tr class="drill"><td class="dnote" colspan="4">no stays and no rent this month</td></tr>';
   /* totals INSIDE the table, each under its own column (Sarah 2026-08-31): Σ nights in month,
      blended ADR (stays only — rent has no nights), Σ earnings under earnings */
   var nSt=(d.accommodation||[]).length;
@@ -290,7 +292,7 @@ function earnDrillRows(){
     '<td class="dtn"></td><td class="dtn">'+nIn+'</td>'+
     '<td class="dtn">'+(nIn>0?fmt(toCur((sum-(d.rent||0))/nIn,'USD')):'—')+'</td>'+
     '<td class="dtn">'+fmt(toCur(sum,'USD'))+'</td></tr>';
-  var tab='<tr class="drill"><td colspan="3" style="padding:0"><table class="dtab">'+
+  var tab='<tr class="drill"><td colspan="4" style="padding:0"><table class="dtab">'+
     '<tr class="dth"><th></th><th>portal</th><th>total n</th><th>in month</th><th>ADR</th><th>earnings</th></tr>'+rows+'</table></td></tr>';
   var line=rec.revenue?rec.revenue.earnings:sum, gap=line-sum;
   if(Math.abs(gap)>0.005) tab+='<tr class="drill"><td class="ditem"><span class="ddate"></span>'+
@@ -307,22 +309,22 @@ function otherDrillRows(){
       '<div class="dmeta">'+esc(o.cat||'')+(o.via?' · '+esc(o.via):'')+'</div>'+
       '</td><td class="damt">'+fmt(toCur(o.amount,'USD'))+'</td><td class="prevcol"></td></tr>';
   });
-  if(!rows) return '<tr class="drill"><td class="dnote" colspan="3">nothing recorded — add it in the panel below</td></tr>';
+  if(!rows) return '<tr class="drill"><td class="dnote" colspan="4">nothing recorded — add it in the panel below</td></tr>';
   return rows+rdFoot(list.length+' entr'+(list.length===1?'y':'ies'), sum, rec.revenue?rec.revenue.other:sum);
 }
 
 function drillRows(key){
   var list=txFor(FLAT,MONTH,key);
-  if(!list.length) return '<tr class="drill"><td class="dnote" colspan="3">no itemised entries</td></tr>';
+  if(!list.length) return '<tr class="drill"><td class="dnote" colspan="4">no itemised entries</td></tr>';
   var rows=list.map(function(t){
     var dd=String(t.desc||'—').replace(/^Supplies:\s*/,'');   // the section header already says it (Sarah 2026-09-01)
     return '<tr class="drill"><td class="ditem" title="'+esc(t.desc||'')+'"><span class="ddate">'+dday(t.date)+'</span>'+
-      '<bdi class="dname">'+esc(dd)+'</bdi></td><td class="damt">'+fmt(toCur(t.amount,t.currency))+'</td><td class="prevcol"></td></tr>';
+      '<bdi class="dname">'+esc(dd)+'</bdi></td><td class="damt">'+fmt(toCur(t.amount,t.currency))+'</td><td class="prevcol"></td><td class="prevcol"></td></tr>';
   }).join('');
   var sum=list.reduce(function(a,t){return a+toCur(t.amount||0,t.currency);},0);
   var foot=key==='supplies'
-    ? '<tr class="drill dfootr"><td class="dnote" colspan="3">raw logged supplies — reallocated by dry-clean share</td></tr>'
-    : '<tr class="drill dfootr"><td class="dnote">'+list.length+' entr'+(list.length>1?'ies':'y')+'</td><td class="damt">'+fmt(sum)+'</td><td class="prevcol"></td></tr>';
+    ? '<tr class="drill dfootr"><td class="dnote" colspan="4">raw logged supplies — reallocated by dry-clean share</td></tr>'
+    : '<tr class="drill dfootr"><td class="dnote">'+list.length+' entr'+(list.length>1?'ies':'y')+'</td><td class="damt">'+fmt(sum)+'</td><td class="prevcol"></td><td class="prevcol"></td></tr>';
   return rows+foot;
 }
 var fmt=function(n){return (n<0?'-':'')+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0});};
@@ -439,12 +441,12 @@ function renderReview(){
   var earnId=FLAT+'|'+MONTH+'|__earnings', earnOpen=!!OPEN[earnId];
   rows+='<tr class="drillable" onclick="toggleDrill(\''+earnId+'\')"><td><span class="tri">'+(earnOpen?'▾':'▸')+'</span>Earnings</td>'+
         '<td>'+m(toCur(rec.revenue.earnings,'USD'))+'</td>'+
-        '<td class="prevcol">'+m(prev?toCur(prev.revenue.earnings,'USD',pm):null)+'</td></tr>';
+        '<td class="prevcol">'+m(prev?toCur(prev.revenue.earnings,'USD',pm):null)+'</td>'+mom(toCur(rec.revenue.earnings,'USD'),prev?toCur(prev.revenue.earnings,'USD',pm):null,false)+'</tr>';
   if(earnOpen) rows+=earnDrillRows();
   var othId=FLAT+'|'+MONTH+'|__other', othOpen=!!OPEN[othId];
   rows+='<tr class="drillable" onclick="toggleDrill(\''+othId+'\')"><td><span class="tri">'+(othOpen?'▾':'▸')+'</span>Other revenue</td>'+
         '<td>'+m(toCur(rec.revenue.other,'USD'))+'</td>'+
-        '<td class="prevcol">'+m(prev?toCur(prev.revenue.other,'USD',pm):null)+'</td></tr>';
+        '<td class="prevcol">'+m(prev?toCur(prev.revenue.other,'USD',pm):null)+'</td>'+mom(toCur(rec.revenue.other,'USD'),prev?toCur(prev.revenue.other,'USD',pm):null,false)+'</tr>';
   if(othOpen) rows+=otherDrillRows();
   rows+=r3('Total revenue', rec.revenue.total,'USD', prev?prev.revenue.total:null,'tot');
   rows+=sec('Costs');
@@ -456,7 +458,7 @@ function renderReview(){
        on the line itself, not only inside the drill-down, so a moved figure can't pass unnoticed. */
     if(txFor(FLAT,MONTH,c.key).some(function(t){return /\[restated /i.test(t.desc||'');}))
       lbl+=' <span class="badge b-open" title="a rebuild changed this month — the drill-down shows the old figure">restated</span>';
-    rows+='<tr'+(canDrill?' class="drillable" onclick="toggleDrill(\''+id+'\')"':'')+'><td>'+lbl+'</td><td>'+m(toCur(c.amount,c.currency))+'</td><td class="prevcol">'+m(pc.amount==null?null:toCur(pc.amount,c.currency,prevMonth(MONTH)))+'</td></tr>';
+    rows+='<tr'+(canDrill?' class="drillable" onclick="toggleDrill(\''+id+'\')"':'')+'><td>'+lbl+'</td><td>'+m(toCur(c.amount,c.currency))+'</td><td class="prevcol">'+m(pc.amount==null?null:toCur(pc.amount,c.currency,prevMonth(MONTH)))+'</td>'+mom(toCur(c.amount,c.currency),pc.amount==null?null:toCur(pc.amount,c.currency,prevMonth(MONTH)),true)+'</tr>';
     if(open) rows+=drillRows(c.key);
   });
   rows+=r3('Net', rec.net,'USD', prev?prev.net:null,'net');
@@ -466,7 +468,7 @@ function renderReview(){
   return '<div class="frame port"><span class="orient o-port">portrait · phone-first</span>'
     +'<div class="card"><h1>'+FLAT+' · '+MONTH+badge+'</h1><p class="sub">all values in '+CUR+'</p>'
     +allocLine()
-    +'<table><thead><tr><th>Line</th><th>'+MONTH+'</th><th>'+pm+'</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<table><thead><tr><th>Line</th><th>'+MONTH+'</th><th>'+pm+'</th><th>Δ MoM</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
     +checklist(rec)+'<div id="orevBox"></div><div id="recurBox"></div></div>';
 }
 
@@ -593,8 +595,19 @@ function orevSave(del){
 }
 function orevDelete(){ if(OREV_EDIT&&OREV_EDIT.ref) orevSave(true); }
 
-function sec(t){ return '<tr class="sec"><td colspan="3">'+t+'</td></tr>'; }
-function r3(label,val,native,prev,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td><td>'+m(toCur(val,native))+'</td><td class="prevcol">'+m(prev==null?null:toCur(prev,native,prevMonth(MONTH)))+'</td></tr>'; }
+function sec(t){ return '<tr class="sec"><td colspan="4">'+t+'</td></tr>'; }
+function r3(label,val,native,prev,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td><td>'+m(toCur(val,native))+'</td><td class="prevcol">'+m(prev==null?null:toCur(prev,native,prevMonth(MONTH)))+'</td>'+mom(toCur(val,native),prev==null?null:toCur(prev,native,prevMonth(MONTH)),false)+'</tr>'; }
+/* MoM Δ — absolute change vs last month, in the display currency the row shows (Sarah 2026-09-02).
+   Direction has meaning, not just sign: a cost growing is red and shrinking is green; revenue and
+   net are the reverse. Computed from the same converted figures the two columns display, so the
+   three cells always reconcile by eye. */
+function mom(curV,prevV,isCost){
+  if(prevV==null||curV==null||isNaN(curV)||isNaN(prevV)) return '<td class="prevcol"></td>';
+  var d=curV-prevV;
+  if(Math.abs(d)<0.005) return '<td class="prevcol"><span class="zero">—</span></td>';
+  var good=isCost? d<0 : d>0;
+  return '<td class="prevcol"><span class="'+(good?'momg':'momb')+'">'+(d>0?'▲':'▼')+' '+fmt1(Math.abs(d))+'</span></td>';
+}
 
 /* The rate belongs to the month on screen, not to "now" (DATA.meta.fx.current is simply the last
    filled row in the tab). byMonth/carried arrive with the payload from v139; before that deploys we
