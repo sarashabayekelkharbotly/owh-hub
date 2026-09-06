@@ -253,6 +253,7 @@ function render(){
 
   // ---- needs you
   h+=needs(cm,pmY);
+  h+=ownerCard();
 
   /* 🔍 guest lookup (Sarah 2026-08-31: "i have a phone number and a first name") — searches every
      stay in the payload, cancelled included. Phone matching is FORMAT-BLIND: both sides reduce to
@@ -493,6 +494,29 @@ function orevAnswer(kind,id){
   });
 }
 
+/* Owner accounts — the partner flats' STANDING balances, on the front page (Sarah 2026-09-03:
+   "these balances have to display on the hub"). One row per partner flat, taken from the latest
+   month the waterfall has computed: what she owes / we hold, the float, and payouts not yet made.
+   Hidden entirely while every figure is zero — a card of zeros is noise. */
+function ownerCard(){
+  var rowsH='';
+  Object.keys(D.pnl||{}).forEach(function(f){
+    var byM=D.pnl[f]||{}, latest=null, pl=null;
+    Object.keys(byM).forEach(function(m){ if(byM[m]&&byM[m].partnerLedger&&(!latest||m>latest)){ latest=m; pl=byM[m].partnerLedger; } });
+    if(!pl) return;
+    if(Math.abs(pl.balanceAfter)<0.005&&pl.floatAfter<0.005&&pl.outstanding<0.005&&!pl.payable) return;
+    var bits=[];
+    if(pl.balanceAfter<-0.005) bits.push('owes us <b>$'+fmt(-pl.balanceAfter)+'</b>');
+    else if(pl.balanceAfter>0.005) bits.push('we hold <b>$'+fmt(pl.balanceAfter)+'</b> of her funds');
+    bits.push('float $'+fmt(pl.floatAfter)+' / '+fmt(pl.floatTarget));
+    if(pl.outstanding>0.005) bits.push('<span style="color:var(--red,#cc5f5f);font-weight:700">unpaid payouts $'+fmt(pl.outstanding)+'</span>');
+    else if(pl.payable>0.005) bits.push('payable $'+fmt(pl.payable));
+    rowsH+='<div style="padding:4px 0;font-size:12.5px"><b>'+esc(f)+'</b> · '+latest+' — '+bits.join(' · ')+'</div>';
+  });
+  if(!rowsH) return '';
+  return '<div class="card"><h3>Owner accounts<span class="rt"><a class="tab" href="close.html">statements →</a></span></h3>'+rowsH+
+    '<div class="legend">The Clause-7 waterfall, standing as of the latest computed month: prepayments and month results move the balance, the float fills to its target before anything is paid, and unpaid payouts stay red until the payout is recorded in WeShare.</div></div>';
+}
 function needs(cm,pmY){
   var items=[];
   if(!D.meta.fx.isCurrentMonthSet) items.push({t:'warn',txt:'<b>FX not set for '+D.meta.currentMonth+'</b> — carrying '+(D.meta.fx.current||'?')+' from last close.'});
@@ -504,6 +528,11 @@ function needs(cm,pmY){
      : a.soon ? 'about to run out — depletes <b>'+dmon(ymd(a.depl))+'</b>.'
             : 'may deplete <b>'+dmon(ymd(a.depl))+'</b>, before it renews '+dmon(ymd(a.ren))+' — a guest is in the flat.')+
     ' <a class="tab" href="internet.html">Top up / renew →</a>'}); });
+  // an owner payout the statements say is due but no 🏦 entry has settled — Clause 7.2's 7th-of-month wire
+  Object.keys(D.pnl||{}).forEach(function(fO){ var byMO=D.pnl[fO]||{}, plO=null, lO=null;
+    Object.keys(byMO).forEach(function(mO){ if(byMO[mO]&&byMO[mO].partnerLedger&&(!lO||mO>lO)){ lO=mO; plO=byMO[mO].partnerLedger; } });
+    if(plO&&plO.outstanding>0.005) items.unshift({t:'warn',txt:'<b>'+esc(fO)+' — owner payout $'+fmt(plO.outstanding)+' due</b> (settlement by the 7th). Wire it, then log it as 🏦 Owner payout in WeShare.'});
+  });
   if(ALERTS && ALERTS.pendingCount>0) items.unshift({t:'warn',txt:'<b>'+ALERTS.pendingCount+' expense'+(ALERTS.pendingCount>1?'s':'')+' awaiting confirmation</b> in WeShare — confirm who paid and they flow to the P&amp;L.'});
   /* §5.2d — a big bill touching closed months is a DECISION, not a sync step. Both choices spelled
      out with their numbers so it can be taken from here without opening the sheet first. */
