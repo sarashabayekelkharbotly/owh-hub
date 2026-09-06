@@ -463,7 +463,19 @@ function renderReview(){
   });
   rows+=r3('Net', rec.net,'USD', prev?prev.net:null,'net');
   if(rec.attribution){ rows+=sec('Internal attribution'); rows+=r3('Khaled',rec.attribution.khaled,'USD',prev&&prev.attribution?prev.attribution.khaled:null,'attr'); rows+=r3('Sarah',rec.attribution.sarah,'USD',prev&&prev.attribution?prev.attribution.sarah:null,'attr'); }
-  if(rec.partnerView){ rows+=sec('Your payout'); rows+=r3('Management fee ('+Math.round(rec.partnerView.managementFeePct*100)+'%)',-rec.partnerView.managementFee,'USD',null,'attr'); rows+=r3('Net payout',rec.partnerView.netPayout,'USD',null,'net'); }
+  if(rec.partnerView&&!rec.partnerLedger){ rows+=sec('Your payout'); rows+=r3('Management fee ('+Math.round(rec.partnerView.managementFeePct*100)+'%)',-rec.partnerView.managementFee,'USD',null,'attr'); rows+=r3('Net payout',rec.partnerView.netPayout,'USD',null,'net'); }
+  /* Clause-7 waterfall (VW1): result → pays down the carried balance → fills the float → payable.
+     Same four lines for Sarah and for the owner — the statement IS the calculation. */
+  if(rec.partnerLedger){ var pl=rec.partnerLedger;
+    rows+=sec('Owner settlement');
+    rows+=r3('Management fee ('+Math.round(pl.feePct*100)+'%)',-pl.fee,'USD',null,'attr');
+    rows+=r3('Month result (owner share − costs)',pl.monthResult,'USD',null,'attr');
+    if(pl.prepay>0.005) rows+=r3('Owner prepayment received',pl.prepay,'USD',null,'attr');
+    rows+=r3('Balance carried '+(pl.balanceAfter<-0.005?'(owed to manager)':pl.balanceAfter>0.005?'(owner funds held)':''),pl.balanceAfter,'USD',null,'attr');
+    rows+=r3('Float · target '+fmt(pl.floatTarget)+(pl.floatRetained>0.005?' · retained '+fmt(pl.floatRetained):'')+(pl.floatDrawn>0.005?' · drawn '+fmt(pl.floatDrawn):''),pl.floatAfter,'USD',null,'attr');
+    rows+=r3('Net payable to owner',pl.payable,'USD',null,'net');
+    if(pl.outstanding>0.005||pl.paidToDate>0.005) rows+=r3('Payouts outstanding (all months − paid)',pl.outstanding,'USD',null,'attr');
+  }
   var badge=rec.status==='final'?'<span class="badge b-final">final</span>':'<span class="badge b-open">'+(rec.status==='open'?'open':'in&nbsp;progress')+'</span>';
   return '<div class="frame port"><span class="orient o-port">portrait · phone-first</span>'
     +'<div class="card"><h1>'+FLAT+' · '+MONTH+badge+'</h1><p class="sub">all values in '+CUR+'</p>'
@@ -494,7 +506,10 @@ function renderRecurring(){
               :inp('rc_'+f,Math.round(rr.amount))+' <span class="muted">EGP</span>')+dayInp('rent_'+f,dd['rent|'+f]||dd.rent)+'</td></tr>'; });
   if(r.rent17b) rows+='<tr><td style="padding:3px 8px 3px 0">Rent income · '+r.rent17b.flat+'</td><td>'+inp('rc17b',Math.round(r.rent17b.amount))+' <span class="muted">EGP</span>'+dayInp('r17b',dd.r17b)+'</td></tr>';
   rows+='<tr><td style="padding:3px 8px 3px 0">Ops fee · per flat</td><td>'+inp('rcops',r.ops==null?'':Math.round(r.ops))+' <span class="muted">EGP'+
-        (r.emad?' · Emad card ×flats = '+Math.round(r.emad.amount)+(r.emad.confirmed?' ✓ paid':''):'')+'</span>'+dayInp('emad',dd.emad)+'</td></tr>';
+        (r.emad?' · Emad card = '+Math.round(r.emad.amount)+(r.emad.confirmed?' ✓ paid':''):'')+'</span>'+dayInp('emad',dd.emad)+'</td></tr>';
+  if(r.opsStartVW1!==undefined)
+    rows+='<tr><td style="padding:3px 8px 3px 0">Ops fee · VW1 goes live</td><td><input id="rcopsstart" value="'+esc(r.opsStartVW1||'')+'" placeholder="yyyy-MM" style="width:70px;font-family:inherit;font-size:12px;border:1px solid var(--line,#ddd);border-radius:7px;padding:3px 6px;text-align:center">'+
+        ' <span class="muted">'+(r.opsStartVW1?'live — same fee as every flat, Emad’s card follows':'empty = not live yet; set the month and Save')+'</span></td></tr>';
   rows+='<tr><td style="padding:3px 8px 3px 0">Landline · per flat</td><td>'+inp('rcll',r.landline==null?'':Math.round(r.landline*100)/100)+' <span class="muted">EGP</span></td></tr>';
   var s=r.sub||{};
   rows+='<tr><td style="padding:3px 8px 3px 0">Smoobu · total &amp; EUR/USD</td><td>'+inp('rceur',s.eur,58)+' <span class="muted">EUR</span> × '+inp('rcrate',s.rate,52)+
@@ -521,7 +536,7 @@ function saveRecurring(){
   document.getElementById('rcmsg').textContent='saving…';
   api('props_set_recurring',{month:MONTH,user:(ME&&ME.user)||'',rent:JSON.stringify(rent),
       rent17b:g('rc17b'),ops:g('rcops'),landline:g('rcll'),subEur:g('rceur'),subRate:g('rcrate'),
-      chmEgp:g('rcchm'),amal:g('rcamal'),grdn:g('rcgrdn'),dueDays:JSON.stringify(dd)})
+      chmEgp:g('rcchm'),amal:g('rcamal'),grdn:g('rcgrdn'),opsStart:g('rcopsstart'),dueDays:JSON.stringify(dd)})
     .then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad');
       RECUR=j.recurring; renderRecurring();
       document.getElementById('rcmsg').textContent='saved ✓ — refresh to see the P&L follow';
