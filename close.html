@@ -182,6 +182,7 @@ function txFor(flat,ym,key){
   var share=fromPool/poolTot;
   return own.concat(pool.map(function(t){
     var c={}; for(var k in t) c[k]=t[k];
+    c._pool=true;
     c.amount=Math.round((t.amount||0)*share*100)/100;
     // the category is the section header — "Supplies:" on every line was noise (Sarah 2026-09-01)
     c.desc=String(t.desc||'').replace(/^Supplies:\s*/,'').replace(/^Dry-clean · /,'')+' · '+Math.round(share*100)+'%';
@@ -313,19 +314,52 @@ function otherDrillRows(){
   return rows+rdFoot(list.length+' entr'+(list.length===1?'y':'ies'), sum, rec.revenue?rec.revenue.other:sum);
 }
 
+/* Pooled cleaning-labor becomes one line per SUBMISSION (Sarah 2026-09-03: "i need it with each
+   submission") — the flat's share ÷ its own submissions, dated like the cleans they price. The
+   last line absorbs the rounding so the lines sum to the figure above them, always. Accrual
+   months are already per-submission and pass through untouched. */
+function expandClean_(list,ym){
+  var out=[];
+  list.forEach(function(t){
+    if(!t._pool||t.cat!=='cleaning-labor'){ out.push(t); return; }
+    var subs=(DATA.tx||[]).filter(function(x){return x.flat===FLAT&&x.ym===ym&&x.cat==='laundry';})
+      .sort(function(a,b){return String(a.date)<String(b.date)?-1:1;});
+    if(!subs.length){ out.push(t); return; }
+    var per=Math.round(t.amount/subs.length*100)/100, acc=0;
+    subs.forEach(function(s,i){
+      var amt=(i===subs.length-1)?Math.round((t.amount-acc)*100)/100:per; acc+=per;
+      out.push({date:s.date,desc:'Amal — per submission',amount:amt,currency:t.currency,cat:t.cat});
+    });
+  });
+  return out;
+}
+// one line, always: the section header names the category, so the row keeps only what's unique
+function drillDesc_(t){
+  return String(t.desc||'—').replace(/^Supplies:\s*/,'')
+    .replace(/^Dry-clean submission \(app log\)$/,'submission')
+    .replace(/^Dry-clean(?: · .*)?$/,'submission');
+}
 function drillRows(key){
-  var list=txFor(FLAT,MONTH,key);
-  if(!list.length) return '<tr class="drill"><td class="dnote" colspan="4">no itemised entries</td></tr>';
-  var rows=list.map(function(t){
-    var dd=String(t.desc||'—').replace(/^Supplies:\s*/,'');   // the section header already says it (Sarah 2026-09-01)
-    return '<tr class="drill"><td class="ditem" title="'+esc(t.desc||'')+'"><span class="ddate">'+dday(t.date)+'</span>'+
-      '<bdi class="dname">'+esc(dd)+'</bdi></td><td class="damt">'+fmt(toCur(t.amount,t.currency))+'</td><td class="prevcol"></td><td class="prevcol"></td></tr>';
-  }).join('');
+  var pm=prevMonth(MONTH);
+  var list=expandClean_(txFor(FLAT,MONTH,key),MONTH);
+  var plist=expandClean_(txFor(FLAT,pm,key),pm);          // last month's drill, side by side (Sarah 2026-09-03)
+  if(!list.length&&!plist.length) return '<tr class="drill"><td class="dnote" colspan="4">no itemised entries</td></tr>';
+  var row=function(t,prevCol){
+    return '<tr class="drill"'+(prevCol?' style="opacity:.65"':'')+'><td class="ditem" title="'+esc(t.desc||'')+'"><span class="ddate">'+dday(t.date)+'</span>'+
+      '<bdi class="dname">'+esc(drillDesc_(t))+'</bdi></td>'+
+      (prevCol?'<td></td><td class="damt prevcol">':'<td class="damt">')+fmt(toCur(t.amount,t.currency,prevCol?pm:undefined))+'</td>'+
+      (prevCol?'':'<td class="prevcol"></td>')+'<td class="prevcol"></td></tr>';
+  };
+  var rows=list.map(function(t){return row(t,false);}).join('');
   var sum=list.reduce(function(a,t){return a+toCur(t.amount||0,t.currency);},0);
-  var foot=key==='supplies'
-    ? '<tr class="drill dfootr"><td class="dnote" colspan="4">raw logged supplies — reallocated by dry-clean share</td></tr>'
-    : '<tr class="drill dfootr"><td class="dnote">'+list.length+' entr'+(list.length>1?'ies':'y')+'</td><td class="damt">'+fmt(sum)+'</td><td class="prevcol"></td><td class="prevcol"></td></tr>';
-  return rows+foot;
+  if(list.length) rows+='<tr class="drill dfootr"><td class="dnote">'+list.length+' entr'+(list.length>1?'ies':'y')+'</td><td class="damt">'+fmt(sum)+'</td><td class="prevcol"></td><td class="prevcol"></td></tr>';
+  if(plist.length){
+    rows+=plist.map(function(t){return row(t,true);}).join('');
+    var psum=plist.reduce(function(a,t){return a+toCur(t.amount||0,t.currency,pm);},0);
+    rows+='<tr class="drill dfootr" style="opacity:.65"><td class="dnote">'+pm+' · '+plist.length+' entr'+(plist.length>1?'ies':'y')+'</td><td></td><td class="damt prevcol">'+fmt(psum)+'</td><td class="prevcol"></td></tr>';
+  }
+  if(key==='supplies') rows+='<tr class="drill dfootr"><td class="dnote" colspan="4">raw logged supplies — reallocated by dry-clean share</td></tr>';
+  return rows;
 }
 var fmt=function(n){return (n<0?'-':'')+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0});};
 var fmt1=function(n){return (n<0?'-':'')+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});};
@@ -450,8 +484,12 @@ function renderReview(){
   if(othOpen) rows+=otherDrillRows();
   rows+=r3('Total revenue', rec.revenue.total,'USD', prev?prev.revenue.total:null,'tot');
   rows+=sec('Costs');
+  var opexC=0,opexP=0,opexXC=0,opexXP=0;   // total opex, and excl. every →contingency line (Sarah 2026-09-03)
   rec.costs.forEach(function(c){
     var pc=prev?(prev.costs.find(function(x){return x.key===c.key;})||{}):{};
+    var cv=toCur(c.amount,c.currency)||0, pv=pc.amount==null?0:(toCur(pc.amount,c.currency,prevMonth(MONTH))||0);
+    opexC+=cv; opexP+=pv;
+    if(String(c.key).indexOf('contingency')<0){ opexXC+=cv; opexXP+=pv; }
     var id=FLAT+'|'+MONTH+'|'+c.key, canDrill=!!CATMAP[c.key], open=!!OPEN[id];
     var lbl=(canDrill?'<span class="tri">'+(open?'▾':'▸')+'</span>':'<span class="tri"></span>')+c.label.replace(/\s*\((EGP|USD)\)/,'');
     /* §5.2e — a closed month changed by a rebuild carries "[restated ...]" in its source text; say so
@@ -461,6 +499,8 @@ function renderReview(){
     rows+='<tr'+(canDrill?' class="drillable" onclick="toggleDrill(\''+id+'\')"':'')+'><td>'+lbl+'</td><td>'+m(toCur(c.amount,c.currency))+'</td><td class="prevcol">'+m(pc.amount==null?null:toCur(pc.amount,c.currency,prevMonth(MONTH)))+'</td>'+mom(toCur(c.amount,c.currency),pc.amount==null?null:toCur(pc.amount,c.currency,prevMonth(MONTH)),true)+'</tr>';
     if(open) rows+=drillRows(c.key);
   });
+  rows+=r3('Total opex', opexC, CUR, prev?opexP:null, 'tot', true);
+  rows+=r3('Total opex excl. contingency', opexXC, CUR, prev?opexXP:null, 'tot', true);
   rows+=r3('Net', rec.net,'USD', prev?prev.net:null,'net');
   if(rec.attribution){ rows+=sec('Internal attribution'); rows+=r3('Khaled',rec.attribution.khaled,'USD',prev&&prev.attribution?prev.attribution.khaled:null,'attr'); rows+=r3('Sarah',rec.attribution.sarah,'USD',prev&&prev.attribution?prev.attribution.sarah:null,'attr'); }
   if(rec.partnerView&&!rec.partnerLedger){ rows+=sec('Your payout'); rows+=r3('Management fee ('+Math.round(rec.partnerView.managementFeePct*100)+'%)',-rec.partnerView.managementFee,'USD',null,'attr'); rows+=r3('Net payout',rec.partnerView.netPayout,'USD',null,'net'); }
@@ -611,7 +651,7 @@ function orevSave(del){
 function orevDelete(){ if(OREV_EDIT&&OREV_EDIT.ref) orevSave(true); }
 
 function sec(t){ return '<tr class="sec"><td colspan="4">'+t+'</td></tr>'; }
-function r3(label,val,native,prev,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td><td>'+m(toCur(val,native))+'</td><td class="prevcol">'+m(prev==null?null:toCur(prev,native,prevMonth(MONTH)))+'</td>'+mom(toCur(val,native),prev==null?null:toCur(prev,native,prevMonth(MONTH)),false)+'</tr>'; }
+function r3(label,val,native,prev,cls,isCost){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td><td>'+m(toCur(val,native))+'</td><td class="prevcol">'+m(prev==null?null:toCur(prev,native,prevMonth(MONTH)))+'</td>'+mom(toCur(val,native),prev==null?null:toCur(prev,native,prevMonth(MONTH)),!!isCost)+'</tr>'; }
 /* MoM Δ — absolute change vs last month, in the display currency the row shows (Sarah 2026-09-02).
    Direction has meaning, not just sign: a cost growing is red and shrinking is green; revenue and
    net are the reverse. Computed from the same converted figures the two columns display, so the
