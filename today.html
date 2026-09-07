@@ -461,8 +461,10 @@ function orevRow(a,kind,i){
 function orevAnswer(kind,id){
   var pre='or_'+kind+'_'+id, msg=document.getElementById(pre+'_msg');
   var list=((ALERTS&&ALERTS.revAlerts)||{})[kind==='canc'?'cancellations':'extras']||[];
-  var a=list.filter(function(x){ return String(x.conf||x.smoobuId||'')===id; })[0];
-  if(!a){ if(msg)msg.textContent='not found'; return; }
+  /* Match by the SAME key the row was rendered with (2026-09-07: this compared the raw conf
+     against the sanitized key + index suffix — never equal, so every Save died as "not found"). */
+  var a=null; list.forEach(function(x,i){ if(!a&&orevKey(x,i)===id) a=x; });
+  if(!a){ if(msg)msg.textContent='this alert was refreshed away — reload the page and try again'; return; }
   var amt=(document.getElementById(pre+'_amt')||{}).value||'';
   amt=String(amt).replace(/,/g,'').trim();
   // 0 IS A VALID ANSWER — "cancelled, we kept nothing" (Sarah 2026-08-11, Amber). Only a blank
