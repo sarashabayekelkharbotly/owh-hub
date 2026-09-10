@@ -1068,32 +1068,30 @@ function confirmWeek(){
     if(missingMand){ btn.disabled=false; msg('⛔ مفيش تأكيد — افتحي أسبوع '+dm(mandatory)+' وراجعيه الأول (بينزل في الواتساب مع الأسبوع ده)'); return; }
     var acts=res.filter(function(r){ return !!r.rows; });   // a prior week with no draft has nothing pending — skipped
     if(!acts.length){ btn.disabled=false; msg('مفيش حاجة تتأكد'); return; }
-    // PHASE 1 — dry-run every week; one refusal anywhere stops everything, nothing written
-    msg('checking '+acts.length+' week(s)…');
-    var chain=Promise.resolve([]), bad=[];
-    acts.forEach(function(a){ var p=payloadOf_(a.rows);
-      chain=chain.then(function(){ return api('props_confirm_cleans',{user:(ME&&ME.user)||'',week:ymd(a.w),cleans:p.cleans,removePast:p.removePast,check:'1'})
-        .then(function(j){ var bk=(j&&j.ok&&j.result&&j.result.blocked)||[];
-          if(!j||!j.ok) bad.push('أسبوع '+dm(a.w)+': '+((j&&j.error)||'فشل الفحص'));
-          bk.forEach(function(b){ bad.push('أسبوع '+dm(a.w)+': '+b); }); }); }); });
-    chain.then(function(){
-      if(bad.length){ btn.disabled=false; msg('⛔ مفيش حاجة اتأكدت — اصلحي الأول: '+bad.join(' · ')); return; }
-      // PHASE 2 — commit for real, earliest week first
-      msg('confirming…');
-      var done=[], jyNotes=[], commit=Promise.resolve();
-      acts.forEach(function(a){ var p=payloadOf_(a.rows);
-        commit=commit.then(function(){ return api('props_confirm_cleans',{user:(ME&&ME.user)||'',week:ymd(a.w),cleans:p.cleans,removePast:p.removePast})
-          .then(function(j){ if(!j||!j.ok)throw new Error('أسبوع '+dm(a.w)+': '+((j&&j.error)||'فشل'));
-            done.push(dm(a.w)+' ('+j.result.count+')');
-            var jy=j.result&&j.result.jinny;
-            if(jy&&jy.created.length) jyNotes.push(jy.created.length+' جيني → WeShare pending');
-            if(jy&&jy.locked.length) jyNotes.push('⚠️ '+jy.locked.length+' جيني ملغي متأكد في WeShare — يتظبط هناك'); }); }); });
-      commit.then(function(){
-        DRAFT_AT=null; UNCONF=false; dirty=false;
-        msg('confirmed ✓ '+done.join(' + ')+(jyNotes.length?' · '+jyNotes.join(' · '):''));
-        return fetchOnce().then(onData);
-      }).catch(function(e){ btn.disabled=false; msg('⚠️ اتوقف: '+(e.message||e)+' — الأسابيع اللي قبله اتأكدت؛ اصلحي وكملي بنفس الزرار'); });
-    });
+    /* ONE round trip (Sarah: "taking a long time" — check×2 + commit×2 paid the platform floor
+       four times). The server runs the same two phases internally: any refusal → nothing
+       written; otherwise every week commits, earliest first. */
+    msg('confirming '+acts.length+' week(s)…');
+    var weeksPayload=acts.map(function(a){ var p=payloadOf_(a.rows); return { week:ymd(a.w), cleans:p.cleans, removePast:p.removePast }; });
+    api('props_confirm_multi',{user:(ME&&ME.user)||'',weeks:JSON.stringify(weeksPayload)}).then(function(j){
+      if(!j) throw new Error('لا رد');
+      if(j.blockedAll&&j.blockedAll.length){
+        btn.disabled=false;
+        msg('⛔ مفيش حاجة اتأكدت — اصلحي الأول: '+j.blockedAll.map(function(b){ return 'أسبوع '+dm(day(b.week))+': '+b.what; }).join(' · '));
+        return;
+      }
+      if(!j.ok) throw new Error((j.error||'فشل')+(j.confirmedSoFar&&j.confirmedSoFar.length?' — اتأكد قبلها: '+j.confirmedSoFar.join(', '):''));
+      var done=[], jyNotes=[];
+      (j.weeks||[]).forEach(function(rw){
+        done.push(dm(day(rw.week))+' ('+rw.result.count+')');
+        var jy=rw.result&&rw.result.jinny;
+        if(jy&&jy.created.length) jyNotes.push(jy.created.length+' جيني → WeShare pending');
+        if(jy&&jy.locked.length) jyNotes.push('⚠️ '+jy.locked.length+' جيني ملغي متأكد في WeShare — يتظبط هناك');
+      });
+      DRAFT_AT=null; UNCONF=false; dirty=false;
+      msg('confirmed ✓ '+done.join(' + ')+(jyNotes.length?' · '+jyNotes.join(' · '):''));
+      return fetchOnce().then(onData);
+    }).catch(function(e){ btn.disabled=false; msg('⚠️ '+(e.message||e)); });
   }).catch(function(e){ btn.disabled=false; msg('failed: '+(e.message||e)); });
 }
 /* switching weeks silently keeps your work as a draft — no prompt, no alert (Sarah 2026-08-03) */
