@@ -937,6 +937,9 @@ function regenWa(){
   var m=document.getElementById('wamsg'); if(m){ m.textContent='rebuilt from the schedule'; setTimeout(function(){ m.textContent=''; },4000); }
 }
 function copyWa(){
+  /* the message can never again say what the sheet does not (Sarah 2026-09-10: "if i don't
+     confirm then the whatsapp copy blocks my copy") */
+  if(dirty||UNCONF){ document.getElementById('wamsg').textContent='⛔ في تعديلات لسه ما اتأكدتش — دوسي ✓ Confirm الأول'; return; }
   var ta=document.getElementById('wa'); ta.select();
   var done=function(ok){ document.getElementById('wamsg').textContent=ok?'copied ✓':'select & copy manually'; };
   if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(ta.value).then(function(){done(true);},function(){ done(document.execCommand('copy')); }); }
@@ -944,6 +947,7 @@ function copyWa(){
 }
 /* ---------- drafts (2026-08-03): the full editing state, server-side per week ---------- */
 var DRAFT_AT=null, DRAFT2_AT=null;   // DRAFT2_AT: the NEXT week is on the message too, from its own draft
+var UNCONF=false;   // any week on screen carries changes newer than its confirm — the WhatsApp copy blocks on it (2026-09-10)
 var BOOT_DRAFTS=null, BOOT_DRAFTS_WK='';   // both drafts, requested at boot in parallel with the payload
 var WEEK_AUTO=false;                       // the week was picked for her, not chosen — re-pick it on the server's date
 function draftPayload(){
@@ -1017,6 +1021,7 @@ function loadDrafts(repaint){
   var p=got.then(function(ds){
     if(ws!==weekStart) return;                       // paged again while waiting — a stale answer must not land
     var a1=applyDraft(ws,ds[0],false), a2=applyDraft(ws2,ds[1],true);
+    UNCONF=UNCONF||a1||a2;   // an applied draft IS unconfirmed-newer by definition (applyDraft rejects older ones)
     /* PAGING MUST REPAINT WHEN THE DRAFT LANDS (Sarah 2026-08-26: week-3 edits "revert" on
        refresh). Paging paints immediately by design (the one-paint rule covers only the boot
        pair), then the draft applied here IN MEMORY — but the repaint only fired on the >6s path,
@@ -1027,31 +1032,69 @@ function loadDrafts(repaint){
   // a hung draft call must never leave the screen on "Loading…" — give up holding after 6s
   return Promise.race([p,new Promise(function(r){ setTimeout(function(){ late=true; r(); },6000); })]);
 }
+/* ============================================================
+ * CONFIRM SETTLES EVERYTHING, ALL-OR-NOTHING (Sarah 2026-09-10, the 8A revision night: she
+ * edited THIS week, paged to the next, confirmed there — and this week's draft silently never
+ * reached the sheet while the WhatsApp said it had). The agreed design, her words:
+ *   · confirm the prior drafted week(s) first, then the viewed week, then — always — the week
+ *     after the current one, because the WhatsApp is pasted two weeks at a time;
+ *   · the week-after must have been OPENED (a draft exists) — nothing is ever confirmed sight
+ *     unseen ("it would not confirm until i view the week");
+ *   · if ANY week has a refused row, NOTHING confirms until it is fixed — the server dry-runs
+ *     every week on the identical code path (check='1') before a single write;
+ *   · Save draft stays per-week, untouched.
+ * ============================================================ */
+function payloadOf_(rows){
+  return { cleans: JSON.stringify(rows.filter(function(c){return c.on;}).map(function(c){
+      return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code, codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal' }; })),
+    removePast: JSON.stringify(rows.filter(function(c){ return !c.on && c.src==='confirmed' && c.date<todayK(); })
+      .map(function(c){ return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time) }; })),
+    n: rows.filter(function(c){return c.on;}).length };
+}
 function confirmWeek(){
   var btn=document.getElementById('confirmBtn'); btn.disabled=true;
-  document.getElementById('cmsg').textContent='confirming…';
-  var payload=cleans.filter(function(c){return c.on;}).map(function(c){
-    return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code, codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal' }; });
-  /* a past CONFIRMED row she toggled off = a deliberate rectification of the record: the server
-     deletes exactly those rows (they can't travel the normal path — the rewrite is today-forward) */
-  var removePast=cleans.filter(function(c){ return !c.on && c.src==='confirmed' && c.date<todayK(); })
-    .map(function(c){ return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time) }; });
-  api('props_confirm_cleans',{user:(ME&&ME.user)||'',week:ymd(weekStart),cleans:JSON.stringify(payload),removePast:JSON.stringify(removePast)}).then(function(j){
-    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
-    DRAFT_AT=null;
-    var jy=j.result&&j.result.jinny;
-    // no telegram for jinny money (2026-08-04) — this line + WeShare's pending list are the record
-    var sk=(j.result&&j.result.skipped)||[], lt=(j.result&&j.result.late)||[], fx=(j.result&&j.result.fixedCodes)||[], rp=(j.result&&j.result.removedPast)||[], bk=(j.result&&j.result.blocked)||[];
-    document.getElementById('cmsg').textContent='confirmed ✓ ('+j.result.count+' cleans'+
-      (fx.length?' · code corrected on record: '+fx.join(', '):'')+
-      (rp.length?' · removed from record: '+rp.join(', '):'')+
-      (bk.length?' · ⚠️ refused, arrival already has its visit: '+bk.join(' · '):'')+
-      (lt.length?' · recorded '+lt.length+' past visit: '+lt.join(', '):'')+
-      (sk.length?' · '+sk.length+' past day already on record: '+sk.join(', '):'')+
-      (jy&&jy.created.length?' · '+jy.created.length+' جيني → WeShare pending':'')+
-      (jy&&jy.locked.length?' · ⚠️ '+jy.locked.length+' cancelled جيني already confirmed in WeShare — fix there by hand':'')+')';
-    return fetchOnce().then(onData);
-  }).catch(function(e){ btn.disabled=false; document.getElementById('cmsg').textContent='failed: '+ (e.message||e); });
+  var msg=function(t){ document.getElementById('cmsg').textContent=t; };
+  msg('collecting the weeks…');
+  var C=defaultWeek(), mandatory=addD(C,7);
+  var tops=(ymd(weekStart)>ymd(mandatory))?weekStart:mandatory;
+  var targets=[]; for(var w=C; ymd(w)<=ymd(tops); w=addD(w,7)) targets.push(w);
+  // resolve each week's rows: the viewed grid, its on-screen neighbour, or that week's saved draft
+  Promise.all(targets.map(function(w){
+    if(ymd(w)===ymd(weekStart)) return Promise.resolve({w:w, rows:cleans, src:'live'});
+    if(ymd(w)===ymd(addD(weekStart,7))) return Promise.resolve({w:w, rows:(DRAFT2_AT?cleans2:null), src:'screen'});
+    return draftRaw(w).then(function(d){ return {w:w, rows:d?healDraftList(w,d.cleans,d.savedAt):null, src:'draft'}; });
+  })).then(function(res){
+    var missingMand=res.some(function(r){ return ymd(r.w)===ymd(mandatory)&&!r.rows; });
+    if(missingMand){ btn.disabled=false; msg('⛔ مفيش تأكيد — افتحي أسبوع '+dm(mandatory)+' وراجعيه الأول (بينزل في الواتساب مع الأسبوع ده)'); return; }
+    var acts=res.filter(function(r){ return !!r.rows; });   // a prior week with no draft has nothing pending — skipped
+    if(!acts.length){ btn.disabled=false; msg('مفيش حاجة تتأكد'); return; }
+    // PHASE 1 — dry-run every week; one refusal anywhere stops everything, nothing written
+    msg('checking '+acts.length+' week(s)…');
+    var chain=Promise.resolve([]), bad=[];
+    acts.forEach(function(a){ var p=payloadOf_(a.rows);
+      chain=chain.then(function(){ return api('props_confirm_cleans',{user:(ME&&ME.user)||'',week:ymd(a.w),cleans:p.cleans,removePast:p.removePast,check:'1'})
+        .then(function(j){ var bk=(j&&j.ok&&j.result&&j.result.blocked)||[];
+          if(!j||!j.ok) bad.push('أسبوع '+dm(a.w)+': '+((j&&j.error)||'فشل الفحص'));
+          bk.forEach(function(b){ bad.push('أسبوع '+dm(a.w)+': '+b); }); }); }); });
+    chain.then(function(){
+      if(bad.length){ btn.disabled=false; msg('⛔ مفيش حاجة اتأكدت — اصلحي الأول: '+bad.join(' · ')); return; }
+      // PHASE 2 — commit for real, earliest week first
+      msg('confirming…');
+      var done=[], jyNotes=[], commit=Promise.resolve();
+      acts.forEach(function(a){ var p=payloadOf_(a.rows);
+        commit=commit.then(function(){ return api('props_confirm_cleans',{user:(ME&&ME.user)||'',week:ymd(a.w),cleans:p.cleans,removePast:p.removePast})
+          .then(function(j){ if(!j||!j.ok)throw new Error('أسبوع '+dm(a.w)+': '+((j&&j.error)||'فشل'));
+            done.push(dm(a.w)+' ('+j.result.count+')');
+            var jy=j.result&&j.result.jinny;
+            if(jy&&jy.created.length) jyNotes.push(jy.created.length+' جيني → WeShare pending');
+            if(jy&&jy.locked.length) jyNotes.push('⚠️ '+jy.locked.length+' جيني ملغي متأكد في WeShare — يتظبط هناك'); }); }); });
+      commit.then(function(){
+        DRAFT_AT=null; UNCONF=false; dirty=false;
+        msg('confirmed ✓ '+done.join(' + ')+(jyNotes.length?' · '+jyNotes.join(' · '):''));
+        return fetchOnce().then(onData);
+      }).catch(function(e){ btn.disabled=false; msg('⚠️ اتوقف: '+(e.message||e)+' — الأسابيع اللي قبله اتأكدت؛ اصلحي وكملي بنفس الزرار'); });
+    });
+  }).catch(function(e){ btn.disabled=false; msg('failed: '+(e.message||e)); });
 }
 /* switching weeks silently keeps your work as a draft — no prompt, no alert (Sarah 2026-08-03) */
 function guardNav(go){
