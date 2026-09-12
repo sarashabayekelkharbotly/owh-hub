@@ -521,6 +521,10 @@ function ownerCard(){
 }
 function needs(cm,pmY){
   var items=[];
+  // ⏰ recurring cards on/past their due day, still pending in WeShare (written by the 9h watch)
+  (D.meta.recurDue||[]).forEach(function(r){
+    items.push({t:'warn',txt:'<b>⏰ '+esc(r.desc)+'</b> — '+fmt(r.amt)+' EGP due'+(r.overdue?' since '+esc(r.date):' today')+', still pending in WeShare.'});
+  });
   if(!D.meta.fx.isCurrentMonthSet) items.push({t:'warn',txt:'<b>FX not set for '+D.meta.currentMonth+'</b> — carrying '+(D.meta.fx.current||'?')+' from last close.'});
   var anyOpen=false; airbnbFlats().forEach(function(f){ var r=(D.pnl[f]||{})[pmY]; if(r&&r.status&&r.status!=='final')anyOpen=true; });
   if(anyOpen) items.push({t:'info',txt:'<b>'+pmY+' not closed</b> — review &amp; mark final on the close screen.'});
