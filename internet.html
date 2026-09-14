@@ -332,10 +332,25 @@ function render(){
              '<div class="sl">'+(c.spent?'should be empty':(c.dies?'days till it runs out':'days till renewal'))+'</div></div>'+
            '<div class="s"><div class="sv">'+(Math.round(c.pace*10)/10)+'×</div><div class="sl">pace vs fair share</div></div></div>';
         var co=nextCheckout(f,asOf);
-        h+='<div class="dep '+(c.dies?'warn':'ok')+'">'+(c.dies
-              ? '⚠ Runs out '+dmon(c.depletion)+', '+Math.max(1,Math.round((ce-c.depletion)/DAYMS))+' days before it renews on '+dmon(ce)+
-                (co&&c.depletion<co?' — and before the guest leaves '+dmon(co):'')
-              : 'Covers the cycle at '+fmtGB(c.rate)+' GB/guest-day — renews '+dmon(ce))+'</div>';
+        /* RENEWAL IS AN ERRAND AND THE COLOR MUST SAY SO (Sarah 2026-09-15: 28A sat GREEN —
+           "Covers the cycle" — on renewal day itself, so nothing invited a second look). Amber
+           the day before, red-toned on the day, and loudest once the date has PASSED with no
+           newer bundle logged: readings taken against a renewed-but-unlogged bundle silently
+           corrupt the pace math, so this card must refuse to look healthy in that state.
+           Depletion still outranks a near renewal — no internet TODAY beats an errand. */
+        var ceD=ymd(ce), todD=ymd(asOf), tomD=ymd(new Date(asOf.getTime()+DAYMS));
+        var renOver=ceD<todD ? Math.max(1,Math.round((day(todD)-day(ceD))/DAYMS)) : 0;
+        if(renOver)
+          h+='<div class="dep warn">🔄 Renewal was <b>'+dmon(ce)+'</b> — '+renOver+' day'+(renOver>1?'s':'')+' ago — and no new bundle is logged. These numbers can\'t be trusted until the new bundle is added below.</div>';
+        else if(c.dies)
+          h+='<div class="dep warn">⚠ Runs out '+dmon(c.depletion)+', '+Math.max(1,Math.round((ce-c.depletion)/DAYMS))+' days before it renews on '+dmon(ce)+
+                (co&&c.depletion<co?' — and before the guest leaves '+dmon(co):'')+'</div>';
+        else if(ceD===todD)
+          h+='<div class="dep warn">🔄 <b>Renews today</b> — the remaining '+fmtGB(c.remaining)+' GB go with the renewal. Log the new bundle here once it renews.</div>';
+        else if(ceD===tomD)
+          h+='<div class="dep warn">🔄 Renews <b>tomorrow</b> ('+dmon(ce)+') — the remaining balance goes with the renewal.</div>';
+        else
+          h+='<div class="dep ok">Covers the cycle at '+fmtGB(c.rate)+' GB/guest-day — renews '+dmon(ce)+'</div>';
         h+='<details class="more"><summary>pace, guests &amp; last reading</summary>'+
            '<div class="pace"><span class="fb '+pb.cls+'">'+pb.txt+'</span> '+fmtGB(c.rate)+' GB/guest-day vs fair '+fmtGB(c.fairDaily)+' '+rateChip(c)+
            ' · vacant days ~'+fmtGB(c.idle)+' GB</div>'+
