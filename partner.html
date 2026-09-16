@@ -130,7 +130,14 @@ function onData(j){ DATA=j.data; DATA._gen=j.generatedAt; if(j.me) ME=j.me; init
 function myFlat(){ return (ME&&ME.flat) || (DATA.meta.flatsOrder&&DATA.meta.flatsOrder[0]) || ''; }
 function flatName(){ var f=myFlat(), m=(DATA.flats||[]).filter(function(x){return x.id===f;})[0]; return (m&&m.name)||f; }
 function monthsAvailable(){ var f=myFlat(); return DATA.pnl&&DATA.pnl[f] ? Object.keys(DATA.pnl[f]).sort() : []; }
-function initMonth(){ var ms=monthsAvailable(); if(!MONTH||ms.indexOf(MONTH)<0) MONTH=ms.length?ms[ms.length-1]:null; }
+function initMonth(){ var ms=monthsAvailable(); if(MONTH&&ms.indexOf(MONTH)>=0) return;
+  /* open on TODAY's month, never a future one (Sarah 2026-09-17: the P&L carries pre-built rows
+     into December, so "latest" opened the statement on a month that hasn't happened yet).
+     Future months stay in the dropdown for whoever wants to peek. */
+  var cm=(DATA.meta&&DATA.meta.currentMonth)||'';
+  if(cm&&ms.indexOf(cm)>=0){ MONTH=cm; return; }
+  var past=cm?ms.filter(function(m){ return m<=cm; }):ms;
+  MONTH=past.length?past[past.length-1]:(ms.length?ms[ms.length-1]:null); }
 function recFor(m){ var f=myFlat(); return (DATA.pnl&&DATA.pnl[f]&&DATA.pnl[f][m])||null; }
 function prevMonth(){ var ms=monthsAvailable(), i=ms.indexOf(MONTH); return i>0?ms[i-1]:null; }
 function daysIn(ym){ return new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate(); }
