@@ -294,6 +294,27 @@ function render(){
      fmt(rateFor(r))+' EGP/USD for '+monLabel(MONTH)+'), so a closed month never changes when the rate moves.'+
      (isFinal?'':' This month is still open, so figures can change until it is closed.')+'</p></div>';
 
+  /* ---- Clause-7 settlement — the waterfall (Sarah 2026-09-17: "the float must be visible in the
+     partner view"). The SAME partnerLedger figures the admin Close shows — one truth, two readers. */
+  var pl=r.partnerLedger;
+  if(pl){
+    var fL=function(v){ return sym()+fmt(conv(v,'USD',r)); };
+    h+='<div class="card"><h3>Settlement — how this month\'s money moves</h3><table class="d">';
+    h+='<tr><td>Month result after the fee</td><td class="r">'+fL(pl.monthResult)+'</td></tr>';
+    h+='<tr><td>Balance with OWH after this month</td><td class="r">'+
+       (pl.balanceAfter<-0.005?fL(-pl.balanceAfter)+' owed to OWH':(pl.balanceAfter>0.005?fL(pl.balanceAfter)+' held for you':'settled'))+'</td></tr>';
+    h+='<tr><td>Security float'+
+       (pl.floatRetained>0.005?' · retained '+fL(pl.floatRetained)+' this month':'')+
+       (pl.floatDrawn>0.005?' · drawn '+fL(pl.floatDrawn)+' this month':'')+
+       '</td><td class="r">'+fL(pl.floatAfter)+' of '+fL(pl.floatTarget)+'</td></tr>';
+    h+='<tr class="net"><td>Payable to you this month</td><td class="r g">'+fL(pl.payable)+'</td></tr>';
+    if(pl.paidToDate>0.005||pl.outstanding>0.005)
+      h+='<tr><td>Paid to date · still to pay</td><td class="r">'+fL(pl.paidToDate)+' · '+fL(pl.outstanding)+'</td></tr>';
+    h+='</table><p class="note">Per Clause 7 of the agreement: each month\'s result first settles any '+
+       'carried balance (setup costs and prepayments), then keeps the security float at its target of '+fL(pl.floatTarget)+
+       '; only the remainder is paid out. In a negative month the float absorbs the shortfall first.</p></div>';
+  }
+
   $('#app').innerHTML=h;
 }
 
