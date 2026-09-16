@@ -761,7 +761,7 @@ function renderCompare(){
   var flats=DATA.meta.flatsOrder, pm=prevMonth(MONTH), costKeys=[];
   for(var i=0;i<flats.length;i++){var r=DATA.pnl[flats[i]][MONTH];if(r){costKeys=r.costs.map(function(c){return{key:c.key,label:c.label.replace(/\s*\((EGP|USD)\)/,''),cur:c.currency};});break;}}
   var h='<div class="frame land"><span class="orient o-land">landscape · wide table</span><div class="card cmp-wrap"><h1>Compare · '+MONTH+'</h1><p class="sub">all flats · all values in '+CUR+' · Δ vs '+pm+'</p><table class="cmp"><thead><tr><th>Line</th>';
-  flats.forEach(function(f){h+='<th>'+f+'</th>';}); h+='<th>Total</th><th>Δ</th></tr></thead><tbody>';
+  flats.forEach(function(f){h+='<th>'+f+(isPartnerFlat(f)?' <span style="font-weight:400;font-size:9px">شراكة</span>':'')+'</th>';}); h+='<th>Total</th><th>Δ</th></tr></thead><tbody>';
   h+=csec('Revenue',flats.length);
   h+=cmp('Earnings',flats,pm,function(r){return r?r.revenue.earnings:0;},'USD');
   h+=cmp('Other',flats,pm,function(r){return r?r.revenue.other:0;},'USD');
@@ -769,17 +769,27 @@ function renderCompare(){
   h+=csec('Costs',flats.length);
   costKeys.forEach(function(ck){ h+=cmp(ck.label,flats,pm,function(r){if(!r)return 0;var c=r.costs.find(function(x){return x.key===ck.key;});return c?c.amount:0;},ck.cur); });
   h+=cmp('Net',flats,pm,function(r){return r?r.net:0;},'USD','net');
+  if(flats.some(isPartnerFlat))
+    h+=cmp('OWH fee from partner flats',flats,pm,function(r){return r&&r.partnerLedger?r.partnerLedger.fee:0;},'USD','tot',true);
   h+=csec('Attribution',flats.length);
   h+=cmp('Khaled',flats,pm,function(r){return r&&r.attribution?r.attribution.khaled:0;},'USD','attr');
   h+=cmp('Sarah',flats,pm,function(r){return r&&r.attribution?r.attribution.sarah:0;},'USD','attr');
   h+='</tbody></table></div>';
-  h+='<div class="card"><p class="muted">Attribution is a view, not a settlement — cash lives in WeShare. 8A / 28A / Zayed split net 50/50; 17A is Khaled 20% of revenue, Sarah the rest; 17B is 100% Sarah (long-let).</p></div></div>';
+  h+='<div class="card"><p class="muted">Attribution is a view, not a settlement — cash lives in WeShare. 8A / 28A / Zayed split net 50/50; 17A is Khaled 20% of revenue, Sarah the rest; 17B is 100% Sarah (long-let). A شراكة (partner) column shows the flat\'s full anatomy for analysis but stays OUT of the Total/Δ columns — OWH\'s take from it is the fee row.</p></div></div>';
   return h;
 }
 function csec(t,n){ return '<tr class="sec"><td colspan="'+(n+3)+'">'+t+'</td></tr>'; }
-function cmp(label,flats,pm,getNative,native,cls){
+/* PARTNER FLATS (Sarah 2026-09-17): their columns stay — the per-flat anatomy is analysis —
+   but the Total/Δ columns are OWH's money, so a partner flat's owner-side figures never enter
+   them; OWH's take appears as its own fee row (inclPartner=true), the one row where the partner
+   column DOES count into the total. */
+function isPartnerFlat(f){ var x=((DATA.flats)||[]).filter(function(o){ return o.id===f; })[0];
+  return !!(x&&x.partner&&x.partner.hasPartner); }
+function cmp(label,flats,pm,getNative,native,cls,inclPartner){
   var row='<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td>',tot=0,ptot=0;
-  flats.forEach(function(f){ var v=toCur(getNative(DATA.pnl[f][MONTH]),native), pv=toCur(getNative(DATA.pnl[f][pm]),native,pm); tot+=v||0; ptot+=pv||0; row+='<td>'+m(v)+'</td>'; });
+  flats.forEach(function(f){ var v=toCur(getNative(DATA.pnl[f][MONTH]),native), pv=toCur(getNative(DATA.pnl[f][pm]),native,pm);
+    if(inclPartner||!isPartnerFlat(f)){ tot+=v||0; ptot+=pv||0; }
+    row+='<td'+(!inclPartner&&isPartnerFlat(f)?' style="opacity:.55"':'')+'>'+m(v)+'</td>'; });
   row+='<td><b>'+m(tot)+'</b></td><td>'+deltaCell(tot,ptot)+'</td></tr>';
   return row;
 }

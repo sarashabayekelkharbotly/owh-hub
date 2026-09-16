@@ -143,6 +143,21 @@ function day(s){ return new Date(String(s).slice(0,10)+'T00:00:00'); }
 function allFlats(){ return D.meta.flatsOrder.filter(function(f){ return D.pnl[f]; }); }
 function isLongLet(f){ var x=(D.flats||[]).filter(function(o){ return o.id===f; })[0]; return !!(x&&x.isLongLet); }
 function airbnbFlats(){ return allFlats().filter(function(f){ return !isLongLet(f); }); }
+/* PARTNER FLATS IN OWH MONEY (Sarah 2026-09-17: "OWH only gets a revenue share — I don't want it
+   all to add to OWH's totals"). VW1's full figures are the OWNER's economics; OWH's take is the
+   Clause-7 management fee the waterfall already computed. In every PORTFOLIO money view a partner
+   flat therefore contributes — and DISPLAYS — a fee-only row, so tables keep reconciling; scoping
+   to the flat itself still shows its full performance. Operational analytics (occupancy, ADR,
+   margins, cash-by-account, repairs) stay full: they measure operations, not profit attribution. */
+function partnerCfg(f){ var x=(D.flats||[]).filter(function(o){ return o.id===f; })[0];
+  return (x&&x.partner&&x.partner.hasPartner)?x.partner:null; }
+function feePctOf(f){ var c=partnerCfg(f)||{}, v=+(c.sharePctOfTotalRev!=null?c.sharePctOfTotalRev:0.25);
+  return v>1?v/100:v; }
+function owhP(f,m){ var p=pnlOf(f,m); if(!p||!partnerCfg(f)) return p;
+  var fee=(p.partnerLedger&&p.partnerLedger.fee!=null)?p.partnerLedger.fee
+        : Math.round((p.revenue.total||0)*feePctOf(f)*100)/100;   // months without a statement yet (future) estimate at the share
+  return { revenue:{ total:fee, earnings:fee, other:0 }, net:fee, costs:[], attribution:p.attribution, partnerFee:true }; }
+function moneyP(f,m){ return scope==='portfolio'?owhP(f,m):pnlOf(f,m); }   // single-flat scope = the flat's own full story
 function rawStays(){ return D.stays||[]; }
 function scopeFlats(){ return scope==='portfolio'?allFlats():[scope]; }                          // money
 function scopeStayFlats(){ return scopeFlats().filter(function(f){ return !isLongLet(f); }); }   // per-booking metrics
@@ -401,7 +416,7 @@ function render(){
   h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs();
   document.getElementById('app').innerHTML=h;
 }
-function sumEarn(field, rng){ var t=0; monthsInRange(rng).forEach(function(m){ var mv=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p)return;
+function sumEarn(field, rng){ var t=0; monthsInRange(rng).forEach(function(m){ var mv=0; scopeFlats().forEach(function(f){ var p=moneyP(f,m); if(!p)return;
   mv+= field==='earnings'?p.revenue.earnings:field==='other'?p.revenue.other:field==='total'?p.revenue.total:field==='net'?p.net:(p.revenue.total-p.net); }); t+=disp(mv,m); }); return t; }
 
 /* 0 · What changed — the diagnosis table (Sarah 2026-08-04). EVERY number reconciles:
@@ -419,7 +434,7 @@ function secDelta(){
   else if(dMB!=='prev'&&all.indexOf(dMB)>-1&&dMB!==mNow){ refMs=[dMB]; refLbl=MON[+dMB.slice(5,7)-1]+' '+dMB.slice(0,4); }
   else { refMs=[all[idx-1]]; refLbl=MON[+refMs[0].slice(5,7)-1]+' '+refMs[0].slice(0,4); }
   var fl=D.meta.flatsOrder.filter(function(f){ return D.pnl[f]; });   // 17B included — the table must cover everything
-  function agg(f,msArr){ var n=0,rev=0,net=0; msArr.forEach(function(m){ var p=pnlOf(f,m); if(!p)return; n++;
+  function agg(f,msArr){ var n=0,rev=0,net=0; msArr.forEach(function(m){ var p=owhP(f,m); if(!p)return; n++;   // fee-only for partner flats — the Portfolio row is OWH's own truth
       rev+=disp(p.revenue.total,m); net+=disp(p.net,m); });
     if(!n)return {rev:0,net:0,cost:0}; return {rev:rev/n, net:net/n, cost:(rev-net)/n}; }
   var rows=fl.map(function(f){ var now=agg(f,[mNow]), ref=agg(f,refMs);
@@ -445,7 +460,7 @@ function secDelta(){
     '<table class="t"><thead><tr><th></th><th>Revenue</th><th>Δ</th><th>Costs</th><th>Δ</th><th>Net</th><th>Δ</th></tr></thead><tbody>';
   function rowH(r,bold,click){
     return '<tr'+(click?' onclick="dToggle(\''+esc(r.f)+'\')" style="cursor:pointer"':(bold?' style="font-weight:800"':''))+'>'+
-      '<td>'+(click?(dOpen[r.f]?'▾ ':'▸ '):'')+esc(r.f)+'</td>'+
+      '<td>'+(click?(dOpen[r.f]?'▾ ':'▸ '):'')+esc(r.f)+(partnerCfg(r.f)?' <span style="font-size:9.5px;color:var(--text3,#8a8a8a);font-weight:700">شراكة · fee only</span>':'')+'</td>'+
       '<td>'+money(r.now.rev)+'</td><td>'+dc(r.dRev,true)+'</td>'+
       '<td>'+money(r.now.cost)+'</td><td>'+dc(r.dCost,false)+'</td>'+
       '<td>'+money(r.now.net)+'</td><td>'+dc(r.dNet,true)+'</td></tr>';
@@ -453,7 +468,12 @@ function secDelta(){
   h+=rowH(tot,true,false);
   rows.forEach(function(r){
     h+=rowH(r,false,true);
-    if(dOpen[r.f]){
+    if(dOpen[r.f]&&partnerCfg(r.f)){
+      // a partner flat's costs are the OWNER's — nothing here belongs in OWH's cost anatomy
+      h+='<tr><td colspan="7" style="padding:4px 8px 8px 24px;background:var(--surface2,#faf7f4);font-size:11.5px;color:var(--text3,#777)">'+
+         'Partner flat — the owner bears the operating costs; OWH\'s number above is the '+Math.round(feePctOf(r.f)*100)+'% management fee. Full performance: scope the screen to '+esc(r.f)+', or the Close page.'+
+         occLine(r.f,mNow,refMs)+'</td></tr>';
+    } else if(dOpen[r.f]){
       // the COMPLETE category list — every line, summing exactly to the Costs Δ shown above
       function catAgg(msArr){ var by={},n=0; msArr.forEach(function(m){ if(!pnlOf(r.f,m))return; n++;
         var c=costsUSD(r.f,m); for(var k in c.by) by[k]=(by[k]||0)+disp(c.by[k],m); });
@@ -546,12 +566,12 @@ function secRevenue(){
   if(scope==='portfolio') h+='<div class="rowbtns">'+seg([['total','Total'],['flats','By flat'],['stack','Stacked']],revMode,'setRevMode')+'</div>';
   if(scope==='portfolio'&&revMode!=='total'){
     var fl=allFlats();
-    var rows=ms.map(function(m){ var vals={}; fl.forEach(function(f){ var p=pnlOf(f,m); vals[f]=p?disp(serOf(p),m):0; }); return {m:m,vals:vals}; });
+    var rows=ms.map(function(m){ var vals={}; fl.forEach(function(f){ var p=owhP(f,m); vals[f]=p?disp(serOf(p),m):0; }); return {m:m,vals:vals}; });   // partner flats stack at fee, so the stack top stays the portfolio truth
     var series=fl.map(function(f){ return {k:f,lbl:f===('Zayed 2000')?'Zayed':f,color:FLAT_COLORS[f]||'#999'}; });
     h+=(revMode==='flats'?lineMulti(rows,series,{drill:'rev'}):stackedChart(rows,series,{unit:curU(),drill:'rev'}))+
        '<div class="legend">'+fl.map(function(f){return '<span><i style="background:'+(FLAT_COLORS[f]||'#999')+'"></i>'+esc(f)+'</span>';}).join('')+'</div>';
   } else {
-    var rows1=ms.map(function(m){ var v=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p)return; v+=serOf(p); }); return {m:m,value:disp(v,m)}; });
+    var rows1=ms.map(function(m){ var v=0; scopeFlats().forEach(function(f){ var p=moneyP(f,m); if(!p)return; v+=serOf(p); }); return {m:m,value:disp(v,m)}; });
     var col=revSeries==='net'?'var(--c-net)':revSeries==='costs'?'var(--c-cost)':'var(--c-earn)';
     h+=lineChart(rows1,{color:col,unit:curU(),drill:'rev'});
   }
@@ -560,7 +580,8 @@ function secRevenue(){
 /* 2 · What the money goes on — stacked per-month, category + month buttons + time */
 var COST_ORDER=[['rent','rent','#e0a5a5'],['cleaning','cleaning','#b8c9d9'],['supplies','supplies','#8ab48f'],['electricity','electricity','#d9a441'],['maintenance','maintenance','#c77b7b'],['compound-maintenance','compound maint.','#a05f5f'],['tv-phone-internet','internet','#9c86c4'],['laundry','laundry','#c98f8f'],['contingency','contingency','#b0a08e'],['opsmanager','opsMgr','#7d9c9c'],['water','water','#7fb2c9'],['heat-gas','heat/gas','#caa06a'],['subscription','subscription','#9aa7b5']];
 var FOLD={'cleaning-labor':'cleaning','services-contingency':'contingency','gifts-contingency':'contingency','general-contingency':'contingency'};   // compound maintenance stands on its own, as it does in Close
-function costRow(m){ var by={}; scopeFlats().forEach(function(f){ var c=costsUSD(f,m); for(var k in c.by){ var kk=FOLD[k]||k; by[kk]=(by[kk]||0)+c.by[k]; } }); return by; }
+function costRow(m){ var by={}; scopeFlats().forEach(function(f){ if(scope==='portfolio'&&partnerCfg(f))return;   // owner-borne costs are not "what OUR money goes on"
+  var c=costsUSD(f,m); for(var k in c.by){ var kk=FOLD[k]||k; by[kk]=(by[kk]||0)+c.by[k]; } }); return by; }
 function secCosts(){
   var ms=monthsInRange(R.cost);
   var catBtns=[['all','All']].concat(COST_ORDER.map(function(c){return [c[0],c[1]];}));
