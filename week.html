@@ -988,7 +988,15 @@ function healDraftList(ws,list,savedAt){
     var cov=coveredByExisting_(p,out);
     if(cov){ out.push(shadowOf_(p,cov)); return; }
     var repl=out.some(function(c){ return c.stale&&c.stayId===p.stayId&&c.type===p.type; });
-    p.src='new'; p.on=repl||!!(p.booked&&savD&&p.booked>=savD); out.push(p); });
+    p.src='new';
+    /* PRE-ARRIVAL AND CHECKOUT PROPOSALS ARE NEVER OFF BY DEFAULT (Sarah 2026-09-18: Mahmoud's
+       26/9 revision arrived as an OFF 'new' row under a fresher week-25 draft — invisible in
+       practice and EXCLUDED from confirm: Mona's arrival-nobody-lets-in, silently). A visit
+       derived from a REAL booking arrives ON; rejecting it is an explicit toggle, which the
+       saved draft then remembers forever (a draft row, even off, blocks re-proposal above).
+       Mid-stay/weekly rhythm rows keep the old rule — those are trimmed deliberately. */
+    p.on=(p.type==='revision'||p.type==='codechange'||p.type==='checkout')||repl||!!(p.booked&&savD&&p.booked>=savD);
+    out.push(p); });
   out.sort(function(a,b){ return (a.date+a.flat)<(b.date+b.flat)?-1:1; });
   return out;
 }
