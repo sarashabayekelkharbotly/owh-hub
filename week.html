@@ -509,10 +509,16 @@ var TYPES=['checkout','revision','midstay','weekly','custom','codechange'];
    arrival covered and said nothing. A PAST visit therefore only counts when the code it carries is
    already the code this arrival needs; a future visit still counts, because its code heals on the
    next confirm and the person going has not gone yet. */
-function coveringVisit(flat,ci){                  // the ON visit (either week) that will set this arrival's code
-  var lists=[cleans||[],cleans2||[]], hit=null, tK=todayK(), need=codeOf(ci);
+function coveringVisit(flat,ci){                  // the ON visit (ANY week — confirmed history included) that will set this arrival's code
+  /* CONFIRMED ROWS COUNT TOO (Sarah 2026-09-18: Abdulaziz's Friday arrival on 28A — the covering
+     17/9 checkout, confirmed and already done with code 1809, lives in the PREVIOUS week, which
+     the two on-screen lists can never contain. The WhatsApp then invented a ⚠️ code-change line
+     for a covered arrival.) Same week-boundary blindness preArrivalRow_ was cured of (2026-08-23),
+     same cure: D.cleans spans ±60 days of confirmed rows. The message READS the week — it never
+     re-reasons beside it. */
+  var lists=[cleans||[],cleans2||[],(D&&D.cleans)||[]], hit=null, tK=todayK(), need=codeOf(ci);
   lists.forEach(function(L){ L.forEach(function(c){
-    if(!c.on||c.flat!==flat) return;
+    if(c.on===false||c.src==='shadow'||c.flat!==flat) return;   // confirmed rows carry no .on — they are ON by definition
     if(isStayClean(c)) return;                    // in-stay cleans can't set the lock (guest is in) — 2026-08-04
     var dd=day(c.date), diff=(ci-dd)/DAYMS;
     if(!(diff>=0&&diff<=2)) return;
