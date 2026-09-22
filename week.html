@@ -394,22 +394,22 @@ function mergeWeek(ws){
   var confirmed=dedupeExact_(weekRows(ws));
   var props=proposeWeek(ws);
   if(!confirmed.length) return props;
-  /* A visit that has ALREADY HAPPENED is a record, not a plan (Sarah 2026-08-16). Healing re-derives
-     the door code from today's bookings, which is right for a trip still to come and wrong for one
-     already made: the 15-Aug Zayed checkout was confirmed — and carried out — carrying 0107, then
-     Mona booked on the 16th and the heal quietly restated that past trip as 1608. The screen then
-     believed her arrival was covered by a visit that had physically set a different code. Elapsed
-     days keep the code they were confirmed with; only today-forward heals. */
-  var tK=todayK();
+  /* THE GRID SHOWS THE RECORD, VERBATIM (Sarah 2026-09-22, Moaz). This screen used to re-derive
+     the door code of every today-forward row for display — a cosmetic heal that never wrote back.
+     So when Moaz booked after the Friday confirm, the SHEET kept the 0107 written at confirm time
+     while this grid reassured Sarah with a healed 2309 that existed nowhere: عماد's schedule and
+     Dani's guest message read the record and said 0107. The record now heals itself server-side
+     (schedReconcile_ corrects the code cell of any non-✎ today-forward row within a minute of a
+     booking change), and this screen shows exactly what is recorded — if the record is ever wrong
+     again, Sarah SEES the wrong code instead of a screen-only fix. doorCode remains only as the
+     fallback for a row with an empty code cell. */
   var seen={}, out=confirmed.map(function(c){ seen[ckey(c)]=1;
-    // door code is derived from current bookings — recompute so stale values heal on the next
-    // confirm. EXCEPT a hand-set code (§5.5): the 'Code edited' flag marks it, and it must stick.
-    /* inTime heals like the door code (bug 2026-08-04, the 6-Aug turnover): a booking that landed
-       AFTER the week was confirmed left the stored inTime empty, so the WhatsApp never said the
-       guest arrives the same day — while a clean confirmed after the booking (7-Aug 17A) did. */
+    /* inTime heals like the door code used to (bug 2026-08-04, the 6-Aug turnover): a booking that
+       landed AFTER the week was confirmed left the stored inTime empty, so the WhatsApp never said
+       the guest arrives the same day — while a clean confirmed after the booking (7-Aug 17A) did. */
     var healIn = hm(c.inTime) || ((c.type==='checkout'&&sameDayIn(c.flat,c.date)) ? DEFAULT_IN : '');
     return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time)||'12:00',
-             code: ((c.codeEdited||c.date<tK)&&(c.code||'').trim()) ? c.code : doorCode(c.flat,day(c.date)),
+             code: (c.code||'').trim() ? c.code : doorCode(c.flat,day(c.date)),
              codeEdited: !!c.codeEdited,
              inTime:healIn, stayId:c.stayId, on:true, src:'confirmed', cleaner:c.cleaner||'amal' }; });
   /* A BOOKING MADE AFTER THE DECISION ARRIVES SWITCHED ON (Sarah 2026-08-21: Afefy booked 8A on
