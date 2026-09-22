@@ -410,7 +410,7 @@ function mergeWeek(ws){
     var healIn = hm(c.inTime) || ((c.type==='checkout'&&sameDayIn(c.flat,c.date)) ? DEFAULT_IN : '');
     return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time)||'12:00',
              code: (c.code||'').trim() ? c.code : doorCode(c.flat,day(c.date)),
-             codeEdited: !!c.codeEdited,
+             codeEdited: !!c.codeEdited, pinned: !!c.pinned,
              inTime:healIn, stayId:c.stayId, on:true, src:'confirmed', cleaner:c.cleaner||'amal' }; });
   /* A BOOKING MADE AFTER THE DECISION ARRIVES SWITCHED ON (Sarah 2026-08-21: Afefy booked 8A on
      the 21st, after the week was confirmed — his 23/08 checkout appeared as an unticked 'new' row
@@ -657,7 +657,8 @@ function render(){
        '<td><select onchange="edit('+idx+',\'flat\',this.value)">'+airbnbFlats().map(function(f){return '<option'+(f===c.flat?' selected':'')+'>'+esc(f)+'</option>';}).join('')+'</select></td>'+
        '<td><select onchange="edit('+idx+',\'type\',this.value)">'+TYPES.map(function(t){return '<option'+(t===c.type?' selected':'')+'>'+t+'</option>';}).join('')+'</select>'+(c.src==='new'?' <span class="badge b-warn">new</span>':'')+
        (c.src==='shadow'?' <span class="badge" style="background:#eee;color:#888" title="الاقتراح الآلي — عندك نسخة معدّلة يوم '+esc(c.shadowOf||'')+'. شغّليه لو الآلي أصح">آلي</span>':'')+
-       (c.stale?' <span class="badge" style="background:#f6dede;color:#a24a4a" title="'+esc(c.stale)+'">⚠️ اتغيّر الحجز</span>':'')+'</td>'+
+       (c.stale?' <span class="badge" style="background:#f6dede;color:#a24a4a" title="'+esc(c.stale)+'">⚠️ اتغيّر الحجز</span>':'')+
+       (c.pinned?' <span class="badge" style="background:#ece3f7;color:#6b4e9e;cursor:pointer" title="You moved this — the system will not change it back on a booking update. Tap to release it to the system." onclick="unpinRow('+idx+')">📌 pinned</span>':'')+'</td>'+
        '<td><input type="time" value="'+hm(c.time)+'" onchange="edit('+idx+',\'time\',this.value)"></td>'+
        '<td><select onchange="edit('+idx+',\'cleaner\',this.value)"'+((c.cleaner||'amal')!=='amal'?' style="border-color:#b8860b;font-weight:700"':'')+'>'+
          CLEANERS.map(function(cl){return '<option value="'+cl+'"'+(cl===(c.cleaner||'amal')?' selected':'')+'>'+CLEANER_LBL[cl]+'</option>';}).join('')+'</select></td>'+
@@ -739,9 +740,11 @@ function pinDay(i){
 function tog(i){ var c=cleans[i]; c.on=!c.on;
   if(c.on&&c.src==='shadow') c.src='manual';   // an adopted shadow becomes a real row — it must save
   dirty=true; render(); }
+function unpinRow(i){ cleans[i].pinned=false; dirty=true; render(); }   // hand the row back to the system (2026-09-23)
 function edit(i,field,v){
   var c=cleans[i]; c[field]=v;
   if(field==='code') c.codeEdited=true;                    // §5.5: a hand-set code sticks from now on
+  else c.pinned=true;                                      // any other manual change = Sarah's placement; the referee never moves it back (2026-09-23). Independent of the code — a moved clean still heals its code
   if(field==='date'||field==='flat'||field==='type'){
     var d=day(c.date);
     if(!c.codeEdited) c.code=doorCode(c.flat,d);
@@ -958,7 +961,7 @@ var BOOT_DRAFTS=null, BOOT_DRAFTS_WK='';   // both drafts, requested at boot in 
 var WEEK_AUTO=false;                       // the week was picked for her, not chosen — re-pick it on the server's date
 function draftPayload(){
   return cleans.filter(function(c){ return c.src!=='shadow'; }).map(function(c){ return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code,
-    codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal', on:!!c.on, src:c.src }; });
+    codeEdited:!!c.codeEdited, pinned:!!c.pinned, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal', on:!!c.on, src:c.src }; });
 }
 function saveDraft(){
   return api('props_save_draft',{user:(ME&&ME.user)||'',week:ymd(weekStart),cleans:JSON.stringify(draftPayload())})
@@ -1060,7 +1063,7 @@ function loadDrafts(repaint){
  * ============================================================ */
 function payloadOf_(rows){
   return { cleans: JSON.stringify(rows.filter(function(c){return c.on;}).map(function(c){
-      return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code, codeEdited:!!c.codeEdited, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal' }; })),
+      return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time), code:c.code, codeEdited:!!c.codeEdited, pinned:!!c.pinned, inTime:hm(c.inTime), stayId:c.stayId, cleaner:c.cleaner||'amal' }; })),
     removePast: JSON.stringify(rows.filter(function(c){ return !c.on && c.src==='confirmed' && c.date<todayK(); })
       .map(function(c){ return { date:c.date, flat:c.flat, type:c.type, time:hm(c.time) }; })),
     n: rows.filter(function(c){return c.on;}).length };
