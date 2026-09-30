@@ -102,6 +102,7 @@ function setNbShow(k){
 var adrMonth='all', vcMonth='all', repMonth='all', repMode='flat';
 var marMonth='all', marBasis='var', uniUnit='sub', uniView='sum';   // margin table · per-unit trend chart
 var revMode='total', dMode='prev', dOpen={};   // by-flat chart mode · What-changed comparison · expanded rows
+var retView='combined';   // Rental-project-return monthly table: Combined | Zayed 2000 | 28A
 var FLAT_COLORS={'8A':'#4a7fb5','17A':'#cc5f5f','17B':'#9aa7b5','28A':'#6f9a76','Zayed 2000':'#d9a441'};
 /* §5.1 currency toggle (2026-08-04): ONE currency for the whole screen, chosen like the partner
    screens and shared with them via localStorage owh_cur. Every month converts at ITS OWN derived
@@ -409,11 +410,83 @@ function curSeg(){ return '<div class="seg">'+['USD','EGP'].map(function(c){ ret
 function monthBtnsFor(ms,cur,fn){ return seg([['all','All']].concat(ms.map(function(m){return [m, MON[+m.slice(5,7)-1]+' '+m.slice(2,4)];})),cur,fn); }
 function pickMonths(rng,sel){ var ms=monthsInRange(rng); return (sel!=='all'&&ms.indexOf(sel)>=0)?[sel]:ms; }
 
+/* ---------- Rental project return (Sarah 2026-09-30) ----------
+   Mirrors the Excel "Rental project return" tab for the two flats we bought & set up — Zayed 2000
+   and 28A. ALWAYS in EGP and ALWAYS these two flats (ignores the screen's scope/currency toggles):
+   FX gain and "adjusted" only mean something in EGP, and this answers "since we got them, how much
+   did we make". Net profit = the Hub's own operating net (USD) valued at the month's rate =
+   the Excel's "normalized". FX gain/loss = USD earnings held so far × the month-over-month rate
+   change (we hold the USD). Adjusted = net + FX = the Excel's "net profit". Accumulated runs from
+   −investment (broker+rent+setup, meta.investment), so the running total is money made net of what
+   we put in. Reconciles: Combined = Zayed + 28A on every column; Accum net = Net-to-date −
+   investment; Accum adjusted = Accum net + FX. */
+var RET_FLATS=['Zayed 2000','28A'];
+function retRate(m){ return (D.meta.fx&&D.meta.fx.byMonth&&D.meta.fx.byMonth[m])||rateFor(m); }
+function retSeries(flat){
+  var inv=(D.meta.investment&&D.meta.investment[flat])||0;
+  var months=monthsPast_().filter(function(m){ return pnlOf(flat,m); });
+  var rows=[], cumUSD=0, prevRate=null, accNet=0, accAdj=0, started=false;
+  months.forEach(function(m){
+    var p=pnlOf(flat,m), rate=retRate(m);
+    var inflowUSD=((p.revenue&&p.revenue.total)||0)+((p.revenue&&p.revenue.other)||0);
+    var netUsd=p.net||0, netEgp=netUsd*rate;
+    var fx=(prevRate==null)?0:cumUSD*(rate-prevRate);          // gain on USD held entering this month
+    if(!started&&(netUsd!==0||inflowUSD!==0)){ started=true; accNet-=inv; accAdj-=inv; }  // investment drops in at the first active month
+    if(started){ accNet+=netEgp; accAdj+=(netEgp+fx); }
+    rows.push({m:m, netEgp:netEgp, fx:fx, adj:netEgp+fx, accNet:accNet, accAdj:accAdj, live:started});
+    cumUSD+=inflowUSD; prevRate=rate;
+  });
+  var live=rows.filter(function(r){ return r.live; });
+  return { inv:inv, rows:rows,
+    sumNet: live.reduce(function(s,r){ return s+r.netEgp; },0),
+    sumFX:  live.reduce(function(s,r){ return s+r.fx; },0),
+    accNet: rows.length?rows[rows.length-1].accNet:-inv,
+    accAdj: rows.length?rows[rows.length-1].accAdj:-inv };
+}
+function egpR(n){ n=+n||0; return (n<0?'-':'')+Math.abs(Math.round(n)).toLocaleString('en-US')+' EGP'; }
+function egpC(n){ var c=Math.abs(n)<0.5?'var(--text3)':(n>=0?'#2e7d32':'#c62828'); return '<span style="color:'+c+';font-weight:700">'+egpR(n)+'</span>'; }
+function setRetView(v){ retView=v; render(); }
+function secReturn(){
+  if(!RET_FLATS.some(function(f){ return D.pnl[f]; })) return '';
+  var per={}, flats=[];
+  RET_FLATS.forEach(function(f){ if(D.pnl[f]){ per[f]=retSeries(f); flats.push(f); } });
+  var cInv=0,cNet=0,cFX=0,cAccNet=0,cAccAdj=0;
+  flats.forEach(function(f){ var s=per[f]; cInv+=s.inv; cNet+=s.sumNet; cFX+=s.sumFX; cAccNet+=s.accNet; cAccAdj+=s.accAdj; });
+  var noInv=!(D.meta.investment);
+  var h='<div class="card"><h3>Rental project return<span class="rt">Zayed 2000 + 28A · since acquisition · EGP</span></h3>'+
+    '<div class="legend" style="margin-bottom:8px">How much we\'ve made since buying &amp; setting up these two flats. <b>Net profit</b> is the Hub\'s operating net valued in EGP; <b>Adjusted</b> adds the FX gain on the USD we hold. Both run from minus the initial investment.'+
+    (noInv?' <b style="color:#c62828">Investment figures not loaded — deploy the Hub backend (v203+) so these accumulate correctly.</b>':'')+'</div>'+
+    '<table class="t"><thead><tr><th></th><th>Investment</th><th>Net profit to date</th><th>FX gain/loss</th><th>Accumulated net</th><th>Accumulated adjusted</th></tr></thead><tbody>'+
+    '<tr style="font-weight:800"><td>Combined</td><td>'+egpR(-cInv)+'</td><td>'+egpR(cNet)+'</td><td>'+egpC(cFX)+'</td><td>'+egpC(cAccNet)+'</td><td>'+egpC(cAccAdj)+'</td></tr>';
+  flats.forEach(function(f){ var s=per[f];
+    h+='<tr><td>'+esc(f)+'</td><td>'+egpR(-s.inv)+'</td><td>'+egpR(s.sumNet)+'</td><td>'+egpC(s.sumFX)+'</td><td>'+egpC(s.accNet)+'</td><td>'+egpC(s.accAdj)+'</td></tr>';
+  });
+  h+='</tbody></table>';
+  var view=(retView!=='combined'&&per[retView])?retView:'combined';
+  h+='<div class="rowbtns" style="margin-top:10px">'+seg([['combined','Combined']].concat(flats.map(function(f){ return [f,f]; })),view,'setRetView')+'</div>';
+  var monthly;
+  if(view==='combined'){
+    var ms=monthsPast_().filter(function(m){ return flats.some(function(f){ return pnlOf(f,m); }); });
+    var last={}, idx={};
+    flats.forEach(function(f){ last[f]={accNet:0,accAdj:0}; idx[f]={}; per[f].rows.forEach(function(r){ idx[f][r.m]=r; }); });
+    monthly=ms.map(function(m){ var net=0,fx=0,adj=0,an=0,aa=0;
+      flats.forEach(function(f){ var r=idx[f][m]; if(r){ net+=r.netEgp; fx+=r.fx; adj+=r.adj; last[f]={accNet:r.accNet,accAdj:r.accAdj}; }
+        an+=last[f].accNet; aa+=last[f].accAdj; });
+      return {m:m, net:net, fx:fx, adj:adj, accNet:an, accAdj:aa}; });
+  } else {
+    monthly=per[view].rows.filter(function(r){ return r.live; }).map(function(r){ return {m:r.m, net:r.netEgp, fx:r.fx, adj:r.adj, accNet:r.accNet, accAdj:r.accAdj}; });
+  }
+  h+='<table class="t" style="margin-top:6px"><thead><tr><th>Month</th><th>Net</th><th>FX</th><th>Adjusted</th><th>Accum net</th><th>Accum adj</th></tr></thead><tbody>';
+  monthly.forEach(function(r){ h+='<tr><td>'+MON[+r.m.slice(5,7)-1]+' '+r.m.slice(2,4)+'</td><td>'+egpR(r.net)+'</td><td>'+egpC(r.fx)+'</td><td>'+egpR(r.adj)+'</td><td>'+egpC(r.accNet)+'</td><td>'+egpC(r.accAdj)+'</td></tr>'; });
+  h+='</tbody></table></div>';
+  return h;
+}
+
 /* ---------- render ---------- */
 function render(){
   if(!allMonths().length){ document.getElementById('app').innerHTML='<div class="card muted">No months yet.</div>'; return; }
   var h='<div class="scope" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+scopeSeg()+curSeg()+'</div>';
-  h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs();
+  h+=secDelta()+secReturn()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs();
   document.getElementById('app').innerHTML=h;
 }
 function sumEarn(field, rng){ var t=0; monthsInRange(rng).forEach(function(m){ var mv=0; scopeFlats().forEach(function(f){ var p=moneyP(f,m); if(!p)return;
