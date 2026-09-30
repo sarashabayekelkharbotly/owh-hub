@@ -102,7 +102,7 @@ function setNbShow(k){
 var adrMonth='all', vcMonth='all', repMonth='all', repMode='flat';
 var marMonth='all', marBasis='var', uniUnit='sub', uniView='sum';   // margin table · per-unit trend chart
 var revMode='total', dMode='prev', dOpen={};   // by-flat chart mode · What-changed comparison · expanded rows
-var retView='combined';   // Rental-project-return monthly table: Combined | Zayed 2000 | 28A
+var retView='combined', retMode='monthly';   // Rental-project-return chart: scope (Combined|Zayed 2000|28A) · mode (Monthly|Accumulated)
 var FLAT_COLORS={'8A':'#4a7fb5','17A':'#cc5f5f','17B':'#9aa7b5','28A':'#6f9a76','Zayed 2000':'#d9a441'};
 /* §5.1 currency toggle (2026-08-04): ONE currency for the whole screen, chosen like the partner
    screens and shared with them via localStorage owh_cur. Every month converts at ITS OWN derived
@@ -446,39 +446,51 @@ function retSeries(flat){
 function egpR(n){ n=+n||0; return (n<0?'-':'')+Math.abs(Math.round(n)).toLocaleString('en-US')+' EGP'; }
 function egpC(n){ var c=Math.abs(n)<0.5?'var(--text3)':(n>=0?'#2e7d32':'#c62828'); return '<span style="color:'+c+';font-weight:700">'+egpR(n)+'</span>'; }
 function setRetView(v){ retView=v; render(); }
+function setRetMode(v){ retMode=v; render(); }
+/* The chart (Sarah 2026-09-30, "rather have the data in a chart"): stacked per-month bars like Money
+   by account — each bar = Net profit + FX gain/loss, so the total ON TOP is the month's Adjusted net
+   profit. Monthly mode shows each month; Accumulated mode stacks the running accNet + running FX so
+   the bar total is the accumulated adjusted, climbing out of the −investment hole (that's the
+   "return"). Negatives draw below the axis (stackedChart already does that). Always EGP, always the
+   two owned flats; the scope toggle picks Combined / Zayed 2000 / 28A. The since-acquisition totals
+   live in the one-line headline, so no table. */
 function secReturn(){
   if(!RET_FLATS.some(function(f){ return D.pnl[f]; })) return '';
   var per={}, flats=[];
   RET_FLATS.forEach(function(f){ if(D.pnl[f]){ per[f]=retSeries(f); flats.push(f); } });
-  var cInv=0,cNet=0,cFX=0,cAccNet=0,cAccAdj=0;
-  flats.forEach(function(f){ var s=per[f]; cInv+=s.inv; cNet+=s.sumNet; cFX+=s.sumFX; cAccNet+=s.accNet; cAccAdj+=s.accAdj; });
   var noInv=!(D.meta.investment);
-  var h='<div class="card"><h3>Rental project return<span class="rt">Zayed 2000 + 28A · since acquisition · EGP</span></h3>'+
-    '<div class="legend" style="margin-bottom:8px">How much we\'ve made since buying &amp; setting up these two flats. <b>Net profit</b> is the Hub\'s operating net valued in EGP; <b>Adjusted</b> adds the FX gain on the USD we hold. Both run from minus the initial investment.'+
-    (noInv?' <b style="color:#c62828">Investment figures not loaded — deploy the Hub backend (v203+) so these accumulate correctly.</b>':'')+'</div>'+
-    '<table class="t"><thead><tr><th></th><th>Investment</th><th>Net profit to date</th><th>FX gain/loss</th><th>Accumulated net</th><th>Accumulated adjusted</th></tr></thead><tbody>'+
-    '<tr style="font-weight:800"><td>Combined</td><td>'+egpR(-cInv)+'</td><td>'+egpR(cNet)+'</td><td>'+egpC(cFX)+'</td><td>'+egpC(cAccNet)+'</td><td>'+egpC(cAccAdj)+'</td></tr>';
-  flats.forEach(function(f){ var s=per[f];
-    h+='<tr><td>'+esc(f)+'</td><td>'+egpR(-s.inv)+'</td><td>'+egpR(s.sumNet)+'</td><td>'+egpC(s.sumFX)+'</td><td>'+egpC(s.accNet)+'</td><td>'+egpC(s.accAdj)+'</td></tr>';
-  });
-  h+='</tbody></table>';
   var view=(retView!=='combined'&&per[retView])?retView:'combined';
-  h+='<div class="rowbtns" style="margin-top:10px">'+seg([['combined','Combined']].concat(flats.map(function(f){ return [f,f]; })),view,'setRetView')+'</div>';
+  var mode=(retMode==='accum')?'accum':'monthly';
+  // since-acquisition totals for the chosen scope (the headline "return" figure)
+  var hInv=0,hAccNet=0,hAccAdj=0;
+  (view==='combined'?flats:[view]).forEach(function(f){ var s=per[f]; hInv+=s.inv; hAccNet+=s.accNet; hAccAdj+=s.accAdj; });
+  // monthly aligned rows for the chosen scope: {m, net, fx, accNet, accAdj}
+  var idx={}; flats.forEach(function(f){ idx[f]={}; per[f].rows.forEach(function(r){ idx[f][r.m]=r; }); });
   var monthly;
   if(view==='combined'){
-    var ms=monthsPast_().filter(function(m){ return flats.some(function(f){ return pnlOf(f,m); }); });
-    var last={}, idx={};
-    flats.forEach(function(f){ last[f]={accNet:0,accAdj:0}; idx[f]={}; per[f].rows.forEach(function(r){ idx[f][r.m]=r; }); });
-    monthly=ms.map(function(m){ var net=0,fx=0,adj=0,an=0,aa=0;
-      flats.forEach(function(f){ var r=idx[f][m]; if(r){ net+=r.netEgp; fx+=r.fx; adj+=r.adj; last[f]={accNet:r.accNet,accAdj:r.accAdj}; }
+    var ms={}; flats.forEach(function(f){ per[f].rows.forEach(function(r){ if(r.live) ms[r.m]=1; }); });
+    var last={}; flats.forEach(function(f){ last[f]={accNet:0,accAdj:0}; });
+    monthly=Object.keys(ms).sort().map(function(m){ var net=0,fx=0,an=0,aa=0;
+      flats.forEach(function(f){ var r=idx[f][m]; if(r){ if(r.live){ net+=r.netEgp; fx+=r.fx; } last[f]={accNet:r.accNet,accAdj:r.accAdj}; }
         an+=last[f].accNet; aa+=last[f].accAdj; });
-      return {m:m, net:net, fx:fx, adj:adj, accNet:an, accAdj:aa}; });
+      return {m:m, net:net, fx:fx, accNet:an, accAdj:aa}; });
   } else {
-    monthly=per[view].rows.filter(function(r){ return r.live; }).map(function(r){ return {m:r.m, net:r.netEgp, fx:r.fx, adj:r.adj, accNet:r.accNet, accAdj:r.accAdj}; });
+    monthly=per[view].rows.filter(function(r){ return r.live; }).map(function(r){ return {m:r.m, net:r.netEgp, fx:r.fx, accNet:r.accNet, accAdj:r.accAdj}; });
   }
-  h+='<table class="t" style="margin-top:6px"><thead><tr><th>Month</th><th>Net</th><th>FX</th><th>Adjusted</th><th>Accum net</th><th>Accum adj</th></tr></thead><tbody>';
-  monthly.forEach(function(r){ h+='<tr><td>'+MON[+r.m.slice(5,7)-1]+' '+r.m.slice(2,4)+'</td><td>'+egpR(r.net)+'</td><td>'+egpC(r.fx)+'</td><td>'+egpR(r.adj)+'</td><td>'+egpC(r.accNet)+'</td><td>'+egpC(r.accAdj)+'</td></tr>'; });
-  h+='</tbody></table></div>';
+  // stack it: Net profit + FX gain/loss (monthly), or running accNet + running FX (accumulated)
+  var rows=monthly.map(function(r){ return (mode==='accum')
+    ? {m:r.m, vals:{'Net profit':r.accNet, 'FX gain/loss':(r.accAdj-r.accNet)}}
+    : {m:r.m, vals:{'Net profit':r.net, 'FX gain/loss':r.fx}}; });
+  var series=[{k:'Net profit',color:'#4a7fb5'},{k:'FX gain/loss',color:'#d9a441'}];
+  var h='<div class="card"><h3>Rental project return<span class="rt">'+(view==='combined'?'Zayed 2000 + 28A':esc(view))+' · '+(mode==='accum'?'accumulated since acquisition':'per month')+' · EGP</span></h3>'+
+    '<div class="legend" style="margin-bottom:6px">Since acquisition'+(view==='combined'?'':' · '+esc(view))+': invested '+egpR(hInv)+' · accumulated net '+egpC(hAccNet)+' · adjusted (incl FX) '+egpC(hAccAdj)+'.'+
+    (noInv?' <b style="color:#c62828">Investment not loaded — deploy the Hub backend so this is right.</b>':'')+'</div>'+
+    '<div class="rowbtns">'+seg([['combined','Combined']].concat(flats.map(function(f){ return [f,f]; })),view,'setRetView')+'</div>'+
+    '<div class="rowbtns">'+seg([['monthly','Monthly'],['accum','Accumulated']],mode,'setRetMode')+'</div>'+
+    stackedChart(rows, series, {unit:''})+
+    '<div class="legend"><span><i style="background:#4a7fb5"></i>Net profit</span><span><i style="background:#d9a441"></i>FX gain/loss</span></div>'+
+    '<div class="legend">Each bar\'s total = '+(mode==='accum'?'accumulated adjusted (net + FX, run from −investment)':'the month\'s adjusted net profit (net + FX)')+'.</div>'+
+    '</div>';
   return h;
 }
 
