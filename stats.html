@@ -85,7 +85,7 @@ table.t{width:100%;border-collapse:collapse;font-size:12px}
 /* ---------- state ---------- */
 var D=null, DAYMS=86400000, MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var scope='portfolio';
-var R={rev:'12M',cost:'12M',attr:'12M',occ:'12M',nb:'12M',vol:'12M',chan:'12M',pay:'12M',adr:'6M',vc:'6M',rep:'12M',mar:'6M',uni:'12M',fx:'12M'};
+var R={rev:'12M',cost:'12M',attr:'12M',occ:'12M',nb:'12M',vol:'12M',chan:'12M',pay:'12M',adr:'6M',vc:'6M',rep:'12M',mar:'6M',uni:'12M',fx:'12M',ret:'all'};
 var revSeries='earnings', costCat='all', costMonth='all', chanMode='nights', payMode='money', nbMode='nights';
 /* item 8 (Sarah 2026-08-05, built 2026-08-08): tap a month on the revenue or nights chart → the
    bookings behind it. One open drill at a time; tapping the same month again closes it. */
@@ -447,6 +447,7 @@ function egpR(n){ n=+n||0; return (n<0?'-':'')+Math.abs(Math.round(n)).toLocaleS
 function egpC(n){ var c=Math.abs(n)<0.5?'var(--text3)':(n>=0?'#2e7d32':'#c62828'); return '<span style="color:'+c+';font-weight:700">'+egpR(n)+'</span>'; }
 function setRetView(v){ retView=v; render(); }
 function setRetMode(v){ retMode=v; render(); }
+function setR_ret(r){ R.ret=r; render(); }
 /* The chart (Sarah 2026-09-30, "rather have the data in a chart"): stacked per-month bars like Money
    by account — each bar = Net profit + FX gain/loss, so the total ON TOP is the month's Adjusted net
    profit. Monthly mode shows each month; Accumulated mode stacks the running accNet + running FX so
@@ -477,6 +478,10 @@ function secReturn(){
   } else {
     monthly=per[view].rows.filter(function(r){ return r.live; }).map(function(r){ return {m:r.m, net:r.netEgp, fx:r.fx, accNet:r.accNet, accAdj:r.accAdj}; });
   }
+  // date range like every other chart. Accumulated values stay cumulative-to-date, so a window just
+  // shows that slice of the running curve; the headline totals below are always full since-acquisition.
+  var _in={}; monthsInRange(R.ret).forEach(function(m){ _in[m]=1; });
+  monthly=monthly.filter(function(r){ return _in[r.m]; });
   // stack it: Net profit + FX gain/loss (monthly), or running accNet + running FX (accumulated)
   var rows=monthly.map(function(r){ return (mode==='accum')
     ? {m:r.m, vals:{'Net profit':r.accNet, 'FX gain/loss':(r.accAdj-r.accNet)}}
@@ -486,7 +491,7 @@ function secReturn(){
     '<div class="legend" style="margin-bottom:6px">Since acquisition'+(view==='combined'?'':' · '+esc(view))+': invested '+egpR(hInv)+' · accumulated net '+egpC(hAccNet)+' · adjusted (incl FX) '+egpC(hAccAdj)+'.'+
     (noInv?' <b style="color:#c62828">Investment not loaded — deploy the Hub backend so this is right.</b>':'')+'</div>'+
     '<div class="rowbtns">'+seg([['combined','Combined']].concat(flats.map(function(f){ return [f,f]; })),view,'setRetView')+'</div>'+
-    '<div class="rowbtns">'+seg([['monthly','Monthly'],['accum','Accumulated']],mode,'setRetMode')+'</div>'+
+    '<div class="rowbtns">'+seg([['monthly','Monthly'],['accum','Accumulated']],mode,'setRetMode')+timeSeg('ret')+'</div>'+
     stackedChart(rows, series, {unit:''})+
     '<div class="legend"><span><i style="background:#4a7fb5"></i>Net profit</span><span><i style="background:#d9a441"></i>FX gain/loss</span></div>'+
     '<div class="legend">Each bar\'s total = '+(mode==='accum'?'accumulated adjusted (net + FX, run from −investment)':'the month\'s adjusted net profit (net + FX)')+'.</div>'+
