@@ -486,7 +486,7 @@ function secReturn(){
 function render(){
   if(!allMonths().length){ document.getElementById('app').innerHTML='<div class="card muted">No months yet.</div>'; return; }
   var h='<div class="scope" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+scopeSeg()+curSeg()+'</div>';
-  h+=secDelta()+secReturn()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs();
+  h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs()+secReturn();
   document.getElementById('app').innerHTML=h;
 }
 function sumEarn(field, rng){ var t=0; monthsInRange(rng).forEach(function(m){ var mv=0; scopeFlats().forEach(function(f){ var p=moneyP(f,m); if(!p)return;
