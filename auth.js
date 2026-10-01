@@ -70,14 +70,18 @@ function api(fn, extra) {
       .then(function (r) { return r.text(); })
       .then(function (t) { try { return JSON.parse(t); } catch (e) { return { __html: true, snippet: String(t).slice(0, 60) }; } });
   }
+  /* Silent retry READS ONLY (2026-10-01). The one-retry above was firing for writes too: a write
+     whose first POST already LANDED server-side but came back as an HTML glitch page was being
+     re-sent, writing a second row — the 8A internet double (two NETC cards a minute apart). A write
+     is never auto-resent now; it returns "may already have saved — refresh". Reads still self-heal. */
+  var isRead = (fn === 'props_get_all' || fn === 'props_alerts' || fn === 'validate' || fn.indexOf('_draft') > -1 || fn.indexOf('phone_bill') > -1);
   return post_()
-    .then(function (j) { return (j && j.__html) ? post_() : j; })              // one silent retry
+    .then(function (j) { return (j && j.__html && isRead) ? post_() : j; })    // one silent retry — reads only
     .then(function (j) {
       if (j && j.__html) {
-        var isWrite = fn.indexOf('_save') > -1 || fn.indexOf('_sync') > -1 || fn.indexOf('_set') > -1;
         return { ok: false, code: 'BAD_REPLY',
                  error: 'Google returned a page instead of data (a temporary glitch).' +
-                        (isWrite ? ' Refresh before retrying — the entry may already have saved.' : ' Try again in a moment.') };
+                        (isRead ? ' Try again in a moment.' : ' Refresh before retrying — the entry may already have saved.') };
       }
       return j;
     })
