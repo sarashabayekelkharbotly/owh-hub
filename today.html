@@ -71,17 +71,16 @@ a.tab{font-size:11px;color:var(--red);text-decoration:none;font-weight:700}
   <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
   <nav class="tabbar">
     <a class="tab active" href="today.html"><span class="ti">🏠</span>Today</a>
-    <a class="tab" href="week.html"><span class="ti">🗓️</span>Week</a>
-    <a class="tab" href="repairs.html"><span class="ti">🔧</span>Repairs</a>
+    <a class="tab" href="https://sarashabayekelkharbotly.github.io/dry-clean-app/week.html"><span class="ti">🗓️</span>Week ↗</a>
+    <a class="tab" href="https://sarashabayekelkharbotly.github.io/dry-clean-app/index.html#repairs"><span class="ti">🔧</span>Repairs ↗</a>
     <a class="tab" href="close.html"><span class="ti">📑</span>Close</a>
     <a class="tab" href="stats.html"><span class="ti">📊</span>Stats</a>
-    <a class="tab" href="internet.html"><span class="ti">📶</span>Net</a>
+    <a class="tab" href="https://sarashabayekelkharbotly.github.io/dry-clean-app/internet.html"><span class="ti">📶</span>Net ↗</a>
     <a class="tab" href="partner.html" id="demoTab" style="display:none"><span class="ti">🤝</span>Demo</a>
   </nav>
 </div>
 
 <script src="auth.js"></script>
-<script src="net_model.js"></script>
 <script>
 /* CONFIG lives in auth.js: ENDPOINT + the session token. No password or shared
    secret in this file — who you are comes from the signed-in session. */
@@ -363,7 +362,7 @@ function cleanPlan(s){
   for(var off=6; N-off>4; off+=7,j++){ var d=new Date(ci); d.setDate(d.getDate()+off); plan.push({d:d,first:j===0}); }
   return plan;
 }
-// NEXT ACTION mirrors the Week screen's CONFIRMED schedule — cleans (D.cleans) + open repairs (D.repairs) —
+// NEXT ACTION mirrors الكنترول's CONFIRMED schedule (read-only from Supabase since Switch C) — cleans (D.cleans) + open repairs (D.repairs) —
 // NOT an independent recalculation. Whatever you set/edit in Week is the source of truth shown here.
 function cleanTypeLabel(t){ t=(t||'').toLowerCase(); return t==='checkout'?'Check-out clean':t==='midstay'?'Mid-stay clean':t==='weekly'?'Weekly clean':t==='revision'?'Revision clean':t==='codechange'?'Code change':'Clean'; }
 function nextSched(flat,asOf){
@@ -381,26 +380,6 @@ function nextAction(s,asOf,today,out,inn){
 }
 function dotp(portal){ var p=(portal||'').toLowerCase(); var c=p.indexOf('airbnb')>-1?'--ch-airbnb':(p.indexOf('book')>-1?'--ch-booking':'--ch-direct'); return '<span class="dot" style="background:var('+c+')"></span>'; }
 
-/* ---- internet depletion (Screen 8 mirrors here, §13.2) ---- */
-function pdt(s){ s=(s||'').toString().trim(); if(!s)return null; s=s.replace(' ','T'); if(s.length<=10)s+='T00:00'; var d=new Date(s); return isNaN(d)?null:d; }
-/* ONE model — net_model.js, shared with internet.html (Sarah 2026-09-02: Today said 12 Sep where
-   the internet screen said 14 Sep, because Today ran its own cruder calendar-day burn model; "so
-   that we don't have several calculations"). Today surfaces only the interrupt tier: a renewal
-   today/tomorrow (a real-world errand — 8A's cash card needs a pre-charge), a bundle about to die
-   (≤2 days), or one dying before its renewal while a guest is in the flat for those dark days.
-   The internet screen remains the place with the full countdowns. */
-function netAlerts(){
-  if(!D.internet||!window.netCalc) return [];
-  var out=[];
-  (D.meta.flatsOrder||[]).forEach(function(f){
-    var c=netCalc(f); if(c.state!=='live')return;
-    if(c.daysToRenew<=1){ out.push({flat:f,toRen:c.daysToRenew,renew:c.cycleEnd}); return; }
-    if(!c.dies)return;                                    // outlives its cycle — the renewal wipes the rest
-    var st=c.depletion?curStay(f,c.depletion):null;       // someone in the flat on the day it dies?
-    if(c.daysToDeplete<=2||st) out.push({flat:f,depl:c.depletion,ren:c.cycleEnd,soon:c.daysToDeplete<=2});
-  });
-  return out;
-}
 function isDirect(portal){ return (portal||'').toLowerCase().indexOf('direct')>-1; }
 /* direct bookings the Smoobu sync brought in without a payment method yet (§14).
    Flag a direct booking with no route when it was booked recently OR is current/upcoming —
@@ -528,12 +507,7 @@ function needs(cm,pmY){
   if(!D.meta.fx.isCurrentMonthSet) items.push({t:'warn',txt:'<b>FX not set for '+D.meta.currentMonth+'</b> — carrying '+(D.meta.fx.current||'?')+' from last close.'});
   var anyOpen=false; airbnbFlats().forEach(function(f){ var r=(D.pnl[f]||{})[pmY]; if(r&&r.status&&r.status!=='final')anyOpen=true; });
   if(anyOpen) items.push({t:'info',txt:'<b>'+pmY+' not closed</b> — review &amp; mark final on the close screen.'});
-  var pays=directNeedsPay(), nets=netAlerts();
-  nets.forEach(function(a){ items.unshift({t:'warn',txt:'<b>Internet — '+esc(a.flat)+'</b> '+
-    (a.toRen!=null ? 'renews '+(a.toRen===0?'<b>today</b>':'<b>tomorrow</b> ('+dmon(ymd(a.renew))+')')+' — the cycle ends and the quota resets.'
-     : a.soon ? 'about to run out — depletes <b>'+dmon(ymd(a.depl))+'</b>.'
-            : 'may deplete <b>'+dmon(ymd(a.depl))+'</b>, before it renews '+dmon(ymd(a.ren))+' — a guest is in the flat.')+
-    ' <a class="tab" href="internet.html">Top up / renew →</a>'}); });
+  var pays=directNeedsPay();   // internet dangers + the Thursday confirm live on الكنترول's «مطلوب منكم» card (Switch C, 2026-10-03)
   // an owner payout the statements say is due but no 🏦 entry has settled — Clause 7.2's 7th-of-month wire
   Object.keys(D.pnl||{}).forEach(function(fO){ var byMO=D.pnl[fO]||{}, plO=null, lO=null;
     Object.keys(byMO).forEach(function(mO){ if(byMO[mO]&&byMO[mO].partnerLedger&&(!lO||mO>lO)){ lO=mO; plO=byMO[mO].partnerLedger; } });
@@ -581,17 +555,6 @@ function needs(cm,pmY){
   /* 8A closed-month mismatch alert RETIRED (2026-08-01): the recharge reader auto-corrects open
      months before they close, so new mismatches cannot form. Sheet menu → "Electricity — sync 8A
      recharges" keeps the historical report. */
-  // Thursday-6pm reminder: confirm the Week schedule + send the WhatsApp (shows Thu-eve & Fri until the upcoming week is confirmed)
-  (function(){ var nd=new Date(), dow=nd.getDay();
-    if((dow===4&&nd.getHours()>=18)||dow===5){
-      // the operational week starts FRIDAY (2026-08-13): Thursday → tomorrow, Friday → today.
-      var fri=new Date(nd); fri.setDate(fri.getDate()+(dow===4?1:0));
-      var a=ymd(fri), e=new Date(fri); e.setDate(e.getDate()+7); var b=ymd(e);
-      // confirmed = any clean already filed for a day of that week (the Week label is not the test)
-      var done=(D.cleans||[]).some(function(c){ var k=c.date||''; return k>=a&&k<b; });
-      if(!done) items.unshift({t:'warn',txt:'<b>It\'s Thursday</b> — confirm the <a class="tab" href="week.html">Week</a> schedule &amp; send the WhatsApp.'});
-    }
-  })();
   var RA=(ALERTS&&ALERTS.revAlerts)||{}, cancs=RA.cancellations||[], extras=RA.extras||[];
   if(!items.length&&!pays.length&&!cancs.length&&!extras.length) items.push({t:'ok',txt:'Nothing needs you right now.'});
   var h='<div class="card"><h3>Needs you<button id="syncAllBtn" onclick="syncAll()" style="float:right;font:inherit;font-size:11px;font-weight:700;border:1px solid var(--line,#ecdede);background:#fff;color:var(--red,#cc5f5f);border-radius:8px;padding:3px 9px;cursor:pointer">🔄 Sync all</button></h3>';
