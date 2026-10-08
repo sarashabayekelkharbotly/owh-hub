@@ -145,7 +145,7 @@ function authWrongScreen(target, role) {
     '<img src="hub-logo.png" alt="" style="width:64px;height:64px;border-radius:13px;margin-bottom:10px">' +
     '<h2 style="margin:0 0 6px;font-size:17px">Not your screen</h2>' +
     '<p style="margin:0 0 14px;font-size:12px;color:#6b6b6b">This screen is for the OWH team. ' +
-    (role === 'partner' ? 'Your own statement screen is not published yet.' : 'Signed in as ' + role + '.') + '</p>' +
+    (role === 'partner' ? 'This screen is not part of your owner view.' : 'Signed in as ' + role + '.') + '</p>' +
     '<button onclick="logout()" style="border:0;background:#cc5f5f;color:#fff;font-family:inherit;font-weight:700;' +
     'font-size:13px;border-radius:9px;padding:8px 18px;cursor:pointer">Sign out</button></div>';
   return false;
