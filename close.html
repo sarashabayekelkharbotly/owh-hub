@@ -95,6 +95,23 @@ td.damt{font-size:11px;color:#5a4d4d}
 .orevrow{display:flex;align-items:center;gap:8px;margin-bottom:5px}
 .orevrow label{flex:0 0 96px;font-size:11.5px;color:var(--soft)}
 .orevrow input,.orevrow select{flex:1;font-family:inherit;font-size:12px;border:1px solid var(--line,#ddd);border-radius:7px;padding:4px 7px;background:#fff}
+/* Bookings view — one CARD per reservation (a wide table cannot be read on a vertical phone) */
+.bkf{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.bkf select,.bkf input{font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--white);color:var(--ink)}
+.bkgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:8px}
+.bkc{background:var(--white);border:1px solid var(--line);border-radius:11px;padding:9px 11px;font-size:12px;line-height:1.45}
+.bkc.cx{opacity:.55}
+.bkh{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.bkh b{font-size:13px;unicode-bidi:isolate}
+.bkh .bkp{font-size:10.5px;color:var(--soft);white-space:nowrap}
+.bkd{color:#4c4040;margin-top:2px;direction:ltr;text-align:left}
+.bki{color:var(--soft);font-size:10.5px;direction:ltr;text-align:left}
+.bkm{display:grid;grid-template-columns:1fr 1fr;gap:1px 14px;margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
+.bkm div{display:flex;justify-content:space-between;gap:6px}
+.bkm .l{color:var(--soft)}
+.bkr{margin-top:5px;font-size:10.5px;color:#4c4040;direction:ltr;text-align:left}
+.bkt{background:#fbf7f7;border:1px solid var(--line);border-radius:11px;padding:9px 11px;margin-bottom:8px;font-size:12px}
+.bkt .bkm{border-top:0;margin-top:4px;padding-top:0}
 </style>
 </head>
 <body>
@@ -110,6 +127,7 @@ td.damt{font-size:11px;color:#5a4d4d}
     <span class="seg" id="viewSeg">
       <button data-view="review" class="on">Review one flat</button>
       <button data-view="compare">Compare all</button>
+      <button data-view="bookings">Bookings</button>
     </span>
     <select id="flatSel"></select>
     <select id="monthSel"></select>
@@ -405,7 +423,9 @@ function initControls(){
   var fs=$('#flatSel'); fs.innerHTML=flats.map(function(f){return '<option'+(f===FLAT?' selected':'')+'>'+f+'</option>';}).join('');
   fs.onchange=function(){ FLAT=fs.value; FXMSG=''; var ms=monthsFor(FLAT); if(ms.indexOf(MONTH)<0)MONTH=defMonth(ms); fillMonths(); render(); };
   fillMonths();
-  $('#viewSeg').onclick=function(e){ if(!e.target.dataset.view)return; VIEW=e.target.dataset.view; seg('#viewSeg','view',VIEW); $('#flatSel').style.display=VIEW==='review'?'':'none'; render(); };
+  $('#viewSeg').onclick=function(e){ if(!e.target.dataset.view)return; VIEW=e.target.dataset.view; seg('#viewSeg','view',VIEW); $('#flatSel').style.display=VIEW==='review'?'':'none';
+    $('#monthSel').style.display=$('#curSeg').style.display=VIEW==='bookings'?'none':'';   // Bookings has its own month/channel/date controls
+    render(); };
   $('#curSeg').onclick=function(e){ if(!e.target.dataset.cur)return; CUR=e.target.dataset.cur; seg('#curSeg','cur',CUR); render(); };
 }
 function fillMonths(){ var ms=monthsFor(FLAT),el=$('#monthSel'); el.innerHTML=ms.map(function(m){return '<option'+(m===MONTH?' selected':'')+'>'+m+'</option>';}).join(''); el.onchange=function(){MONTH=el.value;FXMSG='';render();}; }
@@ -447,6 +467,110 @@ function ribbon(){ var g=DATA._gen?new Date(DATA._gen):null;
   $('#rib').innerHTML=authWho()+' · FX '+fmt1(typeof MONTH!=='undefined'&&MONTH?rateFor(MONTH):fx())+' <span style="color:#9a8c8c">('+(DATA.meta.fx.isCurrentMonthSet?'set':'carried')+')</span>'+(g?' · '+g.toLocaleDateString():''); }
 function deltaCell(v,p){ if(p==null||isNaN(p))return ''; var d=v-p; if(Math.abs(d)<0.5)return '<span class="muted">—</span>'; var pct=p?Math.round(d/Math.abs(p)*100):null; return '<span class="delta '+(d>0?'up':'down')+'">'+(d>0?'+':'')+fmt(d)+(pct!=null?' ('+(pct>0?'+':'')+pct+'%)':'')+'</span>'; }
 
+/* ---------- Bookings view (moved here from Today, 2026-10-09: Sarah — "I cannot see this in a vertical page") ----------
+   Channel + a month or date range + which date to filter on (check-out by default: Booking.com
+   invoices a stay in the month the guest LEFT, and bills (commission + payment charge) × 1.14 VAT).
+   Admin-only server read, loaded on first use. One card per reservation; cancelled stays are dimmed
+   and kept out of the totals so the totals tie to the invoice. */
+var BK=null, BK_BUSY=false, BK_ERR='', BK_F={ch:'',basis:'out',month:'',from:'',to:'',flat:'',q:'',canc:false};
+var BK_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function bkMoney(x){ return (x==null||!isFinite(x))?'—':Number(x).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function bkDigits(x){ var d=String(x||'').replace(/\D/g,''); return d.slice(0,2)==='00'?d.slice(2):d; }
+function bkPhone(p,q){ var a=bkDigits(p), b=bkDigits(q); if(!a||!b) return false;
+  if(b.length>=7){ var ta=a.slice(-10), tb=b.slice(-10); return ta.slice(-tb.length)===tb||tb.slice(-ta.length)===ta||a.indexOf(b)>-1; } return a.indexOf(b)>-1; }
+function bkView(){
+  var f=BK_F; if(!f.month&&!f.from&&!f.to&&!f._init){ f.month=MONTH||''; f._init=true; }
+  function opt(v,l,cur){ return '<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(l)+'</option>'; }
+  return '<div class="card"><h1 style="font-size:14px;margin:0 0 6px">Bookings</h1><p class="sub">channel · month · booking IDs · money (USD)</p>'+
+    '<div class="bkf"><select onchange="bkSet(\'ch\',this.value)">'+['','Airbnb','Booking.com','Direct'].map(function(c){ return opt(c,c||'All channels',f.ch); }).join('')+'</select>'+
+      '<select onchange="bkSet(\'basis\',this.value)">'+opt('out','by check-out',f.basis)+opt('in','by check-in',f.basis)+opt('booked','by booked date',f.basis)+opt('rev','by revenue month',f.basis)+'</select>'+
+      '<input type="month" id="bk_month" value="'+esc(f.month)+'" onchange="bkSet(\'month\',this.value)">'+
+      '<select id="bk_flat" onchange="bkSet(\'flat\',this.value)">'+opt(f.flat,f.flat||'All homes',f.flat)+'</select></div>'+
+    '<div class="bkf"><span class="muted">or dates</span><input type="date" id="bk_from" value="'+esc(f.from)+'" onchange="bkSet(\'from\',this.value)"><span class="muted">→</span><input type="date" id="bk_to" value="'+esc(f.to)+'" onchange="bkSet(\'to\',this.value)"></div>'+
+    '<div class="bkf"><input id="bk_q" value="'+esc(f.q)+'" placeholder="guest · phone · booking ID" oninput="bkSet(\'q\',this.value)" style="flex:1;min-width:150px">'+
+      '<label class="muted"><input type="checkbox"'+(f.canc?' checked':'')+' onchange="bkSet(\'canc\',this.checked)"> show cancelled</label></div></div>'+
+    '<div id="bkr"></div>';
+}
+function bkSet(k,v){
+  BK_F[k]=v;
+  if((k==='from'||k==='to')&&v){ BK_F.month=''; var m=$('#bk_month'); if(m) m.value=''; }
+  if(k==='month'&&v){ BK_F.from=''; BK_F.to=''; var a=$('#bk_from'),b=$('#bk_to'); if(a) a.value=''; if(b) b.value=''; }
+  bkRun();
+}
+function bkLoad(){
+  if(BK||BK_BUSY) return; BK_BUSY=true; BK_ERR='';
+  api('props_stay_finder').then(function(j){ BK_BUSY=false;
+    if(j&&j.ok){ BK=j.stays||[]; var fl={}; BK.forEach(function(s){ fl[s.flat]=1; });
+      var el=$('#bk_flat'); if(el){ var cur=BK_F.flat;
+        el.innerHTML='<option value="">All homes</option>'+Object.keys(fl).sort().map(function(x){ return '<option value="'+esc(x)+'"'+(x===cur?' selected':'')+'>'+esc(x)+'</option>'; }).join(''); }
+    } else BK_ERR=(j&&j.error)||'could not load';
+    if(VIEW==='bookings') bkRun();
+  }).catch(function(e){ BK_BUSY=false; BK_ERR=String(e&&e.message||e); if(VIEW==='bookings') bkRun(); });
+}
+function bkRows(){
+  var f=BK_F, ql=String(f.q||'').trim().toLowerCase(), qd=bkDigits(f.q), from=f.from||'', to=f.to||'', mon=f.month||'';
+  return (BK||[]).filter(function(s){
+    if(!f.canc&&/cancel/i.test(s.status||'')) return false;
+    if(f.ch&&String(s.portal||'').toLowerCase().indexOf(f.ch.toLowerCase())<0) return false;
+    if(f.flat&&s.flat!==f.flat) return false;
+    if(f.basis==='rev'){
+      var lo=(from||mon).slice(0,7), hi=(to||mon).slice(0,7);
+      if(lo||hi){ if(!(s.months||[]).some(function(x){ return (!lo||x.m>=lo)&&(!hi||x.m<=hi); })) return false; }
+    } else {
+      var d=f.basis==='in'?s.checkIn:(f.basis==='booked'?s.booked:s.checkOut);
+      if(mon&&String(d||'').slice(0,7)!==mon) return false;
+      if(from&&(!d||d<from)) return false;
+      if(to&&(!d||d>to)) return false;
+    }
+    if(ql){ var hay=[s.guest,s.conf,s.id,s.smoobu,s.flat].join(' ').toLowerCase();
+      if(hay.indexOf(ql)<0&&!(qd.length>=4&&bkPhone(s.phone,f.q))) return false; }
+    return true;
+  }).sort(function(a,b){
+    var k=BK_F.basis==='in'?'checkIn':(BK_F.basis==='booked'?'booked':'checkOut');
+    return (a[k]||'')<(b[k]||'')?-1:((a[k]||'')>(b[k]||'')?1:0);
+  });
+}
+function bkShort(d){ if(!d) return '?'; var p=d.split('-'); return (+p[2])+' '+BK_MON[+p[1]-1]+(p[0]!==String(new Date().getFullYear())?' '+p[0].slice(2):''); }
+function bkRun(){
+  var el=$('#bkr'); if(!el) return;
+  if(!BK){ if(BK_ERR){ el.innerHTML='<div class="card"><span class="muted" style="color:var(--rr)">'+esc(BK_ERR)+'</span></div>'; return; }
+           el.innerHTML='<div class="card"><span class="muted">loading reservations…</span></div>'; bkLoad(); return; }
+  var rows=bkRows(), T={gross:0,comm:0,charge:0,vat:0,net:0,other:0,allIn:0,n:0}, canc=0;
+  if(!rows.length){ el.innerHTML='<div class="card"><span class="muted">no reservations match</span></div>'; return; }
+  var cards=rows.map(function(s){
+    var cx=/cancel/i.test(s.status||''), n=s.nights||0;
+    if(cx) canc++; else { T.gross+=s.gross; T.comm+=s.comm; T.charge+=s.charge; T.vat+=s.vat; T.net+=s.net; T.other+=s.other; T.allIn+=s.allIn; T.n+=n; }
+    var gpn=n?s.gross/n:null, epn=n?(s.allIn-s.other)/n:null;
+    var rm=(s.months||[]).map(function(x){ return BK_MON[+x.m.slice(5,7)-1]+' '+x.m.slice(2,4)+' · '+x.n+'n · $'+bkMoney(x.usd); }).join('  |  ');
+    function r(l,v){ return '<div><span class="l">'+l+'</span><b>'+v+'</b></div>'; }
+    return '<div class="bkc'+(cx?' cx':'')+'">'+
+      '<div class="bkh"><b>'+esc(s.guest||'—')+'</b><span class="bkp">'+esc(s.flat)+' · '+esc(s.portal)+(cx?' · <span style="color:var(--rr)">cancelled</span>':'')+'</span></div>'+
+      '<div class="bkd">'+bkShort(s.checkIn)+' → '+bkShort(s.checkOut)+' · '+n+' night'+(n===1?'':'s')+' <span class="muted">· booked '+bkShort(s.booked)+'</span></div>'+
+      '<div class="bki">Smoobu '+esc(s.smoobu||s.id||'—')+' · ref <b style="color:var(--ink)">'+esc(s.conf||'—')+'</b></div>'+
+      '<div class="bkm">'+r('Gross',bkMoney(s.gross))+r('per night',bkMoney(gpn))+r('Commission',bkMoney(s.comm))+r('Pay charge',bkMoney(s.charge))+r('VAT',bkMoney(s.vat))+r('Net',bkMoney(s.net))+
+        (s.other?r('Other',bkMoney(s.other)):'')+r('All-in',bkMoney(s.allIn))+r('Earned/night',bkMoney(epn))+'</div>'+
+      (rm?'<div class="bkr">Revenue: '+rm+'</div>':'')+'</div>';
+  }).join('');
+  function t(l,v){ return '<div><span class="l">'+l+'</span><b>'+bkMoney(v)+'</b></div>'; }
+  var fee=T.comm+T.charge+T.vat, inv=(T.comm+T.charge)*1.14, basisL=BK_F.basis==='out'?'check-out':BK_F.basis==='in'?'check-in':BK_F.basis==='booked'?'booked':'revenue';
+  el.innerHTML=
+    '<div class="bkt"><b>'+rows.length+'</b> reservation'+(rows.length===1?'':'s')+' · '+T.n+' nights'+(canc?' · '+canc+' cancelled (not counted)':'')+' <span class="muted">· '+basisL+' date</span>'+
+      '<a href="#" onclick="bkCsv();return false" style="float:right;font-size:11px">copy as CSV</a><span id="bkmsg" class="muted" style="float:right;margin-right:8px"></span>'+
+      '<div class="bkm">'+t('Gross',T.gross)+t('Net',T.net)+t('Commission',T.comm)+t('Pay charge',T.charge)+t('VAT',T.vat)+t('All-in',T.allIn)+'</div>'+
+      '<div style="margin-top:6px;border-top:1px solid var(--line);padding-top:5px">Booking.com invoice = (commission + charge) × 1.14 = <b>'+bkMoney(inv)+'</b> <span class="muted">· commission + charge + VAT = '+bkMoney(fee)+'</span></div></div>'+
+    '<div class="bkgrid">'+cards+'</div>';
+}
+function bkCsv(){
+  var rows=bkRows(), q=function(x){ x=String(x==null?'':x); return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; };
+  var out=[['Guest','Home','Channel','Status','Booked','Check-in','Check-out','Nights','Smoobu ID','Booking ref','Gross','Gross/night','Commission','Payment charge','VAT','Net','Other','All-in','Revenue by month'].join(',')];
+  rows.forEach(function(s){ var n=s.nights||0;
+    out.push([s.guest,s.flat,s.portal,s.status,s.booked,s.checkIn,s.checkOut,n,s.smoobu||s.id,s.conf,s.gross,n?(s.gross/n).toFixed(2):'',s.comm,s.charge,s.vat,s.net,s.other,s.allIn,
+      (s.months||[]).map(function(x){ return x.m+':'+x.n+'n:'+x.usd; }).join(' | ')].map(q).join(',')); });
+  var txt=out.join('\n'), done=function(ok){ var m=$('#bkmsg'); if(m) m.textContent=ok?'copied ✓':'copy failed'; };
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(function(){ done(true); },function(){ done(false); });
+  else { try{ var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done(true); }catch(e){ done(false); } }
+}
+
 /* ---------- render ---------- */
 function render(){ ribbon();
   /* PREFETCH the drill-down (Sarah 2026-08-31: "takes a longer time to load than stats"). Stats
@@ -455,6 +579,7 @@ function render(){ ribbon();
      change, means the answer is normally waiting before the ▼ is pressed. Idempotent + cached
      per flat|month, so this line costs nothing when the data is already in. */
   try{ loadRevDetail(); }catch(e){}
+  if(VIEW==='bookings'){ $('#app').innerHTML=bkView(); bkRun(); return; }
   $('#app').innerHTML=VIEW==='review'?renderReview():renderCompare();
   if(VIEW==='review'){ if(RECUR&&RECUR.month===MONTH) renderRecurring(); else loadRecurring();
                        if(OREV&&OREV.month===MONTH) renderOtherRev(); else loadOtherRev(); } }
