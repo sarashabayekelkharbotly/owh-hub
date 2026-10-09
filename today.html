@@ -561,6 +561,8 @@ function needs(cm,pmY){
   if(!items.length&&!pays.length&&!cancs.length&&!extras.length) items.push({t:'ok',txt:'Nothing needs you right now.'});
   var h='<div class="card"><h3>Needs you<button id="syncAllBtn" onclick="syncAll()" style="float:right;font:inherit;font-size:11px;font-weight:700;border:1px solid var(--line,#ecdede);background:#fff;color:var(--red,#cc5f5f);border-radius:8px;padding:3px 9px;cursor:pointer">🔄 Sync all</button></h3>';
   pays.forEach(function(s){ h+=payRow(s); });
+  /* 💳 bookings flagged Stripe whose payment could not be matched — one notification each, answered here */
+  ((ALERTS&&ALERTS.stripeAwaiting)||[]).forEach(function(a){ h+=stripeRow(a); });
   /* money that exists but has no amount recorded yet — put it above the informational lines,
      because unlike those it is lost entirely if it is never answered */
   cancs.forEach(function(a,i){ h+=orevRow(a,'canc',i); });
@@ -574,11 +576,52 @@ function savePay(id){
   msg.textContent='saving…';
   api('props_set_pay',{id:id,method:m,currency:c,paidOn:paidOn}).then(function(j){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
-    var st=j.result&&j.result.stripe;                // Stripe: the fee estimate that was just applied (or why not)
-    if(st&&st.estimate) msg.textContent='saved · Stripe fee '+st.fee.toFixed(2)+' estimated (real receipt to follow)';
-    else if(st&&st.skipped) msg.textContent='saved · fee not applied: '+st.skipped;
-    setTimeout(boot, st&&(st.estimate||st.skipped)?1800:0);   // reload — the item drops off once the route is set
+    var st=j.result&&j.result.stripe, rs=j.result&&j.result.resolved;   // st = the estimate; rs = Stripe looked up RIGHT NOW
+    var said='';
+    if(rs&&rs.state==='matched') said='saved · Stripe receipt recorded: fee '+Number(rs.fee).toFixed(2)+(rs.credit?' (credited back)':'')+' → you receive '+Number(rs.receipt).toFixed(2);
+    else if(rs&&rs.state==='closed') said='saved · payment found (receives '+Number(rs.receipt).toFixed(2)+') but the stay touches a closed month — see the notification';
+    else if(rs&&(rs.state==='none'||rs.state==='ambiguous')) said='saved · payment not found in Stripe yet — I will keep looking; tell me which one in the notification below';
+    else if(rs&&rs.state==='error') said='saved · Stripe lookup failed ('+rs.error+')'+(st&&st.estimate?' · fee '+st.fee.toFixed(2)+' estimated':'');
+    else if(rs&&rs.state==='nokey') said=st&&st.estimate?'saved · Stripe fee '+st.fee.toFixed(2)+' estimated (no Stripe key set yet)':'saved';
+    else if(st&&st.estimate) said='saved · Stripe fee '+st.fee.toFixed(2)+' estimated (real receipt to follow)';
+    else if(st&&st.skipped) said='saved · fee not applied: '+st.skipped;
+    if(said) msg.textContent=said;
+    setTimeout(boot, said?2200:0);   // reload — the item drops off once the route is set
   }).catch(function(e){ msg.textContent='failed: '+(e.message||e); });
+}
+function stripeRow(a){
+  var id=esc(a.id), opts='<option value="">pick the payment…</option>'+(a.cands||[]).map(function(c){
+    var net=(c.amount||0)-(c.refunded||0);
+    return '<option value="'+esc(c.id)+'">'+(c.exact?'★ ':'')+'$'+fmt(net)+' · '+esc(c.date)+' · '+esc(c.name||c.email||c.id)+(c.fee?' · fee '+fmt(c.fee):'')+'</option>'; }).join('');
+  var inp='font-family:inherit;font-size:11.5px;border:1px solid var(--line);border-radius:6px;padding:2px 5px;background:var(--white)';
+  return '<div class="need n-warn" id="st_'+id+'"><span class="nb">💳</span><span>'+
+    '<b>Stripe payment not found</b> — '+esc(a.flat)+' · '+esc(a.guest||'')+' · '+dmon(a.ci)+' → '+dmon(a.co)+' ($'+fmt(a.amount)+')'+
+    '<div class="muted" style="margin-top:2px">'+esc(a.note||'')+'</div>'+
+    '<div class="payctl"><select id="stc_'+id+'" style="'+inp+'">'+opts+'</select>'+
+      '<input id="sti_'+id+'" placeholder="or paste ch_… / pi_…" style="width:150px;'+inp+'">'+
+      '<button class="paybtn" onclick="stripeLink(\''+id+'\')">Link</button>'+
+      '<button class="paybtn" style="background:#6b5b5b" onclick="stripeCheck(\''+id+'\')">Check again</button>'+
+      '<span class="paymsg" id="stmsg_'+id+'"></span></div></span></div>';
+}
+function stripeAnswer(id,j){
+  var msg=document.getElementById('stmsg_'+id), r=j&&j.result||{};
+  if(!j||!j.ok) throw new Error(j&&j.error||'bad');
+  if(r.state==='matched'){ msg.textContent='linked ✓ fee '+Number(r.fee).toFixed(2)+' → you receive '+Number(r.receipt).toFixed(2); setTimeout(boot,1500); }
+  else if(r.state==='closed'){ msg.textContent='found (receives '+Number(r.receipt).toFixed(2)+'), but it touches a closed month ('+(r.closed||[]).join(', ')+') — approve it from the sheet menu: Stripe → sync receipts'; }
+  else if(r.state==='error') msg.textContent=r.error||'failed';
+  else if(r.state==='nokey') msg.textContent='no Stripe key is set';
+  else msg.textContent='still not found in Stripe';
+}
+function stripeLink(id){
+  var sel=document.getElementById('stc_'+id), inp=document.getElementById('sti_'+id), msg=document.getElementById('stmsg_'+id);
+  var ref=(inp.value||'').trim()||sel.value;
+  if(!ref){ msg.textContent='pick a payment, or paste its id'; return; }
+  msg.textContent='linking…';
+  api('props_stripe_link',{id:id,ref:ref}).then(function(j){ stripeAnswer(id,j); }).catch(function(e){ msg.textContent='failed: '+(e.message||e); });
+}
+function stripeCheck(id){
+  var msg=document.getElementById('stmsg_'+id); msg.textContent='checking Stripe…';
+  api('props_stripe_check',{id:id}).then(function(j){ stripeAnswer(id,j); }).catch(function(e){ msg.textContent='failed: '+(e.message||e); });
 }
 function esc(s){return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
 
