@@ -123,6 +123,9 @@ function esc(s){ return (s||'').toString().replace(/[<>&]/g,function(c){return {
 function isLive(s){ var st=(s.status||'').toLowerCase(); return st.indexOf('cancel')<0 && st.indexOf('block')<0; }
 function fmt(n){ n=+n||0; var a=Math.abs(n); return (n<0?'-':'')+(a>=1000?Math.round(a).toLocaleString('en-US'):String(Math.round(a*10)/10)); }
 function kf(n){ n=+n||0; var a=Math.abs(n); return (n<0?'-':'')+(a>=1000?(a/1000).toFixed(a>=10000?0:1)+'k':String(Math.round(a))); }
+/* ALWAYS in 'k' (2026-10-09): on an axis whose other bars read "-458k", a sub-1000 value printed raw
+   ("-843") looks like -843k — the Rental-return scare. kk keeps every bar on the same scale: 843→"0.8k". */
+function kk(n){ n=+n||0; var a=Math.abs(n); return (n<0?'-':'')+(a>=10000?String(Math.round(a/1000)):(a/1000).toFixed(1))+'k'; }
 /* 2 decimals: these are dollars, and small per-flat figures were rounding away to "0". `fmt` stays
    whole-number — it also formats nights and counts. */
 function money(n){ n=+n||0; var dec=CUR==='USD'?2:0;   // EGP figures are big — decimals are noise (Sarah 2026-08-04)
@@ -304,6 +307,7 @@ function lineSigned(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) r
   return s+xlabels(rows.map(function(r){return r.m;}), cx)+'</svg>';
 }
 function stackedChart(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n) return '<div class="muted">No data.</div>';
+  var LBL=opt.fmt||kf;   // label formatter — pass opt.fmt to keep a bar's scale consistent (e.g. always 'k', so 843 can't masquerade as 843k next to 458k)
   var gw=(W-2*PAD)/n, bw=Math.min(46,gw*0.6), plotH=H-TOP-BOT, baseY=H-BOT;
   // positives stack up from zero, negatives stack DOWN from it — a loss must not look like a gain
   var tops=rows.map(function(r){ var t=0; series.forEach(function(se){ var v=r.vals[se.k]||0; if(v>0)t+=v; }); return t; });
@@ -317,9 +321,9 @@ function stackedChart(rows, series, opt){ opt=opt||{}; var n=rows.length; if(!n)
       if(v>0){ yUp-=bh; y=yUp; } else { y=yDn; yDn+=bh; }
       // <title> = native hover tooltip — small segments are unreadable without it (Sarah 2026-08-04)
       s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+bh.toFixed(1)+'" fill="'+se.color+'"'+(v<0?' opacity="0.55"':'')+drillOn(opt.drill,r.m)+'><title>'+esc(se.lbl||se.k)+' · '+r.m+': '+(opt.unit||'')+fmt(v)+'</title></rect>';
-      if(bh>13)s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y+bh/2+3).toFixed(1)+'" font-size="6.5" fill="#fff" text-anchor="middle">'+(v<0?'-':'')+kf(Math.abs(v))+'</text>'; });
+      if(bh>13)s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y+bh/2+3).toFixed(1)+'" font-size="6.5" fill="#fff" text-anchor="middle">'+(v<0?'-':'')+LBL(Math.abs(v))+'</text>'; });
     var lblY = tot<0 ? (yDn+9) : (yUp-3);
-    s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+lblY.toFixed(1)+'" font-size="8" font-weight="700" fill="'+(tot<0?'var(--red)':'#333')+'" text-anchor="middle">'+(tot<0?'-':'')+(opt.unit||'')+kf(Math.abs(tot))+'</text>';
+    s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+lblY.toFixed(1)+'" font-size="8" font-weight="700" fill="'+(tot<0?'var(--red)':'#333')+'" text-anchor="middle">'+(tot<0?'-':'')+(opt.unit||'')+LBL(Math.abs(tot))+'</text>';
   });
   s+=xlabels(rows.map(function(r){return r.m;}), cx);
   return s+'</svg>';
@@ -484,12 +488,14 @@ function secReturn(){
     ? {m:r.m, vals:{'Net profit':r.accNet, 'FX gain/loss':(r.accAdj-r.accNet)}}
     : {m:r.m, vals:{'Net profit':r.net, 'FX gain/loss':r.fx}}; });
   var series=[{k:'Net profit',color:'#4a7fb5'},{k:'FX gain/loss',color:'#d9a441'}];
+  var inProg = rows.length && rows[rows.length-1].m === D.meta.currentMonth;   // current month is unfinished — mark it so a half-month doesn't read as a drop
   var h='<div class="card"><h3>Rental project return<span class="rt">'+(view==='combined'?'Zayed 2000 + 28A':esc(view))+' · '+(mode==='accum'?'accumulated since acquisition':'per month')+' · EGP</span></h3>'+
     '<div class="legend" style="margin-bottom:6px">Since acquisition'+(view==='combined'?'':' · '+esc(view))+': invested '+egpR(hInv)+' · accumulated net '+egpC(hAccNet)+' · adjusted (incl FX) '+egpC(hAccAdj)+'.'+
     (noInv?' <b style="color:#c62828">Investment not loaded — deploy the Hub backend so this is right.</b>':'')+'</div>'+
     '<div class="rowbtns">'+seg([['combined','Combined']].concat(flats.map(function(f){ return [f,f]; })),view,'setRetView')+'</div>'+
     '<div class="rowbtns">'+seg([['monthly','Monthly'],['accum','Accumulated']],mode,'setRetMode')+timeSeg('ret')+'</div>'+
-    stackedChart(rows, series, {unit:''})+
+    stackedChart(rows, series, {unit:'', fmt:kk})+
+    (inProg?'<div class="legend" style="color:#b26a00"><b>⏳ '+MON[+rows[rows.length-1].m.slice(5,7)-1]+' '+rows[rows.length-1].m.slice(0,4)+' is in progress</b> — provisional: full-month costs are booked but revenue is still coming in, so the last bar dips until the month earns out.</div>':'')+
     '<div class="legend"><span><i style="background:#4a7fb5"></i>Net profit</span><span><i style="background:#d9a441"></i>FX gain/loss</span></div>'+
     '<div class="legend">Each bar\'s total = '+(mode==='accum'?'accumulated adjusted (net + FX, run from −investment)':'the month\'s adjusted net profit (net + FX)')+'.</div>'+
     '</div>';
