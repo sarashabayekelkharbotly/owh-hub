@@ -112,6 +112,20 @@ td.damt{font-size:11px;color:#5a4d4d}
 .bkr{margin-top:5px;font-size:10.5px;color:#4c4040;direction:ltr;text-align:left}
 .bkt{background:#fbf7f7;border:1px solid var(--line);border-radius:11px;padding:9px 11px;margin-bottom:8px;font-size:12px}
 .bkt .bkm{border-top:0;margin-top:4px;padding-top:0}
+.bkchip{border:1px solid var(--line);border-radius:14px;padding:4px 11px;font-size:12.5px;font-weight:600;background:var(--white);color:var(--ink);cursor:pointer}
+.bkT{width:100%;border-collapse:collapse;font-size:10.5px;table-layout:auto}
+.bkT th{font-size:9px;color:var(--soft);text-align:right;padding:3px 2px;border-bottom:1px solid var(--line)}
+.bkT td{padding:3px 2px;border-bottom:1px solid #f0e9e9;vertical-align:top}
+.bkT td.bn{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.bkT td.bd{white-space:nowrap;direction:ltr;text-align:left;color:#4c4040;font-size:10px;line-height:1.3}
+.bkT td.bg1{max-width:84px;font-weight:600;line-height:1.25}
+.bkT td.bg1 .bki{font-weight:400;font-size:9px;color:var(--soft);white-space:normal;word-break:break-all}
+.bkT tr.cx td{opacity:.5;text-decoration:line-through}
+.bkT tr.bkg td{background:#f6f1f1;padding:6px 3px 4px;border-bottom:0}
+.bkT tr.bks td{background:#fbf7f7;font-weight:700;border-top:1px solid var(--ink);border-bottom:2px solid var(--line)}
+.bkT tr.bkh2 td{background:#efe7e7;font-weight:700}
+.bkT tr.bkgt td{background:#4c4040;color:#fff;font-weight:700}
+.bkT tr.bkgt .muted{color:#e5dcdc}
 </style>
 </head>
 <body>
@@ -468,56 +482,69 @@ function ribbon(){ var g=DATA._gen?new Date(DATA._gen):null;
 function deltaCell(v,p){ if(p==null||isNaN(p))return ''; var d=v-p; if(Math.abs(d)<0.5)return '<span class="muted">—</span>'; var pct=p?Math.round(d/Math.abs(p)*100):null; return '<span class="delta '+(d>0?'up':'down')+'">'+(d>0?'+':'')+fmt(d)+(pct!=null?' ('+(pct>0?'+':'')+pct+'%)':'')+'</span>'; }
 
 /* ---------- Bookings view (moved here from Today, 2026-10-09: Sarah — "I cannot see this in a vertical page") ----------
-   Channel + a month or date range + which date to filter on (check-out by default: Booking.com
-   invoices a stay in the month the guest LEFT, and bills (commission + payment charge) × 1.14 VAT).
-   Admin-only server read, loaded on first use. One card per reservation; cancelled stays are dimmed
-   and kept out of the totals so the totals tie to the invoice. */
-var BK=null, BK_BUSY=false, BK_ERR='', BK_F={ch:'',basis:'out',month:'',from:'',to:'',flat:'',q:'',canc:false};
+   Channel + home as colour chips (always visible — the old dropdown only filled once the data had
+   loaded, so on a second visit "Home" offered nothing), a month or date range, and which date to
+   filter on (check-out by default: Booking.com invoices a stay in the month the guest LEFT and bills
+   (commission + payment charge) x 1.14 VAT). TABLE = scan and add up (sorted home > channel > date, a
+   subtotal after every home+channel group, a grand total); CARDS = everything about ONE reservation.
+   Cancelled stays are dimmed and kept out of every sum, so the sums tie to the invoice. */
+var BK=null, BK_BUSY=false, BK_ERR='', BK_LAYOUT='table', BK_F={ch:'',basis:'out',month:'',from:'',to:'',flat:'',q:'',canc:false};
 var BK_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var BK_CH={'Airbnb':'#d6455d','Booking.com':'#1f4e9c','Direct':'#2f8f5b'}, BK_CHORD=['Airbnb','Booking.com','Direct'];
+var BK_HC=['#7a4f9a','#2c7a7b','#b7791f','#9c4221','#2b6cb0','#6b7280','#a0346b'];
+function bkFlats(){ var l=((DATA&&DATA.meta&&DATA.meta.flatsOrder)||[]).slice(); (BK||[]).forEach(function(s){ if(l.indexOf(s.flat)<0) l.push(s.flat); }); return l; }
+function bkHomeColor(f){ var i=bkFlats().indexOf(f); return BK_HC[(i<0?0:i)%BK_HC.length]; }
+function bkChOf(p){ p=String(p||''); for(var k in BK_CH) if(p.toLowerCase().indexOf(k.toLowerCase())>-1) return k; return p||'—'; }
+function bkBadge(t,c,big){ return '<span style="display:inline-block;background:'+c+';color:#fff;font-weight:700;border-radius:6px;padding:'+(big?'2px 9px':'1px 7px')+';font-size:'+(big?'13':'11')+'px;white-space:nowrap">'+esc(t)+'</span>'; }
 function bkMoney(x){ return (x==null||!isFinite(x))?'—':Number(x).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function bkDigits(x){ var d=String(x||'').replace(/\D/g,''); return d.slice(0,2)==='00'?d.slice(2):d; }
 function bkPhone(p,q){ var a=bkDigits(p), b=bkDigits(q); if(!a||!b) return false;
   if(b.length>=7){ var ta=a.slice(-10), tb=b.slice(-10); return ta.slice(-tb.length)===tb||tb.slice(-ta.length)===ta||a.indexOf(b)>-1; } return a.indexOf(b)>-1; }
+function bkShort(d){ if(!d) return '?'; var p=d.split('-'); return (+p[2])+' '+BK_MON[+p[1]-1]+(p[0]!==String(new Date().getFullYear())?' '+p[0].slice(2):''); }
+function bkChip(label,on,color,fn){ return '<button class="bkchip'+(on?' on':'')+'" style="'+(on?'background:'+color+';border-color:'+color+';color:#fff':'')+'" onclick="'+fn+'">'+esc(label)+'</button>'; }
 function bkView(){
   var f=BK_F; if(!f.month&&!f.from&&!f.to&&!f._init){ f.month=MONTH||''; f._init=true; }
   function opt(v,l,cur){ return '<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(l)+'</option>'; }
-  return '<div class="card"><h1 style="font-size:14px;margin:0 0 6px">Bookings</h1><p class="sub">channel · month · booking IDs · money (USD)</p>'+
-    '<div class="bkf"><select onchange="bkSet(\'ch\',this.value)">'+['','Airbnb','Booking.com','Direct'].map(function(c){ return opt(c,c||'All channels',f.ch); }).join('')+'</select>'+
-      '<select onchange="bkSet(\'basis\',this.value)">'+opt('out','by check-out',f.basis)+opt('in','by check-in',f.basis)+opt('booked','by booked date',f.basis)+opt('rev','by revenue month',f.basis)+'</select>'+
+  var chips='<div class="bkf"><span class="muted" style="min-width:48px">Channel</span>'+bkChip('All',!f.ch,'#4c4040',"bkSet('ch','',1)")+
+    BK_CHORD.map(function(c){ return bkChip(c,f.ch===c,BK_CH[c],"bkSet('ch','"+c+"',1)"); }).join('')+'</div>'+
+    '<div class="bkf"><span class="muted" style="min-width:48px">Home</span>'+bkChip('All',!f.flat,'#4c4040',"bkSet('flat','',1)")+
+    bkFlats().map(function(h){ return bkChip(h,f.flat===h,bkHomeColor(h),"bkSet('flat','"+h.replace(/'/g,"\\'")+"',1)"); }).join('')+'</div>';
+  return '<div class="card"><h1 style="font-size:14px;margin:0 0 6px">Bookings</h1><p class="sub">USD · sorted by home, then channel, then date</p>'+chips+
+    '<div class="bkf"><select onchange="bkSet(\'basis\',this.value,1)">'+opt('out','by check-out',f.basis)+opt('in','by check-in',f.basis)+opt('booked','by booked date',f.basis)+opt('rev','by revenue month',f.basis)+'</select>'+
       '<input type="month" id="bk_month" value="'+esc(f.month)+'" onchange="bkSet(\'month\',this.value)">'+
-      '<select id="bk_flat" onchange="bkSet(\'flat\',this.value)">'+opt(f.flat,f.flat||'All homes',f.flat)+'</select></div>'+
-    '<div class="bkf"><span class="muted">or dates</span><input type="date" id="bk_from" value="'+esc(f.from)+'" onchange="bkSet(\'from\',this.value)"><span class="muted">→</span><input type="date" id="bk_to" value="'+esc(f.to)+'" onchange="bkSet(\'to\',this.value)"></div>'+
+      '<input type="date" id="bk_from" value="'+esc(f.from)+'" onchange="bkSet(\'from\',this.value)"><span class="muted">→</span><input type="date" id="bk_to" value="'+esc(f.to)+'" onchange="bkSet(\'to\',this.value)"></div>'+
     '<div class="bkf"><input id="bk_q" value="'+esc(f.q)+'" placeholder="guest · phone · booking ID" oninput="bkSet(\'q\',this.value)" style="flex:1;min-width:150px">'+
-      '<label class="muted"><input type="checkbox"'+(f.canc?' checked':'')+' onchange="bkSet(\'canc\',this.checked)"> show cancelled</label></div></div>'+
+      '<label class="muted"><input type="checkbox"'+(f.canc?' checked':'')+' onchange="bkSet(\'canc\',this.checked,1)"> show cancelled</label>'+
+      '<span class="seg"><button class="'+(BK_LAYOUT==='table'?'on':'')+'" onclick="bkLay(\'table\')">Table</button><button class="'+(BK_LAYOUT==='cards'?'on':'')+'" onclick="bkLay(\'cards\')">Cards</button></span></div></div>'+
     '<div id="bkr"></div>';
 }
-function bkSet(k,v){
+function bkLay(l){ BK_LAYOUT=l; bkPaint(); }
+function bkPaint(){ $('#app').innerHTML=bkView(); bkRun(); }
+function bkSet(k,v,full){
   BK_F[k]=v;
   if((k==='from'||k==='to')&&v){ BK_F.month=''; var m=$('#bk_month'); if(m) m.value=''; }
   if(k==='month'&&v){ BK_F.from=''; BK_F.to=''; var a=$('#bk_from'),b=$('#bk_to'); if(a) a.value=''; if(b) b.value=''; }
-  bkRun();
+  if(full) bkPaint(); else bkRun();   // typing must not rebuild the input it is typing in
 }
 function bkLoad(){
   if(BK||BK_BUSY) return; BK_BUSY=true; BK_ERR='';
   api('props_stay_finder').then(function(j){ BK_BUSY=false;
-    if(j&&j.ok){ BK=j.stays||[]; var fl={}; BK.forEach(function(s){ fl[s.flat]=1; });
-      var el=$('#bk_flat'); if(el){ var cur=BK_F.flat;
-        el.innerHTML='<option value="">All homes</option>'+Object.keys(fl).sort().map(function(x){ return '<option value="'+esc(x)+'"'+(x===cur?' selected':'')+'>'+esc(x)+'</option>'; }).join(''); }
-    } else BK_ERR=(j&&j.error)||'could not load';
-    if(VIEW==='bookings') bkRun();
+    if(j&&j.ok) BK=j.stays||[]; else BK_ERR=(j&&j.error)||'could not load';
+    if(VIEW==='bookings') bkPaint();
   }).catch(function(e){ BK_BUSY=false; BK_ERR=String(e&&e.message||e); if(VIEW==='bookings') bkRun(); });
 }
 function bkRows(){
   var f=BK_F, ql=String(f.q||'').trim().toLowerCase(), qd=bkDigits(f.q), from=f.from||'', to=f.to||'', mon=f.month||'';
+  var fo=bkFlats(), dk=f.basis==='in'?'checkIn':(f.basis==='booked'?'booked':'checkOut');
   return (BK||[]).filter(function(s){
     if(!f.canc&&/cancel/i.test(s.status||'')) return false;
-    if(f.ch&&String(s.portal||'').toLowerCase().indexOf(f.ch.toLowerCase())<0) return false;
+    if(f.ch&&bkChOf(s.portal)!==f.ch) return false;
     if(f.flat&&s.flat!==f.flat) return false;
     if(f.basis==='rev'){
       var lo=(from||mon).slice(0,7), hi=(to||mon).slice(0,7);
       if(lo||hi){ if(!(s.months||[]).some(function(x){ return (!lo||x.m>=lo)&&(!hi||x.m<=hi); })) return false; }
     } else {
-      var d=f.basis==='in'?s.checkIn:(f.basis==='booked'?s.booked:s.checkOut);
+      var d=s[dk];
       if(mon&&String(d||'').slice(0,7)!==mon) return false;
       if(from&&(!d||d<from)) return false;
       if(to&&(!d||d>to)) return false;
@@ -525,46 +552,79 @@ function bkRows(){
     if(ql){ var hay=[s.guest,s.conf,s.id,s.smoobu,s.flat].join(' ').toLowerCase();
       if(hay.indexOf(ql)<0&&!(qd.length>=4&&bkPhone(s.phone,f.q))) return false; }
     return true;
-  }).sort(function(a,b){
-    var k=BK_F.basis==='in'?'checkIn':(BK_F.basis==='booked'?'booked':'checkOut');
-    return (a[k]||'')<(b[k]||'')?-1:((a[k]||'')>(b[k]||'')?1:0);
+  }).sort(function(a,b){   // home (in the Hub's own order) > channel > date
+    var ha=fo.indexOf(a.flat), hb=fo.indexOf(b.flat); if(ha!==hb) return ha-hb;
+    var ca=BK_CHORD.indexOf(bkChOf(a.portal)), cb=BK_CHORD.indexOf(bkChOf(b.portal)); ca=ca<0?9:ca; cb=cb<0?9:cb; if(ca!==cb) return ca-cb;
+    var da=a[dk]||'', db=b[dk]||''; return da<db?-1:(da>db?1:0);
   });
 }
-function bkShort(d){ if(!d) return '?'; var p=d.split('-'); return (+p[2])+' '+BK_MON[+p[1]-1]+(p[0]!==String(new Date().getFullYear())?' '+p[0].slice(2):''); }
+function bkSum(list){ var T={gross:0,comm:0,charge:0,vat:0,net:0,other:0,allIn:0,n:0,cnt:0,cx:0};
+  list.forEach(function(s){ if(/cancel/i.test(s.status||'')){ T.cx++; return; } T.cnt++; T.gross+=s.gross; T.comm+=s.comm; T.charge+=s.charge; T.vat+=s.vat; T.net+=s.net; T.other+=s.other; T.allIn+=s.allIn; T.n+=s.nights||0; });
+  return T; }
 function bkRun(){
   var el=$('#bkr'); if(!el) return;
   if(!BK){ if(BK_ERR){ el.innerHTML='<div class="card"><span class="muted" style="color:var(--rr)">'+esc(BK_ERR)+'</span></div>'; return; }
            el.innerHTML='<div class="card"><span class="muted">loading reservations…</span></div>'; bkLoad(); return; }
-  var rows=bkRows(), T={gross:0,comm:0,charge:0,vat:0,net:0,other:0,allIn:0,n:0}, canc=0;
+  var rows=bkRows();
   if(!rows.length){ el.innerHTML='<div class="card"><span class="muted">no reservations match</span></div>'; return; }
+  var T=bkSum(rows), basisL=BK_F.basis==='out'?'check-out':BK_F.basis==='in'?'check-in':BK_F.basis==='booked'?'booked':'revenue';
+  function t(l,v){ return '<div><span class="l">'+l+'</span><b>'+bkMoney(v)+'</b></div>'; }
+  var top='<div class="bkt"><b>'+rows.length+'</b> reservation'+(rows.length===1?'':'s')+' · '+T.n+' nights'+(T.cx?' · '+T.cx+' cancelled (not counted)':'')+' <span class="muted">· '+basisL+' date</span>'+
+      '<a href="#" onclick="bkCsv();return false" style="float:right;font-size:11px">copy as CSV</a><span id="bkmsg" class="muted" style="float:right;margin-right:8px"></span>'+
+      '<div class="bkm">'+t('Gross',T.gross)+t('Net',T.net)+t('Commission',T.comm)+t('Pay charge',T.charge)+t('VAT',T.vat)+t('All-in',T.allIn)+'</div>'+
+      '<div style="margin-top:6px;border-top:1px solid var(--line);padding-top:5px">Booking.com invoice = (commission + charge) × 1.14 = <b>'+bkMoney((T.comm+T.charge)*1.14)+'</b> <span class="muted">· commission + charge + VAT = '+bkMoney(T.comm+T.charge+T.vat)+'</span></div></div>';
+  el.innerHTML=top+(BK_LAYOUT==='cards'?bkCards(rows):bkTable(rows));
+}
+function bkTable(rows){
+  /* 7 columns so it fits a vertical phone: Fees = commission + payment charge, which is exactly what
+     Booking.com calls "Commission and charges" (cards + CSV keep them apart). */
+  function num(v){ return '<td class="bn">'+bkMoney(v)+'</td>'; }
+  function sumRow(label,T,cls,extra){
+    return '<tr class="'+cls+'"><td colspan="2">'+label+' <span class="muted">· '+T.cnt+(T.cx?' (+'+T.cx+' cx)':'')+'</span>'+(extra||'')+'</td><td class="bn">'+T.n+'</td>'+num(T.gross)+num(T.comm+T.charge)+num(T.vat)+num(T.net)+'</tr>'; }
+  var body='', homes=[], byHome={};
+  rows.forEach(function(s){ if(!byHome[s.flat]){ byHome[s.flat]=[]; homes.push(s.flat); } byHome[s.flat].push(s); });
+  homes.forEach(function(h){
+    var hc=bkHomeColor(h), chs=[], byCh={};
+    byHome[h].forEach(function(s){ var c=bkChOf(s.portal); if(!byCh[c]){ byCh[c]=[]; chs.push(c); } byCh[c].push(s); });
+    chs.forEach(function(c){
+      var cc=BK_CH[c]||'#8a8a8a', list=byCh[c], T=bkSum(list);
+      body+='<tr class="bkg"><td colspan="7">'+bkBadge(h,hc,true)+' '+bkBadge(c,cc,true)+'</td></tr>';
+      list.forEach(function(s){
+        var cx=/cancel/i.test(s.status||''), n=s.nights||0;
+        body+='<tr class="'+(cx?'cx':'')+'"><td class="bg1"><bdi>'+esc(s.guest||'—')+'</bdi>'+(cx?' <span style="color:var(--rr);font-size:9px">cancelled</span>':'')+'<div class="bki">'+esc(s.conf||'—')+'</div></td>'+
+          '<td class="bd">'+bkShort(s.checkIn)+'<br>→ '+bkShort(s.checkOut)+'</td><td class="bn">'+n+'</td>'+
+          num(s.gross)+num(s.comm+s.charge)+num(s.vat)+num(s.net)+'</tr>';
+      });
+      body+=sumRow('Σ '+esc(h)+' · '+esc(c),T,'bks',c==='Booking.com'?'<div class="muted" style="font-weight:400">invoice = fees × 1.14 = <b style="color:var(--ink)">'+bkMoney((T.comm+T.charge)*1.14)+'</b></div>':'');
+    });
+    if(chs.length>1) body+=sumRow('Σ '+esc(h)+' · all channels',bkSum(byHome[h]),'bkh2','');
+  });
+  body+=sumRow('Σ ALL',bkSum(rows),'bkgt','');
+  return '<div class="card" style="padding:6px 4px"><table class="bkT"><thead><tr><th style="text-align:left">Guest · ref</th><th style="text-align:left">Stay</th><th>N</th><th>Gross</th><th>Fees</th><th>VAT</th><th>Net</th></tr></thead><tbody>'+body+'</tbody></table>'+
+    '<div class="muted" style="padding:4px 4px 0">Fees = commission + payment charge. Smoobu IDs and the split are on the cards.</div></div>';
+}
+function bkCards(rows){
   var cards=rows.map(function(s){
-    var cx=/cancel/i.test(s.status||''), n=s.nights||0;
-    if(cx) canc++; else { T.gross+=s.gross; T.comm+=s.comm; T.charge+=s.charge; T.vat+=s.vat; T.net+=s.net; T.other+=s.other; T.allIn+=s.allIn; T.n+=n; }
+    var cx=/cancel/i.test(s.status||''), n=s.nights||0, ch=bkChOf(s.portal);
     var gpn=n?s.gross/n:null, epn=n?(s.allIn-s.other)/n:null;
     var rm=(s.months||[]).map(function(x){ return BK_MON[+x.m.slice(5,7)-1]+' '+x.m.slice(2,4)+' · '+x.n+'n · $'+bkMoney(x.usd); }).join('  |  ');
     function r(l,v){ return '<div><span class="l">'+l+'</span><b>'+v+'</b></div>'; }
-    return '<div class="bkc'+(cx?' cx':'')+'">'+
-      '<div class="bkh"><b>'+esc(s.guest||'—')+'</b><span class="bkp">'+esc(s.flat)+' · '+esc(s.portal)+(cx?' · <span style="color:var(--rr)">cancelled</span>':'')+'</span></div>'+
+    return '<div class="bkc'+(cx?' cx':'')+'" style="border-left:5px solid '+bkHomeColor(s.flat)+'">'+
+      '<div class="bkh"><span>'+bkBadge(s.flat,bkHomeColor(s.flat),true)+' '+bkBadge(ch,BK_CH[ch]||'#8a8a8a',true)+'</span>'+(cx?'<span style="color:var(--rr);font-size:11px;font-weight:700">cancelled</span>':'')+'</div>'+
+      '<div style="margin-top:4px"><b style="font-size:13px;unicode-bidi:isolate">'+esc(s.guest||'—')+'</b></div>'+
       '<div class="bkd">'+bkShort(s.checkIn)+' → '+bkShort(s.checkOut)+' · '+n+' night'+(n===1?'':'s')+' <span class="muted">· booked '+bkShort(s.booked)+'</span></div>'+
       '<div class="bki">Smoobu '+esc(s.smoobu||s.id||'—')+' · ref <b style="color:var(--ink)">'+esc(s.conf||'—')+'</b></div>'+
       '<div class="bkm">'+r('Gross',bkMoney(s.gross))+r('per night',bkMoney(gpn))+r('Commission',bkMoney(s.comm))+r('Pay charge',bkMoney(s.charge))+r('VAT',bkMoney(s.vat))+r('Net',bkMoney(s.net))+
         (s.other?r('Other',bkMoney(s.other)):'')+r('All-in',bkMoney(s.allIn))+r('Earned/night',bkMoney(epn))+'</div>'+
       (rm?'<div class="bkr">Revenue: '+rm+'</div>':'')+'</div>';
   }).join('');
-  function t(l,v){ return '<div><span class="l">'+l+'</span><b>'+bkMoney(v)+'</b></div>'; }
-  var fee=T.comm+T.charge+T.vat, inv=(T.comm+T.charge)*1.14, basisL=BK_F.basis==='out'?'check-out':BK_F.basis==='in'?'check-in':BK_F.basis==='booked'?'booked':'revenue';
-  el.innerHTML=
-    '<div class="bkt"><b>'+rows.length+'</b> reservation'+(rows.length===1?'':'s')+' · '+T.n+' nights'+(canc?' · '+canc+' cancelled (not counted)':'')+' <span class="muted">· '+basisL+' date</span>'+
-      '<a href="#" onclick="bkCsv();return false" style="float:right;font-size:11px">copy as CSV</a><span id="bkmsg" class="muted" style="float:right;margin-right:8px"></span>'+
-      '<div class="bkm">'+t('Gross',T.gross)+t('Net',T.net)+t('Commission',T.comm)+t('Pay charge',T.charge)+t('VAT',T.vat)+t('All-in',T.allIn)+'</div>'+
-      '<div style="margin-top:6px;border-top:1px solid var(--line);padding-top:5px">Booking.com invoice = (commission + charge) × 1.14 = <b>'+bkMoney(inv)+'</b> <span class="muted">· commission + charge + VAT = '+bkMoney(fee)+'</span></div></div>'+
-    '<div class="bkgrid">'+cards+'</div>';
+  return '<div class="bkgrid">'+cards+'</div>';
 }
 function bkCsv(){
   var rows=bkRows(), q=function(x){ x=String(x==null?'':x); return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; };
-  var out=[['Guest','Home','Channel','Status','Booked','Check-in','Check-out','Nights','Smoobu ID','Booking ref','Gross','Gross/night','Commission','Payment charge','VAT','Net','Other','All-in','Revenue by month'].join(',')];
+  var out=[['Home','Channel','Guest','Status','Booked','Check-in','Check-out','Nights','Smoobu ID','Booking ref','Gross','Gross/night','Commission','Payment charge','VAT','Net','Other','All-in','Revenue by month'].join(',')];
   rows.forEach(function(s){ var n=s.nights||0;
-    out.push([s.guest,s.flat,s.portal,s.status,s.booked,s.checkIn,s.checkOut,n,s.smoobu||s.id,s.conf,s.gross,n?(s.gross/n).toFixed(2):'',s.comm,s.charge,s.vat,s.net,s.other,s.allIn,
+    out.push([s.flat,bkChOf(s.portal),s.guest,s.status,s.booked,s.checkIn,s.checkOut,n,s.smoobu||s.id,s.conf,s.gross,n?(s.gross/n).toFixed(2):'',s.comm,s.charge,s.vat,s.net,s.other,s.allIn,
       (s.months||[]).map(function(x){ return x.m+':'+x.n+'n:'+x.usd; }).join(' | ')].map(q).join(',')); });
   var txt=out.join('\n'), done=function(ok){ var m=$('#bkmsg'); if(m) m.textContent=ok?'copied ✓':'copy failed'; };
   if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(function(){ done(true); },function(){ done(false); });
@@ -579,7 +639,7 @@ function render(){ ribbon();
      change, means the answer is normally waiting before the ▼ is pressed. Idempotent + cached
      per flat|month, so this line costs nothing when the data is already in. */
   try{ loadRevDetail(); }catch(e){}
-  if(VIEW==='bookings'){ $('#app').innerHTML=bkView(); bkRun(); return; }
+  if(VIEW==='bookings'){ bkPaint(); return; }
   $('#app').innerHTML=VIEW==='review'?renderReview():renderCompare();
   if(VIEW==='review'){ if(RECUR&&RECUR.month===MONTH) renderRecurring(); else loadRecurring();
                        if(OREV&&OREV.month===MONTH) renderOtherRev(); else loadOtherRev(); } }
