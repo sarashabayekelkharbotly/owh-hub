@@ -604,7 +604,7 @@ function stripeCard(){
     else if(r.state==='awaiting'){ pill='<span class="pill p-out">No payment found</span>'; sub='answer it in Needs you above'; }
     else if(r.state==='estimate'){ pill='<span class="pill p-gap">≈ $'+fmt(r.net)+' estimate</span>'; sub='real receipt not found yet'; }
     else { pill='<span class="pill p-stay">Not checked yet</span>'; }
-    var chk=(r.state==='paid'||r.state==='nofee')?'':' · <a href="#" onclick="stripeCheckRow(\''+id+'\');return false">check now</a><span class="paymsg" id="scm_'+id+'"></span>';
+    var chk=(r.state==='paid'||r.state==='nofee')?'':(sub?' · ':'')+'<a href="#" onclick="stripeCheckRow(\''+id+'\');return false">check now</a><span class="paymsg" id="scm_'+id+'"></span>';
     h+='<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--line);font-size:12px">'+
        '<span><b>'+esc(r.flat)+'</b> · <bdi>'+esc(r.guest||'')+'</bdi><div class="soft" style="font-size:10.5px">'+dmon(r.ci)+' → '+dmon(r.co)+' · $'+fmt(r.gross)+'</div></span>'+
        '<span style="text-align:right">'+pill+'<div class="soft" style="font-size:10.5px">'+sub+chk+'</div></span></div>';
