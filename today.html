@@ -398,6 +398,9 @@ function payRow(s){
     '<div class="payctl">'+
       '<select id="pm_'+id+'"><option>Stripe</option><option>Cash</option><option>Instapay</option></select>'+
       '<select id="pc_'+id+'"><option>USD</option><option>EGP</option></select>'+
+      /* "paid on" (2026-10-09): Stripe's fee depends on the PAYMENT date (it applies from 15 Jun 2026),
+         not on booking or check-in — defaults to the booked date, change it if the guest paid earlier/later */
+      '<label class="paymsg" title="the day the guest paid — Stripe charges its fee on payments from 15 Jun 2026">paid <input type="date" id="pd_'+id+'" value="'+esc(s.booked||'')+'" style="font-family:inherit;font-size:11.5px;border:1px solid var(--line);border-radius:6px;padding:2px 5px;background:var(--white)"></label>'+
       '<button class="paybtn" onclick="savePay(\''+id+'\')">Save</button>'+
       '<span class="paymsg" id="pmsg_'+id+'"></span>'+
     '</div></span></div>';
@@ -567,10 +570,14 @@ function needs(cm,pmY){
 }
 function savePay(id){
   var m=document.getElementById('pm_'+id).value, c=document.getElementById('pc_'+id).value, msg=document.getElementById('pmsg_'+id);
+  var pd=document.getElementById('pd_'+id), paidOn=pd?pd.value:'';
   msg.textContent='saving…';
-  api('props_set_pay',{id:id,method:m,currency:c}).then(function(j){
+  api('props_set_pay',{id:id,method:m,currency:c,paidOn:paidOn}).then(function(j){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
-    boot();                                        // reload — the item drops off once the route is set
+    var st=j.result&&j.result.stripe;                // Stripe: the fee estimate that was just applied (or why not)
+    if(st&&st.estimate) msg.textContent='saved · Stripe fee '+st.fee.toFixed(2)+' estimated (real receipt to follow)';
+    else if(st&&st.skipped) msg.textContent='saved · fee not applied: '+st.skipped;
+    setTimeout(boot, st&&(st.estimate||st.skipped)?1800:0);   // reload — the item drops off once the route is set
   }).catch(function(e){ msg.textContent='failed: '+(e.message||e); });
 }
 function esc(s){return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
