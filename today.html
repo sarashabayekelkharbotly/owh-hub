@@ -347,7 +347,8 @@ function rfRun(){
   if(!rows.length){ el.innerHTML='<div class="muted">no reservations match</div>'; return; }
   var body=rows.map(function(s){
     var cx=/cancel/i.test(s.status||''); if(cx) canc++;
-    T.gross+=s.gross; T.comm+=s.comm; T.charge+=s.charge; T.vat+=s.vat; T.net+=s.net; T.other+=s.other; T.allIn+=s.allIn; T.n+=s.nights||0;
+    /* a cancelled stay earns nothing (revenue rules) and Booking.com invoices no commission on it — its recorded figures are shown dimmed but kept OUT of the totals, so the totals tie to the invoice */
+    if(!cx){ T.gross+=s.gross; T.comm+=s.comm; T.charge+=s.charge; T.vat+=s.vat; T.net+=s.net; T.other+=s.other; T.allIn+=s.allIn; T.n+=s.nights||0; }
     var n=s.nights||0, gpn=n?s.gross/n:null, epn=n?(s.allIn-s.other)/n:null;
     var rm=(s.months||[]).map(function(x){ return mLabel(x.m)+' '+x.m.slice(2,4)+' · '+x.n+'n · $'+rfM(x.usd); }).join('<br>');
     return '<tr'+(cx?' style="opacity:.55"':'')+'>'+
@@ -372,7 +373,7 @@ function rfRun(){
       '</tr></thead><tbody>'+body+
       '<tr class="tot"><td>Total</td><td></td><td></td><td>'+T.n+'</td><td></td><td>'+rfM(T.gross)+'</td><td></td><td>'+rfM(T.comm)+'</td><td>'+rfM(T.charge)+'</td><td>'+rfM(T.vat)+'</td><td>'+rfM(T.net)+'</td><td>'+rfM(T.other)+'</td><td>'+rfM(T.allIn)+'</td><td></td><td></td></tr>'+
       '</tbody></table></div>'+
-    '<div class="legend">Gross − commission − payment charge − VAT = net (a recorded net wins where the bank figure differs). Commission + charge + VAT = <b>'+rfM(fee)+'</b>. Revenue by month = All-in apportioned per night, as in the P&amp;L.</div>';
+    '<div class="legend">'+(canc?'Cancelled rows are dimmed and not in the totals. ':'')+'Booking.com invoice = (commission + payment charge) × 1.14 VAT. Gross − commission − payment charge − VAT = net (a recorded net wins where the bank figure differs). Commission + charge + VAT = <b>'+rfM(fee)+'</b>. Revenue by month = All-in apportioned per night, as in the P&amp;L.</div>';
 }
 function rfCsv(){
   var rows=rfRows(), q=function(x){ x=String(x==null?'':x); return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; };
