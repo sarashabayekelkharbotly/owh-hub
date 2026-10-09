@@ -698,7 +698,8 @@ function render(){ ribbon();
   if(VIEW==='bookings'){ bkPaint(); return; }
   $('#app').innerHTML=VIEW==='review'?renderReview():renderCompare();
   if(VIEW==='review'){ if(RECUR&&RECUR.month===MONTH) renderRecurring(); else loadRecurring();
-                       if(OREV&&OREV.month===MONTH) renderOtherRev(); else loadOtherRev(); } }
+                       if(OREV&&OREV.month===MONTH) renderOtherRev(); else loadOtherRev();
+                       if(STRM[MONTH]) renderStripeMonth(); else loadStripeMonth(); } }
 
 /* 4a — Review one flat: PORTRAIT (phone-first), current + previous month columns */
 /* THE ALLOCATION, STATED UP FRONT (Sarah 2026-09-01: "specify the allocation — how many
@@ -776,7 +777,7 @@ function renderReview(){
     +'<div class="card"><h1>'+FLAT+' · '+MONTH+badge+'</h1><p class="sub">all values in '+CUR+'</p>'
     +allocLine()
     +'<table><thead><tr><th>Line</th><th>'+MONTH+'</th><th>'+pm+'</th><th>Δ MoM</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +checklist(rec)+'<div id="orevBox"></div><div id="recurBox"></div></div>';
+    +checklist(rec)+'<div id="stripeBox"></div><div id="orevBox"></div><div id="recurBox"></div></div>';
 }
 
 /* ---------- recurring monthly entries (Sarah 2026-08-05) ----------
@@ -946,6 +947,40 @@ function loadCloseReadiness(){
     CLOSERD_BUSY[m]=0; if(j&&j.ok){ CLOSERD[m]=j; render(); }
   }).catch(function(){ CLOSERD_BUSY[m]=0; });
 }
+/* ---- Stripe in the close (2026-10-10) ------------------------------------------------------------
+   TOTALS: per home, this month — charged − refunded − fee = received, each stay at its SHARE of the month
+   (received = the stay's line in Revenue by month, i.e. what the P&L reads, so it ties). GATE: a Stripe booking
+   flagged through the new flow that is still awaiting its payment, or only estimated, holds Mark final. */
+var STRM={}, STRM_BUSY={}, STRIPE_IGNORE={};
+function loadStripeMonth(){
+  var mo=MONTH; if(STRM[mo]||STRM_BUSY[mo]) return; STRM_BUSY[mo]=1;
+  api('props_stripe_month',{month:mo}).then(function(j){
+    STRM_BUSY[mo]=0; if(j&&j.ok){ STRM[mo]=j; if(VIEW==='review'&&MONTH===mo) renderStripeMonth(); }
+  }).catch(function(){ STRM_BUSY[mo]=0; });
+}
+function renderStripeMonth(){
+  var el=$('#stripeBox'); if(!el) return; var d=STRM[MONTH]; if(!d) return;
+  var all=d.rows||[]; if(!all.length){ el.innerHTML=''; return; }
+  var mine=all.filter(function(r){ return r.flat===FLAT; });
+  function money(v){ return '<td class="bn">'+m(toCur(v,'USD'))+'</td>'; }
+  function sum(list){ var t={c:0,r:0,f:0,v:0}; list.forEach(function(x){ t.c+=x.charged; t.r+=x.refunded; t.f+=x.fee; t.v+=x.received; }); return t; }
+  function tag(x){ return x.state==='paid'?'<span class="pos">✓</span>':(x.state==='recorded'?'<span class="muted">recorded</span>':'<span class="neg">'+(x.state==='awaiting'?'! no payment found':'≈ estimate')+'</span>'); }
+  var h='<div class="card"><h3 style="margin:0 0 2px">Stripe payments · '+esc(FLAT)+' · '+MONTH+'</h3><p class="sub">'+(CUR==='EGP'?'EGP at the month\'s rate · ':'')+'each stay at its share of this month · charged − refunded − fee = received</p>';
+  if(mine.length){
+    h+='<table class="bkT"><thead><tr><th style="text-align:left">Guest</th><th>Charged</th><th>Refund</th><th>Fee</th><th>Received</th></tr></thead><tbody>';
+    mine.forEach(function(x){
+      h+='<tr><td class="bg1"><bdi>'+esc(x.guest||'—')+'</bdi> '+tag(x)+'<div class="bki">'+x.ci.slice(5)+' → '+x.co.slice(5)+
+         (x.nightsShare<0.999?' · '+Math.round(x.nightsShare*100)+'% falls in '+MONTH:'')+(x.fromTab?'':' · from the stay row')+'</div></td>'+money(x.charged)+money(x.refunded)+money(x.fee)+money(x.received)+'</tr>'; });
+    var t=sum(mine);
+    h+='<tr class="bks"><td>Σ '+esc(FLAT)+'</td>'+money(t.c)+money(t.r)+money(t.f)+money(t.v)+'</tr></tbody></table>';
+  } else h+='<div class="muted">No Stripe-paid stays for '+esc(FLAT)+' this month.</div>';
+  var ta=sum(all), idOk=Math.abs(ta.c-ta.r-ta.f-ta.v)<0.01;
+  h+='<div class="muted" style="margin-top:6px">All homes: '+all.length+' Stripe stay'+(all.length>1?'s':'')+' · charged '+m(toCur(ta.c,'USD'))+' − refunded '+m(toCur(ta.r,'USD'))+' − fee '+m(toCur(ta.f,'USD'))+' = <b>received '+m(toCur(ta.v,'USD'))+'</b> '+(idOk?'<span class="pos">✓</span>':'<span class="neg">does not add up</span>')+'</div></div>';
+  el.innerHTML=h;
+}
+function acceptStripe(){
+  if(confirm('Close '+MONTH+' with the ESTIMATED Stripe fees?\n\nThe real receipts will still replace them later, but this month would already be final.')){ STRIPE_IGNORE[MONTH]=1; render(); }
+}
 function checklist(rec){
   var fxSet=fxIsSet(MONTH), isOpen=rec.status!=='final';
   var missing=rec.revenue.total===0 && rec.costs.every(function(c){return !c.amount;});
@@ -966,6 +1001,15 @@ function checklist(rec){
          '</div>';
     }
   }
+  /* STRIPE (2026-10-10): flagged payments not yet confirmed hold the month, like the laundry above */
+  var sb=(rd&&rd.stripe)||[], stripeHold=isOpen&&sb.length>0&&!STRIPE_IGNORE[MONTH];
+  if(isOpen&&rd){
+    if(!sb.length) h+='<div><span class="ok">✓</span> Stripe — every payment flagged for this month is confirmed with its real receipt</div>';
+    else h+='<div style="flex-direction:column;align-items:stretch"><div><span class="warn">!</span> <b>'+sb.length+' Stripe payment'+(sb.length>1?'s':'')+' not confirmed</b> <span class="muted">— answer '+(sb.length>1?'them':'it')+' in Today (Needs you); closing waits</span></div>'+
+       sb.map(function(x){ return '<div class="muted" style="padding-left:22px">💳 '+x.date+' · '+esc(x.flat)+' · '+esc(x.guest)+' · $'+Number(x.amount).toFixed(2)+' · '+(x.phase==='awaiting'?'no payment found yet':'estimated fee only')+'</div>'; }).join('')+
+       (STRIPE_IGNORE[MONTH]?'<div class="muted" style="padding-left:22px"><b>closing anyway — estimates accepted</b> · <a href="#" onclick="STRIPE_IGNORE[MONTH]=0;render();return false">undo</a></div>'
+                            :'<div class="muted" style="padding-left:22px"><a href="#" onclick="acceptStripe();return false">close anyway — accept the estimates</a></div>')+'</div>';
+  }
   /* Editable for as long as the month is open, and saveable on its own — the rate used to be
      readable only by "Mark final", so recording it and closing the month were the same act and you
      could not put a rate in early or correct one (Sarah 2026-08-14). */
@@ -977,9 +1021,10 @@ function checklist(rec){
             :'used '+fmt1(fxOf(MONTH)||fx()))+'</div>';
   h+='<div><span class="'+(missing?'warn':'ok')+'">'+(missing?'!':'✓')+'</span> '+(missing?'No data this month — check WeShare':'Revenue & costs present')+'</div>';
   h+='<div><span class="ok">✓</span> Reconciled from the sheet (formulas, not the app)</div>';
-  h+='<button class="mark" id="markbtn" '+((isOpen&&!laundryHold)?'':'disabled')+' onclick="doMarkFinal()">'+(isOpen?'Mark '+MONTH+' final':MONTH+' is final ✓')+'</button>';
+  h+='<button class="mark" id="markbtn" '+((isOpen&&!laundryHold&&!stripeHold)?'':'disabled')+' onclick="doMarkFinal()">'+(isOpen?'Mark '+MONTH+' final':MONTH+' is final ✓')+'</button>';
   h+='<p class="muted" id="markmsg" style="margin:8px 0 0">'+
      (laundryHold&&rd&&rd.count>0?'Closing waits until every submission above lands (returns → paid → confirmed) — عماد is being nagged to collect.':
+      stripeHold?'Closing waits until every Stripe payment above is confirmed — or accept the estimates.':
       'Writes the FX rate + marks the month final in the sheet (and flips the partner view to final).')+'</p></div>';
   return h;
 }
@@ -990,7 +1035,7 @@ function doMarkFinal(){
   var btn=document.getElementById('markbtn'), msg=document.getElementById('markmsg'), fxEl=document.getElementById('fxin');
   var rate=fxEl?fxEl.value.trim().replace(/,/g,''):'';
   if(btn)btn.disabled=true; if(msg)msg.textContent='Closing '+MONTH+'…';
-  var params={month:MONTH}; if(rate)params.rate=rate;
+  var params={month:MONTH}; if(rate)params.rate=rate; if(STRIPE_IGNORE[MONTH]) params.ignoreStripe='1';
   writeCall('props_mark_final',params).then(function(){ boot(); }).catch(function(e){ if(msg)msg.textContent='Could not close: '+e.message; if(btn)btn.disabled=false; });
 }
 
