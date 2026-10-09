@@ -260,8 +260,129 @@ function render(){
      'oninput="window._gsq=this.value;guestSearch()" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:9px;padding:8px 10px">'+
      '<div id="gsr"></div></div>';
 
+  /* 🧾 reservation finder (Sarah 2026-10-09: Booking.com invoices will not reconcile) — channel + a
+     month/date range + the date to filter on (check-out by default: Booking.com invoices a stay in
+     the month the guest LEFT). Admin-only server read; loaded on first use. */
+  h+=rfCard();
+
   $('#app').innerHTML=h;
   if(window._gsq) guestSearch();
+  if(window._rfOpen) rfRun();
+}
+
+/* ---- reservation finder ---- */
+var RF=null, RF_BUSY=false, RF_ERR='';
+window._rf=window._rf||{ch:'',basis:'out',month:'',from:'',to:'',flat:'',q:'',canc:false};
+function rfCard(){
+  var f=window._rf;
+  var chs=['','Airbnb','Booking.com','Direct'];
+  function opt(v,l,cur){ return '<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(l)+'</option>'; }
+  var sel='font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:7px;padding:4px 6px;background:var(--white)';
+  return '<div class="card"><h3>Reservation finder<span class="rt">channel · month · IDs · money</span></h3>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+
+      '<select id="rf_ch" style="'+sel+'" onchange="rfSet(\'ch\',this.value)">'+chs.map(function(c){ return opt(c,c||'All channels',f.ch); }).join('')+'</select>'+
+      '<select id="rf_basis" style="'+sel+'" onchange="rfSet(\'basis\',this.value)">'+
+        opt('out','by check-out',f.basis)+opt('in','by check-in',f.basis)+opt('booked','by booked date',f.basis)+opt('rev','by revenue month',f.basis)+'</select>'+
+      '<input id="rf_month" type="month" value="'+esc(f.month)+'" style="'+sel+'" onchange="rfSet(\'month\',this.value)">'+
+      '<select id="rf_flat" style="'+sel+'" onchange="rfSet(\'flat\',this.value)">'+opt(f.flat,f.flat||'All homes',f.flat)+'</select>'+
+    '</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">'+
+      '<span class="muted">or dates</span>'+
+      '<input id="rf_from" type="date" value="'+esc(f.from)+'" style="'+sel+'" onchange="rfSet(\'from\',this.value)">'+
+      '<span class="muted">→</span>'+
+      '<input id="rf_to" type="date" value="'+esc(f.to)+'" style="'+sel+'" onchange="rfSet(\'to\',this.value)">'+
+      '<input id="rf_q" value="'+esc(f.q)+'" placeholder="guest · phone · booking ID" oninput="rfSet(\'q\',this.value)" style="'+sel+';flex:1;min-width:130px">'+
+    '</div>'+
+    '<label class="muted" style="display:block;margin-top:6px"><input type="checkbox" id="rf_canc"'+(f.canc?' checked':'')+' onchange="rfSet(\'canc\',this.checked)"> show cancelled</label>'+
+    '<div id="rfr" style="margin-top:6px"><div class="muted">'+(window._rfOpen?'':'Pick a channel or a month to list reservations.')+'</div></div></div>';
+}
+function rfSet(k,v){
+  window._rf[k]=v;
+  if(k==='from'||k==='to'){ if(v){ window._rf.month=''; var m=$('#rf_month'); if(m) m.value=''; } }
+  if(k==='month'&&v){ window._rf.from=''; window._rf.to=''; var a=$('#rf_from'),b=$('#rf_to'); if(a) a.value=''; if(b) b.value=''; }
+  window._rfOpen=true; rfRun();
+}
+function rfLoad(){
+  if(RF||RF_BUSY) return; RF_BUSY=true; RF_ERR='';
+  api('props_stay_finder').then(function(j){ RF_BUSY=false;
+    if(j&&j.ok){ RF=j.stays||[]; var fl={}; RF.forEach(function(s){ fl[s.flat]=1; });
+      var el=$('#rf_flat'); if(el){ var cur=window._rf.flat;
+        el.innerHTML='<option value="">All homes</option>'+Object.keys(fl).sort().map(function(x){ return '<option value="'+esc(x)+'"'+(x===cur?' selected':'')+'>'+esc(x)+'</option>'; }).join(''); }
+      rfRun(); }
+    else { RF_ERR=(j&&j.error)||'could not load'; rfRun(); }
+  }).catch(function(e){ RF_BUSY=false; RF_ERR=String(e&&e.message||e); rfRun(); });
+}
+function rfRows(){
+  var f=window._rf, ql=String(f.q||'').trim().toLowerCase(), qd=normPh(f.q);
+  var from=f.from||'', to=f.to||'', mon=f.month||'';
+  return (RF||[]).filter(function(s){
+    if(!f.canc && /cancel/i.test(s.status||'')) return false;
+    if(f.ch && String(s.portal||'').toLowerCase().indexOf(f.ch.toLowerCase())<0) return false;
+    if(f.flat && s.flat!==f.flat) return false;
+    if(f.basis==='rev'){
+      var lo=(from||mon).slice(0,7), hi=(to||mon).slice(0,7);
+      if(lo||hi){ var hit=(s.months||[]).some(function(x){ return (!lo||x.m>=lo)&&(!hi||x.m<=hi); }); if(!hit) return false; }
+    } else {
+      var d=f.basis==='in'?s.checkIn:(f.basis==='booked'?s.booked:s.checkOut);
+      if(mon&&String(d||'').slice(0,7)!==mon) return false;
+      if(from&&(!d||d<from)) return false;
+      if(to&&(!d||d>to)) return false;
+    }
+    if(ql){
+      var hay=[s.guest,s.conf,s.id,s.smoobu,s.flat].join(' ').toLowerCase();
+      if(hay.indexOf(ql)<0 && !(qd.length>=4&&phoneMatch(s.phone,f.q))) return false;
+    }
+    return true;
+  }).sort(function(a,b){
+    var k=window._rf.basis==='in'?'checkIn':(window._rf.basis==='booked'?'booked':'checkOut');
+    return (a[k]||'')<(b[k]||'')?-1:((a[k]||'')>(b[k]||'')?1:0);
+  });
+}
+function rfM(x){ return (x==null||!isFinite(x))?'—':Number(x).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function rfRun(){
+  var el=$('#rfr'); if(!el) return;
+  if(!RF){ if(RF_ERR){ el.innerHTML='<div class="muted r">'+esc(RF_ERR)+'</div>'; return; }
+           el.innerHTML='<div class="muted">loading reservations…</div>'; rfLoad(); return; }
+  var rows=rfRows(), T={gross:0,comm:0,charge:0,vat:0,net:0,other:0,allIn:0,n:0}, canc=0;
+  if(!rows.length){ el.innerHTML='<div class="muted">no reservations match</div>'; return; }
+  var body=rows.map(function(s){
+    var cx=/cancel/i.test(s.status||''); if(cx) canc++;
+    T.gross+=s.gross; T.comm+=s.comm; T.charge+=s.charge; T.vat+=s.vat; T.net+=s.net; T.other+=s.other; T.allIn+=s.allIn; T.n+=s.nights||0;
+    var n=s.nights||0, gpn=n?s.gross/n:null, epn=n?(s.allIn-s.other)/n:null;
+    var rm=(s.months||[]).map(function(x){ return mLabel(x.m)+' '+x.m.slice(2,4)+' · '+x.n+'n · $'+rfM(x.usd); }).join('<br>');
+    return '<tr'+(cx?' style="opacity:.55"':'')+'>'+
+      '<td style="text-align:left"><bdi>'+esc(s.guest||'—')+'</bdi>'+(cx?' <span class="pill p-out">cancelled</span>':'')+'<div class="soft" style="font-size:10px">'+esc(s.flat)+' · '+esc(s.portal)+'</div></td>'+
+      '<td dir="ltr">'+esc(s.booked||'—')+'</td>'+
+      '<td dir="ltr" style="white-space:nowrap">'+esc(s.checkIn||'?')+' → '+esc(s.checkOut||'?')+'</td>'+
+      '<td>'+n+'</td>'+
+      '<td style="text-align:left;font-size:10.5px" dir="ltr">Smoobu '+esc(s.smoobu||s.id||'—')+'<div class="code">'+esc(s.conf||'—')+'</div></td>'+
+      '<td>'+rfM(s.gross)+'</td><td class="soft">'+rfM(gpn)+'</td>'+
+      '<td>'+rfM(s.comm)+'</td><td>'+rfM(s.charge)+'</td><td>'+rfM(s.vat)+'</td><td>'+rfM(s.net)+'</td>'+
+      '<td>'+rfM(s.other)+'</td><td>'+rfM(s.allIn)+'</td><td class="soft">'+rfM(epn)+'</td>'+
+      '<td style="text-align:left;font-size:10px;white-space:nowrap">'+(rm||'<span class="soft">—</span>')+'</td></tr>';
+  }).join('');
+  var f=window._rf, fee=T.comm+T.charge+T.vat;
+  el.innerHTML=
+    '<div style="font-size:12px;margin-bottom:6px"><b>'+rows.length+'</b> reservation'+(rows.length===1?'':'s')+' · '+T.n+' nights'+(canc?' · '+canc+' cancelled':'')+
+      ' <span class="soft">(USD, '+(f.basis==='out'?'check-out':f.basis==='in'?'check-in':f.basis==='booked'?'booked':'revenue')+' date)</span>'+
+      ' <a href="#" onclick="rfCsv();return false" style="float:right">copy as CSV</a><span id="rfmsg" class="muted" style="float:right;margin-right:8px"></span></div>'+
+    '<div style="overflow-x:auto"><table style="min-width:980px"><thead><tr>'+
+      '<th style="text-align:left">Guest</th><th>Booked</th><th>Stay</th><th>Nts</th><th style="text-align:left">Booking IDs</th>'+
+      '<th>Gross</th><th>/night</th><th>Commission</th><th>Pay charge</th><th>VAT</th><th>Net</th><th>Other</th><th>All-in</th><th>Earned/n</th><th style="text-align:left">Revenue by month</th>'+
+      '</tr></thead><tbody>'+body+
+      '<tr class="tot"><td>Total</td><td></td><td></td><td>'+T.n+'</td><td></td><td>'+rfM(T.gross)+'</td><td></td><td>'+rfM(T.comm)+'</td><td>'+rfM(T.charge)+'</td><td>'+rfM(T.vat)+'</td><td>'+rfM(T.net)+'</td><td>'+rfM(T.other)+'</td><td>'+rfM(T.allIn)+'</td><td></td><td></td></tr>'+
+      '</tbody></table></div>'+
+    '<div class="legend">Gross − commission − payment charge − VAT = net (a recorded net wins where the bank figure differs). Commission + charge + VAT = <b>'+rfM(fee)+'</b>. Revenue by month = All-in apportioned per night, as in the P&amp;L.</div>';
+}
+function rfCsv(){
+  var rows=rfRows(), q=function(x){ x=String(x==null?'':x); return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; };
+  var out=[['Guest','Home','Channel','Status','Booked','Check-in','Check-out','Nights','Smoobu ID','Booking ref','Gross','Gross/night','Commission','Payment charge','VAT','Net','Other','All-in','Revenue by month'].join(',')];
+  rows.forEach(function(s){ var n=s.nights||0;
+    out.push([s.guest,s.flat,s.portal,s.status,s.booked,s.checkIn,s.checkOut,n,s.smoobu||s.id,s.conf,s.gross,n?(s.gross/n).toFixed(2):'',s.comm,s.charge,s.vat,s.net,s.other,s.allIn,
+      (s.months||[]).map(function(x){ return x.m+':'+x.n+'n:'+x.usd; }).join(' | ')].map(q).join(',')); });
+  var txt=out.join('\n'), done=function(ok){ var m=$('#rfmsg'); if(m) m.textContent=ok?'copied ✓':'copy failed'; };
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(function(){ done(true); },function(){ done(false); });
+  else { try{ var t=document.createElement('textarea'); t.value=txt; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); done(true); }catch(e){ done(false); } }
 }
 function normPh(x){ var d=String(x||'').replace(/\D/g,''); if(d.slice(0,2)==='00') d=d.slice(2); return d; }
 function phoneMatch(p,q){ var a=normPh(p), b=normPh(q); if(!a||!b) return false;
