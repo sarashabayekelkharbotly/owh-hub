@@ -45,6 +45,8 @@ table.d tr.net td{font-weight:700;border-top:2px solid var(--ink);border-bottom:
 .drill table{width:100%;border-collapse:collapse;font-size:10.5px}
 .drill td{padding:2px 7px;border:0;color:#5a4d4d}
 .drill tr.foot td{font-weight:700;color:var(--soft);font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;padding-top:5px}
+.btn{font-family:inherit;font-size:11.5px;font-weight:600;border:1px solid var(--line);background:var(--white);color:var(--ink);border-radius:8px;padding:6px 10px;cursor:pointer}
+.btn:hover{background:#faf5f5}
 .drill tr.foot2 td{font-weight:700;border-top:1px solid var(--line);padding-bottom:4px}
 .note{font-size:10px;color:var(--soft);line-height:1.55;margin:7px 0 0}
 .muted{color:var(--soft);font-size:11px}
@@ -166,6 +168,66 @@ function nightsIn(ym){ return staysIn(ym).reduce(function(a,s){ return a+nightsO
 /* This month's share of a stay's value, apportioned by nights — the same basis the sheet uses, so
    the column adds up to the revenue line instead of overstating it by the part earned elsewhere. */
 function earnedIn(s,ym){ var tot=s.nights||nightsOf(s,ym)||1; return (s.allIn||0)*nightsOf(s,ym)/tot; }
+
+/* A stay's money for one month, in USD, on the settled revenue rule: (All-in − Other) ÷ nights, per night
+   inside the month. Gross is what the guest paid; fees = gross − net recorded, so the three columns ALWAYS add
+   up (gross − fees = net) whatever the sheet's commission/charge/VAT split looks like underneath. A booking with
+   no gross on record shows no fees rather than a made-up figure. */
+function stayParts(s,ym){
+  var tot=s.nights||nightsOf(s,ym)||1, k=nightsOf(s,ym)/tot, w=(s.allIn||0)-(s.other||0);
+  var net=w*k, gross=(s.gross>0 && s.gross>=w) ? s.gross*k : net;
+  return { gross:gross, fees:gross-net, net:net };
+}
+/* The statement chain for one month (USD): gross → fees → earnings → + other = net revenue → fee → owner share →
+   operating costs → month result. The costs total is derived as share − result so the column always reconciles. */
+function monthChain(ym){
+  var r=recFor(ym); if(!r) return null;
+  var G=0,N=0; staysIn(ym).forEach(function(s){ var p=stayParts(s,ym); G+=p.gross; N+=p.net; });
+  var E=r.revenue.earnings||0, O=r.revenue.other||0, T=r.revenue.total||0, pv=r.partnerView||{};
+  var fee=pv.managementFee||0, res=(pv.netPayout!=null?pv.netPayout:r.net);
+  return { r:r, G:G, F:G-N, adj:E-N, E:E, O:O, T:T, fee:fee, share:T-fee, res:res, costs:(T-fee)-res };
+}
+
+/* ---- downloads (contract 8.2.1: the statement and the records behind it, in a standard file format) ---- */
+function csvCell(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
+function download(name,rows){
+  var out=rows.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
+  var blob=new Blob(['\uFEFF'+out],{type:'text/csv;charset=utf-8;'});       // BOM so Excel reads any Arabic correctly
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=flatName().replace(/\s+/g,'-')+'-'+name+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function n2(v){ return (v==null||!isFinite(v))?'':v.toFixed(2); }
+function exportStatement(){
+  var cm=monthChain(MONTH), cp=prevMonth()?monthChain(prevMonth()):null; if(!cm) return;
+  var c=function(ch,v){ return ch?n2(conv(v,'USD',ch.r)):''; };
+  var rows=[['Line',monLabel(MONTH)+' ('+CUR+')'].concat(cp?[monLabel(prevMonth())+' ('+CUR+')']:[])];
+  var add=function(lbl,fn){ rows.push([lbl,c(cm,fn(cm))].concat(cp?[c(cp,fn(cp))]:[])); };
+  add('Gross guest payments',function(x){return x.G;}); add('Platform and card fees',function(x){return -x.F;});
+  add('Adjustments',function(x){return x.adj;}); add('Earnings',function(x){return x.E;}); add('Other revenue',function(x){return x.O;});
+  add('Net revenue',function(x){return x.T;}); add('Management fee',function(x){return -x.fee;}); add('Your share',function(x){return x.share;});
+  costKeys(cm.r,cp&&cp.r).forEach(function(k){ var cu=curOf(cm.r,k)||(cp&&curOf(cp.r,k))||'EGP';
+    rows.push(['Cost: '+(LABEL[k]||k), n2(conv(amt(cm.r,k),cu,cm.r))].concat(cp?[n2(conv(amt(cp.r,k),cu,cp.r))]:[])); });
+  add('Total operating costs',function(x){return x.costs;}); add('Month result',function(x){return x.res;});
+  rows.push(['Status',cm.r.status==='final'?'final':'in progress'].concat(cp?[cp.r.status==='final'?'final':'in progress']:[]));
+  rows.push(['EGP per USD',n2(rateFor(cm.r))].concat(cp?[n2(rateFor(cp.r))]:[]));
+  download('statement-'+MONTH,rows);
+}
+function exportBookings(){
+  var f=myFlat(), rows=[['Guest','Channel','Status','Booked','Check-in','Check-out','Nights','Gross guest payment (USD)','Platform and card fees (USD)','Net (USD)','Other revenue (USD)']];
+  (DATA.stays||[]).filter(function(s){ return s.flat===f && s.portal!=='Blocked'; })
+    .sort(function(a,b){ return (a.checkIn||'')<(b.checkIn||'')?-1:1; })
+    .forEach(function(s){ var w=(s.allIn||0)-(s.other||0), g=(s.gross>0&&s.gross>=w)?s.gross:w;
+      rows.push([s.guest||'',s.portal||'Direct',s.status||'',s.booked||'',s.checkIn||'',s.checkOut||'',s.nights||'',n2(g),n2(g-w),n2(w),n2(s.other||0)]); });
+  download('bookings',rows);
+}
+function exportCosts(){
+  var f=myFlat(), rows=[['Date','Month','Category','Description','Amount','Currency',"USD at that month's rate"]];
+  (DATA.tx||[]).filter(function(t){ return t.flat===f; }).sort(function(a,b){ return (a.date||'')<(b.date||'')?-1:1; })
+    .forEach(function(t){ var rr=recFor(t.ym), usd=(t.currency==='USD')?t.amount:(rr?t.amount/rateFor(rr):null);
+      rows.push([t.date||'',t.ym||'',t.cat==='__electricity'?'electricity':(t.cat==='__subscription'?'booking software':t.cat),shortDesc(t.desc),n2(t.amount),t.currency||'',n2(usd)]); });
+  download('cost-entries',rows);
+}
 
 /* Cost descriptions are our internal working notes. A partner wants "what was this", not our
    reasoning — so drop bracketed asides and keep the opening clause. */
@@ -296,36 +358,40 @@ function render(){
   h+='<div class="card"><h3>'+monLabel(MONTH)+' stays <span class="pill '+(isFinal?'pf':'pa')+'" style="float:right">'+(isFinal?'final':'in progress')+'</span></h3>';
   if(!st.length) h+='<p class="note" style="margin:0">No stays recorded for this month.</p>';
   else{
-    var spans=false;
-    h+='<table class="d"><tr><th>Guest</th><th>In</th><th>Out</th><th class="c">N in '+monShort(MONTH)+'</th><th>Channel</th><th class="r">Earnings</th></tr>';
+    var spans=false, tG=0, tF=0, tN=0;
+    h+='<table class="d" style="font-size:11px"><tr><th>Guest</th><th>Stay</th><th class="c">N</th><th>Channel</th><th class="r">Gross</th><th class="r">Fees</th><th class="r">Net</th></tr>';
     st.forEach(function(s){
       var nm=nightsOf(s,MONTH); if(nm!==(s.nights||nm)) spans=true;
-      h+='<tr><td>'+esc(s.guest||'—')+'</td><td style="white-space:nowrap">'+dayLabel(s.checkIn)+'</td><td style="white-space:nowrap">'+dayLabel(s.checkOut)+'</td>'+
+      var p=stayParts(s,MONTH); tG+=p.gross; tF+=p.fees; tN+=p.net;
+      h+='<tr><td>'+esc(s.guest||'—')+'</td><td style="white-space:nowrap">'+dayLabel(s.checkIn)+' → '+dayLabel(s.checkOut)+'</td>'+
          '<td class="c">'+nm+'</td><td style="white-space:nowrap"><span class="dot '+dotFor(s.portal)+'"></span>'+esc(s.portal||'Direct')+'</td>'+
-         '<td class="r">'+sym()+fmt(conv(earnedIn(s,MONTH),'USD',r))+'</td></tr>';
+         '<td class="r">'+fmt(conv(p.gross,'USD',r))+'</td><td class="r">'+(p.fees>0.005?fmt(-conv(p.fees,'USD',r)):'—')+'</td><td class="r">'+fmt(conv(p.net,'USD',r))+'</td></tr>';
     });
+    h+='<tr class="tot"><td colspan="4">Total</td><td class="r">'+fmt(conv(tG,'USD',r))+'</td><td class="r">'+(tF>0.005?fmt(-conv(tF,'USD',r)):'—')+'</td><td class="r">'+fmt(conv(tN,'USD',r))+'</td></tr>';
     h+='</table>';
-    if(spans) h+='<p class="note" style="margin-top:5px">A stay crossing into another month is counted here only for the nights inside '+
-       monLabel(MONTH)+', so this column adds up to the revenue below.</p>';
+    h+='<p class="note" style="margin-top:5px">Gross = what the guest paid; Fees = platform commission, card/processing charges and taxes on them; Net = gross − fees.'+
+       (spans?' A stay crossing into another month is counted here only for the nights inside '+monLabel(MONTH)+'.':'')+' The Net column is the earnings line of the statement below.</p>';
   }
   h+='</div>';
 
   /* ---- statement, this month beside last ---- */
   h+='<div class="card"><h3>Statement — '+monShort(MONTH)+(pm?' vs '+monShort(pm):'')+'</h3><table class="d">'+
      '<tr><th>Line</th><th class="r">'+monShort(MONTH)+'</th>'+(pm?'<th class="r">'+monShort(pm)+'</th>':'')+'</tr>';
-  /* Total revenue = earnings + other, so it splits open the same way the cost lines do — a partner
-     should never have to guess which of the two a number is. */
-  var revOpen=!!OPEN['__rev'];
-  h+='<tr class="tot drillable" onclick="toggleDrill(\'__rev\')"><td>Total revenue '+(revOpen?'▾':'▸')+'</td>'+
-     '<td class="r">'+fmt(conv(r.revenue.total,'USD',r))+'</td>'+
-     (pm?'<td class="r">'+fmt(pr?conv(pr.revenue.total,'USD',pr):null)+'</td>':'')+'</tr>';
-  if(revOpen){
-    h+='<tr class="subrow"><td>earnings</td><td class="r">'+fmt(conv(r.revenue.earnings,'USD',r))+'</td>'+
-       (pm?'<td class="r">'+fmt(pr?conv(pr.revenue.earnings,'USD',pr):null)+'</td>':'')+'</tr>';
-    h+='<tr class="subrow"><td>other revenue</td><td class="r">'+fmt(conv(r.revenue.other,'USD',r))+'</td>'+
-       (pm?'<td class="r">'+fmt(pr?conv(pr.revenue.other,'USD',pr):null)+'</td>':'')+'</tr>';
-  }
-
+  /* The chain follows clause 8.1 line by line: gross guest payments → platform & card fees → net revenue →
+     management fee → the owner's 75% → operating costs → month result. Every column adds up. */
+  var cm=monthChain(MONTH), cp=pm?monthChain(pm):null;
+  var cc=function(ch,v){ return ch?fmt(conv(v,'USD',ch.r)):null; };
+  var srow=function(lbl,get,cls,sign){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+lbl+'</td><td class="r">'+cc(cm,sign*get(cm))+'</td>'+(pm?'<td class="r">'+cc(cp,cp?sign*get(cp):0)+'</td>':'')+'</tr>'; };
+  var showAdj=(Math.abs(cm.adj)>0.02)||(cp&&Math.abs(cp.adj)>0.02);
+  h+=srow('Gross guest payments',function(x){return x.G;},'',1);
+  h+=srow('platform &amp; card fees',function(x){return x.F;},'subrow',-1);
+  if(showAdj) h+=srow('other adjustments',function(x){return x.adj;},'subrow',1);
+  h+=srow('Earnings (net of fees)',function(x){return x.E;},'',1);
+  h+=srow('other revenue',function(x){return x.O;},'subrow',1);
+  h+=srow('Net revenue',function(x){return x.T;},'tot',1);
+  h+=srow('management fee — '+Math.round(pct*100)+'% of net revenue',function(x){return x.fee;},'',-1);
+  h+=srow('Your share — '+Math.round((1-pct)*100)+'% of net revenue',function(x){return x.share;},'tot',1);
+  h+='<tr class="subrow"><td colspan="'+(pm?3:2)+'" style="font-weight:700">Operating costs, paid on your behalf</td></tr>';
   costKeys(r,pr).forEach(function(k){
     var open=!!OPEN[k], canDrill=!!CATMAP[k];
     var cu=curOf(r,k)||curOf(pr,k)||'EGP';
@@ -333,16 +399,19 @@ function render(){
        '<td class="r">'+fmt(conv(amt(r,k),cu,r))+'</td>'+(pm?'<td class="r">'+fmt(conv(amt(pr,k),cu,pr))+'</td>':'')+'</tr>';
     if(open) h+=drillBlock(k);
   });
-
-  h+='<tr><td>management fee — '+Math.round(pct*100)+'%</td><td class="r">'+fmt(conv(pv.managementFee,'USD',r))+'</td>'+
-     (pm?'<td class="r">'+fmt(pr&&pr.partnerView?conv(pr.partnerView.managementFee,'USD',pr):null)+'</td>':'')+'</tr>';
-  h+='<tr class="net"><td>Month result</td><td class="r g">'+fmt(conv(pv.netPayout!=null?pv.netPayout:r.net,'USD',r))+'</td>'+
-     (pm?'<td class="r">'+fmt(pr?conv(pr.partnerView?pr.partnerView.netPayout:pr.net,'USD',pr):null)+'</td>':'')+'</tr>';
+  h+=srow('Total operating costs',function(x){return x.costs;},'tot',1);
+  h+=srow('Month result',function(x){return x.res;},'net',1);
   h+='</table>';
   h+='<p class="note">Tap a cost line to see what it is made of — date, description, amount. '+
      'Everything is shown in <b>'+CUR+'</b>, each month converted at that month\'s own rate ('+
      fmt(rateFor(r))+' EGP/USD for '+monLabel(MONTH)+'), so a closed month never changes when the rate moves.'+
      (isFinal?'':' This month is still open, so figures can change until it is closed.')+'</p></div>';
+
+  h+='<div class="card"><h3>Download</h3><div style="display:flex;gap:6px;flex-wrap:wrap">'+
+     '<button class="btn" onclick="exportStatement()">This month\'s statement</button>'+
+     '<button class="btn" onclick="exportBookings()">All bookings</button>'+
+     '<button class="btn" onclick="exportCosts()">All cost entries</button></div>'+
+     '<p class="note">CSV files that open in Excel or Google Sheets — the statement, every booking with its gross, fees and net, and every cost entry.</p></div>';
 
   /* ---- Clause-7 settlement — the waterfall (Sarah 2026-09-17: "the float must be visible in the
      partner view"). The SAME partnerLedger figures the admin Close shows — one truth, two readers. */
