@@ -397,8 +397,9 @@ function payRow(s){
   return '<div class="need n-warn" id="pay_'+id+'"><span class="nb">₪</span><span>'+
     '<b>Confirm payment</b> — '+esc(s.flat)+' · '+esc(s.guest||'')+' · direct booking '+dmon(s.checkIn)+' ($'+fmt(s.allIn)+')'+
     '<div class="payctl">'+
-      '<select id="pm_'+id+'"><option>Stripe</option><option>Cash</option><option>Instapay</option></select>'+
-      '<select id="pc_'+id+'"><option>USD</option><option>EGP</option></select>'+
+      /* the currency only matters for CASH: Instapay is always EGP, Stripe always USD (2026-10-10) */
+      '<select id="pm_'+id+'" onchange="payMethod(\''+id+'\')"><option>Stripe</option><option>Cash</option><option>Instapay</option></select>'+
+      '<select id="pc_'+id+'" disabled title="fixed by the method — only Cash can be either"><option>USD</option><option>EGP</option></select>'+
       /* "paid on" (2026-10-09): Stripe's fee depends on the PAYMENT date (it applies from 15 Jun 2026),
          not on booking or check-in — defaults to the booked date, change it if the guest paid earlier/later */
       '<label class="paymsg" title="the day the guest paid — Stripe charges its fee on payments from 15 Jun 2026">paid <input type="date" id="pd_'+id+'" value="'+esc(s.booked||'')+'" style="font-family:inherit;font-size:11.5px;border:1px solid var(--line);border-radius:6px;padding:2px 5px;background:var(--white)"></label>'+
@@ -570,6 +571,12 @@ function needs(cm,pmY){
   extras.forEach(function(a,i){ h+=orevRow(a,'extra',i); });
   items.forEach(function(i){ h+='<div class="need n-'+i.t+'"><span class="nb">'+(i.t==='warn'?'!':(i.t==='ok'?'✓':'•'))+'</span><span>'+i.txt+'</span></div>'; });
   return h+'</div>';
+}
+function payMethod(id){
+  var m=document.getElementById('pm_'+id).value, c=document.getElementById('pc_'+id);
+  if(m==='Instapay'){ c.value='EGP'; c.disabled=true; }
+  else if(m==='Stripe'){ c.value='USD'; c.disabled=true; }
+  else c.disabled=false;                           // Cash: either currency
 }
 function savePay(id){
   var m=document.getElementById('pm_'+id).value, c=document.getElementById('pc_'+id).value, msg=document.getElementById('pmsg_'+id);
