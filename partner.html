@@ -213,6 +213,34 @@ function monthChain(ym){
   return { r:r, G:G, F:G-N, adj:E-N, E:E, O:O, T:T, fee:fee, share:T-fee, res:res, costs:(T-fee)-res };
 }
 
+/* ---- the Operating Costs Budget (clause 6.5.1): US$45 × turnovers in the month + US$60, a CEILING not a charge.
+   A turnover = an occasion the home is cleaned and its linen changed: checkout / mid-stay / weekly cleans on the
+   confirmed schedule, or — where the schedule no longer holds that month — the stays that ended in it, whichever is
+   more. Furniture is the purchase of items (5.2/5.3), not an operating cost (6.4), so it never counts against the ceiling. ---- */
+function turnoversIn(ym){
+  var f=myFlat(), n=0;
+  (DATA.cleans||[]).forEach(function(c){ if(c.flat===f && (c.date||'').slice(0,7)===ym && /^(checkout|midstay|weekly)$/.test(c.type||'')) n++; });
+  var ended=(DATA.stays||[]).filter(function(s){ var st=(s.status||'').toLowerCase();
+    return s.flat===f && s.portal!=='Blocked' && st.indexOf('cancel')<0 && st.indexOf('block')<0 && (s.checkOut||'').slice(0,7)===ym; }).length;
+  return Math.max(n,ended);
+}
+function budgetFor(ym){
+  var r=recFor(ym); if(!r) return null;
+  var tn=turnoversIn(ym), ceil=45*tn+60, spent=0;
+  (r.costs||[]).forEach(function(c){ if(!c.amount||c.key==='furniture') return; spent+=(c.currency==='USD')?c.amount:c.amount/rateFor(r); });
+  return { r:r, tn:tn, ceil:ceil, spent:spent, left:ceil-spent };
+}
+/* ---- publication and objection (clauses 8.2.2, 8.4): binding unless she objects within 7 Business Days of
+   publication; a Business Day is any day but Friday, Saturday or an Egyptian public holiday (holidays are not
+   counted here, so the real deadline can be a day or two later). ---- */
+function addBizDays(ymd,n){
+  var d=new Date(ymd.slice(0,10)+'T12:00:00');
+  while(n>0){ d.setDate(d.getDate()+1); var w=d.getDay(); if(w!==5 && w!==6) n--; }
+  return d;
+}
+function longDay(d){ return d.getDate()+' '+MON[d.getMonth()]+' '+d.getFullYear(); }
+function mailQ(subject,body){ return 'mailto:info@ourwelcomehome.com?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body||''); }
+
 /* ---- downloads (contract 8.2.1: the statement and the records behind it, in a standard file format) ---- */
 function csvCell(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
 function download(name,rows){
@@ -233,7 +261,7 @@ function exportStatement(){
   add('Net revenue',function(x){return x.T;}); add('Management fee',function(x){return -x.fee;}); add('Your share',function(x){return x.share;});
   costKeys(cm.r,cp&&cp.r).forEach(function(k){ var cu=curOf(cm.r,k)||(cp&&curOf(cp.r,k))||'EGP';
     rows.push(['Cost: '+(LABEL[k]||k), n2(conv(amt(cm.r,k),cu,cm.r))].concat(cp?[n2(conv(amt(cp.r,k),cu,cp.r))]:[])); });
-  add('Total operating costs',function(x){return x.costs;}); add('Month result',function(x){return x.res;});
+  add('Total costs',function(x){return x.costs;}); add('Month result',function(x){return x.res;});
   rows.push(['Status',cm.r.status==='final'?'final':'in progress'].concat(cp?[cp.r.status==='final'?'final':'in progress']:[]));
   rows.push(['EGP per USD',n2(rateFor(cm.r))].concat(cp?[n2(rateFor(cp.r))]:[]));
   download('statement-'+MONTH,rows);
@@ -296,7 +324,10 @@ function drillBlock(key){
     out+='<tr class="foot"><td colspan="3">'+monLabel(ym).toUpperCase()+' — '+
          (list.length===1 ? fmt(sum) : list.length+' entries · '+fmt(sum/list.length)+' each → '+fmt(sum))+'</td></tr>';
     list.forEach(function(t){
-      out+='<tr><td style="white-space:nowrap">'+dayLabel(t.date)+'</td><td>'+esc(shortDesc(t.desc))+'</td><td style="text-align:right">'+fmt(conv(t.amount,t.currency,rr))+'</td></tr>';
+      var big=((t.currency==='USD')?t.amount:(rr?t.amount/rateFor(rr):0))>100;
+      out+='<tr><td style="white-space:nowrap">'+dayLabel(t.date)+'</td><td>'+esc(shortDesc(t.desc))+
+           (big?' <a href="'+mailQ(flatName()+' — supporting document, '+monLabel(ym),'Please send the supporting document for: '+dayLabel(t.date)+' · '+shortDesc(t.desc)+' · '+fmt(conv(t.amount,t.currency,rr))+' '+CUR)+'" style="color:var(--red);font-size:9.5px;white-space:nowrap" onclick="event.stopPropagation()">request document</a>':'')+
+           '</td><td style="text-align:right">'+fmt(conv(t.amount,t.currency,rr))+'</td></tr>';
     });
   });
   return out ? '<tr><td colspan="3" style="padding:2px 4px"><div class="drill"><table>'+out+'</table></div></td></tr>' : '';
@@ -416,7 +447,7 @@ function render(){
   h+=srow('Net revenue',function(x){return x.T;},'tot',1);
   h+=srow('management fee — '+Math.round(pct*100)+'% of net revenue',function(x){return x.fee;},'',-1);
   h+=srow('Your share — '+Math.round((1-pct)*100)+'% of net revenue',function(x){return x.share;},'tot',1);
-  h+='<tr class="subrow"><td colspan="'+(pm?3:2)+'" style="font-weight:700">Operating costs, paid on your behalf</td></tr>';
+  h+='<tr class="subrow"><td colspan="'+(pm?3:2)+'" style="font-weight:700">Costs paid on your behalf</td></tr>';
   costKeys(r,pr).forEach(function(k){
     var open=!!OPEN[k], canDrill=!!CATMAP[k];
     var cu=curOf(r,k)||curOf(pr,k)||'EGP';
@@ -424,13 +455,41 @@ function render(){
        '<td class="r">'+fmt(conv(amt(r,k),cu,r))+'</td>'+(pm?'<td class="r">'+fmt(conv(amt(pr,k),cu,pr))+'</td>':'')+'</tr>';
     if(open) h+=drillBlock(k);
   });
-  h+=srow('Total operating costs',function(x){return x.costs;},'tot',1);
+  h+=srow('Total costs',function(x){return x.costs;},'tot',1);
   h+=srow('Month result',function(x){return x.res;},'net',1);
   h+='</table>';
   h+='<p class="note">Tap a cost line to see what it is made of — date, description, amount. '+
      'Everything is shown in <b>'+CUR+'</b>, each month converted at that month\'s own rate ('+
      fmt(rateFor(r))+' EGP/USD for '+monLabel(MONTH)+'), so a closed month never changes when the rate moves.'+
      (isFinal?'':' This month is still open, so figures can change until it is closed.')+'</p></div>';
+
+  /* ---- operating costs budget — clause 6.5.1 ---- */
+  var bg=budgetFor(MONTH);
+  if(bg){
+    var bL=function(v){ return sym()+fmt(conv(v,'USD',bg.r)); }, over=bg.left<-0.005;
+    h+='<div class="card"><h3>Operating costs budget — '+monShort(MONTH)+'</h3><table class="d">'+
+       '<tr><td>Turnovers this month</td><td class="r">'+bg.tn+'</td></tr>'+
+       '<tr><td>Ceiling — $45 × '+bg.tn+' + $60</td><td class="r">'+bL(bg.ceil)+'</td></tr>'+
+       '<tr><td>Operating costs so far</td><td class="r">'+bL(bg.spent)+'</td></tr>'+
+       '<tr class="net"><td>'+(over?'Above the ceiling by':'Room left under the ceiling')+'</td><td class="r '+(over?'':'g')+'"'+(over?' style="color:var(--red)"':'')+'>'+bL(Math.abs(bg.left))+'</td></tr></table>'+
+       '<p class="note">'+(over
+         ? 'Costs above the ceiling need your written approval (clause 6.5.3); anything needed for safety, habitability or a confirmed booking can be paid first and is explained to you within 48 hours (6.5.4). '
+         : 'This is a ceiling on what OWH may spend without asking you, not a charge — you pay only the costs actually incurred (6.5.2). ')+
+       'Furniture and set-up purchases are not operating costs and are not counted here. The ceiling rises each anniversary of the start date.</p></div>';
+  }
+
+  /* ---- statement status — clauses 8.2.2 and 8.4 ---- */
+  var qMail=mailQ(flatName()+' — statement '+monLabel(MONTH),'About my '+monLabel(MONTH)+' statement:\n\n');
+  h+='<div class="card"><h3>Statement status</h3>';
+  if(isFinal){
+    var pub=r.closedAt, dl=pub?addBizDays(pub,7):null;
+    h+='<p class="note" style="margin:0;font-size:11.5px;color:var(--ink)">'+
+       (pub?'Published <b>'+longDay(new Date(pub.slice(0,10)+'T12:00:00'))+'</b>. ':'Published. ')+
+       (dl?'You have until about <b>'+longDay(dl)+'</b> — 7 business days, Friday and Saturday not counted — to raise a specific objection; after that it is final and binding (clause 8.4). Public holidays extend the date.':'You have 7 business days to raise a specific objection (clause 8.4).')+'</p>';
+  } else {
+    h+='<p class="note" style="margin:0;font-size:11.5px;color:var(--ink)">Not published yet — the figures above are provisional and can change until the month is closed. The statement for a month is published by the 5th of the following month (clause 8.1).</p>';
+  }
+  h+='<p style="margin:8px 0 0"><a class="btn" href="'+qMail+'" style="text-decoration:none;display:inline-block">Question or object to this statement</a></p></div>';
 
   h+='<div class="card"><h3>Download</h3><div style="display:flex;gap:6px;flex-wrap:wrap">'+
      '<button class="btn" onclick="exportStatement()">This month\'s statement</button>'+
