@@ -120,14 +120,16 @@ function chk_(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }
 function fetchOnce(){
   if(!isAdmin()) return api('props_get_all',null).then(chk_);
   if(PREVIEW==='demo') return api('props_get_all',{scope:'demo'}).then(chk_);
-  if(PREVIEW) return api('props_get_all',{asPartner:PREVIEW}).then(chk_);
+  if(PREVIEW) return api('props_get_all',{asPartner:PREVIEW}).then(function(j){
+    if(j&&j.ok===false&&/Not a partner home/.test(j.error||'')){ try{ sessionStorage.removeItem('owh_preview_as'); }catch(e){} PREVIEW=''; return api('props_get_all',{asPartner:'*'}).then(chk_); }
+    return chk_(j); });
   return api('props_get_all',{asPartner:'*'}).then(chk_);
 }
 function previewChoose(id){ try{ sessionStorage.setItem('owh_preview_as',id); }catch(e){} location.href=location.pathname+'?as='+encodeURIComponent(id); }
 function renderChooser(list){
   $('#rib').innerHTML=authWho();
   $('#app').innerHTML='<div class="card"><h3>👁 View as partner</h3><p class="note">Pick a home to see its partner page exactly as the partner sees it. You stay signed in as yourself.</p>'+
-    ((list||[]).length ? (list||[]).map(function(x){ return '<button class="pvbtn" onclick="previewChoose(\''+esc(x.id)+'\')" style="display:block;width:100%;margin:6px 0;padding:10px;border:1px solid #ecdede;border-radius:10px;background:#fff;font:inherit;font-weight:700;cursor:pointer;text-align:left">'+esc(x.name)+(x.demo?' <span class="muted">(demo)</span>':'')+'</button>'; }).join('')
+    ((list||[]).length ? (list||[]).map(function(x){ return '<button class="pvbtn" onclick="previewChoose(\''+(x.demo?'demo':esc(x.id))+'\')" style="display:block;width:100%;margin:6px 0;padding:10px;border:1px solid #ecdede;border-radius:10px;background:#fff;font:inherit;font-weight:700;cursor:pointer;text-align:left">'+esc(x.name)+(x.demo?' <span class="muted">(demo)</span>':'')+'</button>'; }).join('')
       : '<p class="muted">No home has a partner yet.</p>')+
     '<p style="margin-top:10px"><a href="today.html">← Back to the Hub</a></p></div>';
 }
