@@ -122,15 +122,40 @@ function dayLabel(d){ var m=(d||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m 
 
 function boot(){ fetchOnce().then(onData).catch(function(e){ if(e&&e.message==='AUTH')return;
   setTimeout(function(){ fetchOnce().then(onData).catch(function(e2){ if(e2&&e2.message==='AUTH')return; showErr(e2); }); },800); }); }
-/* An admin on a partner screen can only mean previewing the demo — scope='demo' returns the
-   identical payload the demo partner gets, never a rosier one. */
-function fetchOnce(){ return api('props_get_all', isAdmin()?{scope:'demo'}:null)
-  .then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }); }
+/* 👁 VIEW AS PARTNER (Sarah 2026-10-11). An admin opens this screen as a partner home of their choice — ?as=<home>
+   (remembered for this tab, so This month ⇄ History keep it), or ?as=demo for the demo. The server builds the very
+   payload that home's partner gets (asPartner), and keeps the admin signed in as themselves. With no choice yet, the
+   admin is shown the list of partner homes. */
+var PREVIEW=(function(){ var q=null; try{ q=new URLSearchParams(location.search).get('as'); }catch(e){}
+  try{ if(q!==null){ sessionStorage.setItem('owh_preview_as',q); return q; } return sessionStorage.getItem('owh_preview_as')||''; }catch(e){ return q||''; } })();
+function chk_(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad'); return j; }
+function fetchOnce(){
+  if(!isAdmin()) return api('props_get_all',null).then(chk_);
+  if(PREVIEW==='demo') return api('props_get_all',{scope:'demo'}).then(chk_);
+  if(PREVIEW) return api('props_get_all',{asPartner:PREVIEW}).then(chk_);
+  return api('props_get_all',{asPartner:'*'}).then(chk_);
+}
+function previewChoose(id){ try{ sessionStorage.setItem('owh_preview_as',id); }catch(e){} location.href=location.pathname+'?as='+encodeURIComponent(id); }
+function renderChooser(list){
+  $('#rib').innerHTML=authWho();
+  $('#app').innerHTML='<div class="card"><h3>👁 View as partner</h3><p class="note">Pick a home to see its partner page exactly as the partner sees it. You stay signed in as yourself.</p>'+
+    ((list||[]).length ? (list||[]).map(function(x){ return '<button class="pvbtn" onclick="previewChoose(\''+esc(x.id)+'\')" style="display:block;width:100%;margin:6px 0;padding:10px;border:1px solid #ecdede;border-radius:10px;background:#fff;font:inherit;font-weight:700;cursor:pointer;text-align:left">'+esc(x.name)+(x.demo?' <span class="muted">(demo)</span>':'')+'</button>'; }).join('')
+      : '<p class="muted">No home has a partner yet.</p>')+
+    '<p style="margin-top:10px"><a href="today.html">← Back to the Hub</a></p></div>';
+}
+function previewBar(){
+  if(!isAdmin()||!DATA||!DATA.meta) return;
+  var f=(DATA.meta.preview&&DATA.meta.preview.flat)||(DATA.meta.demo&&DATA.meta.demo.active&&DATA.meta.demo.flat)||''; if(!f) return;
+  var b=document.getElementById('pvBar');
+  if(!b){ b=document.createElement('div'); b.id='pvBar'; var app=document.getElementById('app'); app.parentNode.insertBefore(b,app); }
+  b.innerHTML='<div style="background:#fdf1d8;border:1px solid #ecd39a;border-radius:10px;padding:8px 12px;margin:0 0 10px;font-size:12.5px;font-weight:700">👁 Viewing as the partner of <b>'+esc(flatName())+'</b> — a preview, read-only. You are signed in as '+esc((ME&&ME.user)||'')+'. '+
+    '<a href="#" onclick="try{sessionStorage.removeItem(\'owh_preview_as\')}catch(e){};location.href=location.pathname;return false">Switch home</a> · <a href="today.html">← Back to the Hub</a></div>';
+}
 function isAdmin(){ return !!(ME && ME.role==='admin'); }
 function showErr(e){ if(DATA)return; $('#app').innerHTML='<div class="err">Couldn\'t load your numbers.<br><span class="muted">'+esc(e&&e.message||'')+'</span></div>'; }
-function onData(j){ DATA=j.data; DATA._gen=j.generatedAt; if(j.me) ME=j.me; initMonth(); render(); }
+function onData(j){ if(j.partners){ renderChooser(j.partners); return; } DATA=j.data; DATA._gen=j.generatedAt; if(j.me) ME=j.me; initMonth(); render(); previewBar(); }
 
-function myFlat(){ return (ME&&ME.flat) || (DATA.meta.flatsOrder&&DATA.meta.flatsOrder[0]) || ''; }
+function myFlat(){ return (ME&&ME.flat) || (DATA.meta.preview&&DATA.meta.preview.flat) || (DATA.meta.flatsOrder&&DATA.meta.flatsOrder[0]) || ''; }
 function flatName(){ var f=myFlat(), m=(DATA.flats||[]).filter(function(x){return x.id===f;})[0]; return (m&&m.name)||f; }
 function monthsAvailable(){ var f=myFlat(); return DATA.pnl&&DATA.pnl[f] ? Object.keys(DATA.pnl[f]).sort() : []; }
 function initMonth(){ var ms=monthsAvailable(); if(MONTH&&ms.indexOf(MONTH)>=0) return;
@@ -319,7 +344,7 @@ function balanceBreakdown(upTo){
 
 function render(){
   if(!DATA) return;
-  if(isAdmin() && !(DATA.meta.demo&&DATA.meta.demo.active)){
+  if(isAdmin() && !(DATA.meta.demo&&DATA.meta.demo.active) && !DATA.meta.preview){
     $('#app').innerHTML='<div class="card"><h3>Partner preview</h3><p class="note">This is the partner\'s view of a flat. To preview it: OWH Properties sheet → <b>The Hub</b> menu → <b>Demo mode — turn ON</b>, then reload.</p></div>'; return; }
   var f=flatName(), r=recFor(MONTH), pm=prevMonth(), pr=recFor(pm), ms=monthsAvailable();
   $('#rib').innerHTML=authWho()+' · '+esc(f);

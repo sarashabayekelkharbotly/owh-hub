@@ -46,7 +46,7 @@ var AUTH_ADMIN_HOME   = 'today.html';
    on data always refetches fresh. Per-tab, wiped when the tab closes, never survives logout
    (authClear also clears sessionStorage). */
 var PGA_TTL = 90000;
-function pgaKey(body) { return 'owh_pga|' + body.fn + '|' + (body.scope || ''); }
+function pgaKey(body) { return 'owh_pga|' + body.fn + '|' + (body.scope || '') + (body.asPartner ? '|as:' + body.asPartner : ''); }   // v229: each partner preview is its own entry
 function api(fn, extra) {
   var body = { fn: fn };
   if (extra) for (var k in extra) body[k] = extra[k];

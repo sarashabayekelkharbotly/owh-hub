@@ -73,7 +73,7 @@ a.tab{font-size:11px;color:var(--red);text-decoration:none;font-weight:700}
     <a class="tab active" href="today.html"><span class="ti">🏠</span>Today</a>
     <a class="tab" href="close.html"><span class="ti">📑</span>Close</a>
     <a class="tab" href="stats.html"><span class="ti">📊</span>Stats</a>
-    <a class="tab" href="partner.html" id="demoTab" style="display:none"><span class="ti">🤝</span>Demo</a>
+    <a class="tab" href="partner.html?as=" id="demoTab"><span class="ti">👁</span>Partner view</a>
   </nav>
 </div>
 
@@ -102,7 +102,7 @@ function onData(j,fromCache){ D=j.data; D._gen=j.generatedAt; STAYS=mergeStays(D
 /* The Demo tab exists only while demo mode is switched on — the switch itself is the on/off signal,
    so there is nothing extra to remember to hide before or after a partner meeting. The demo flat is
    never in this screen's data either way; this is only a way in. */
-function demoTab(){ var t=document.getElementById('demoTab'); if(t) t.style.display=(D.meta.demo&&D.meta.demo.on)?'':'none'; }
+function demoTab(){ /* v229: «👁 Partner view» is always there for an admin — the demo, when on, is one of its choices */ }
 /* light read-only alerts (WeShare pending confirmations) — fetched after the main render so the load stays fast */
 function fetchAlerts(){ api('props_alerts').then(function(j){ if(j&&j.ok){ ALERTS=j; render(); } }).catch(function(){}); }
 /* "seen, not fixing" — permanently hides these exact alert keys; a NEW mismatch or bill reappears */
