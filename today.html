@@ -354,10 +354,10 @@ function happening(cm,asOf){
   h+='</tbody></table><div class="legend"><span class="dot" style="background:var(--ch-airbnb)"></span>Airbnb <span class="dot" style="background:var(--ch-booking)"></span>Booking <span class="dot" style="background:var(--ch-direct)"></span>Direct</div></div>';
   return h;
 }
-// RULE: stays > 12 nights get in-stay cleanings — first mid-stay, then weekly,
+// RULE: stays > 10 nights get in-stay cleanings (Sarah 2026-10-10; was 12) — first mid-stay, then weekly,
 // every 7 nights from check-in, stopping once <=4 nights remain to check-out.
 function cleanPlan(s){
-  var N=s.nights||0; if(N<=12||!s.checkIn) return [];
+  var N=s.nights||0; if(N<=10||!s.checkIn) return [];
   var ci=day(s.checkIn), plan=[], j=0;
   for(var off=6; N-off>4; off+=7,j++){ var d=new Date(ci); d.setDate(d.getDate()+off); plan.push({d:d,first:j===0}); }
   return plan;
