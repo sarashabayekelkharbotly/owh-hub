@@ -354,11 +354,13 @@ function happening(cm,asOf){
   h+='</tbody></table><div class="legend"><span class="dot" style="background:var(--ch-airbnb)"></span>Airbnb <span class="dot" style="background:var(--ch-booking)"></span>Booking <span class="dot" style="background:var(--ch-direct)"></span>Direct</div></div>';
   return h;
 }
-// RULE: stays > 10 nights get in-stay cleanings (Sarah 2026-10-10; was 12) — first mid-stay, then weekly,
-// every 7 nights from check-in, stopping once <=4 nights remain to check-out.
+// THE IN-STAY CLEAN RULE (Sarah 2026-10-10): ≤9 nights none · 10–12 nights ONE mid-stay clean in the middle (day ⌊N/2⌋:
+// 10→5, 11→5, 12→6) · >12 nights day 6 then every 7 days · never within 4 nights of checkout · a pinned weekday keeps weekly on
+// that day (first at least 4 nights in). Same rule in week.html, today.html and the engine's comms ladder.
 function cleanPlan(s){
-  var N=s.nights||0; if(N<=10||!s.checkIn) return [];
+  var N=s.nights||0; if(N<10||!s.checkIn) return [];
   var ci=day(s.checkIn), plan=[], j=0;
+  if(N<=12){ var m=new Date(ci); m.setDate(m.getDate()+Math.floor(N/2)); return [{d:m,first:true}]; }   // 10–12 nights: one, in the middle
   for(var off=6; N-off>4; off+=7,j++){ var d=new Date(ci); d.setDate(d.getDate()+off); plan.push({d:d,first:j===0}); }
   return plan;
 }
