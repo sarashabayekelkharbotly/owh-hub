@@ -278,7 +278,7 @@ function render(){
   var nts=nightsIn(MONTH), occ=nts/daysIn(MONTH), adr=nts?conv(r.revenue.earnings,'USD',r)/nts:0;
   h+='<table class="kpis"><tr>'+
      '<td><div class="kpi-l">Paid to you, to date</div><div class="kpi-v">'+sym()+fmt(paidToDate)+'</div><div class="kpi-s">'+(paidToDate>0.005?'payouts recorded':'no payouts yet')+'</div></td>'+
-     '<td><div class="kpi-l">This month net</div><div class="kpi-v">'+sym()+fmt(conv(pv.netPayout!=null?pv.netPayout:r.net,'USD',r))+'</div><div class="kpi-s">'+monLabel(MONTH)+', '+(isFinal?'final':'in progress')+'</div></td>'+
+     '<td><div class="kpi-l">This month result</div><div class="kpi-v">'+sym()+fmt(conv(pv.netPayout!=null?pv.netPayout:r.net,'USD',r))+'</div><div class="kpi-s">'+monLabel(MONTH)+', '+(isFinal?'final':'in progress')+'</div></td>'+
      '</tr></table>'+
      '<table class="kpis" style="margin-top:6px"><tr>'+
      '<td><div class="kpi-l">Occupancy</div><div class="kpi-v">'+Math.round(occ*100)+'%</div><div class="kpi-s">this month</div></td>'+
@@ -336,7 +336,7 @@ function render(){
 
   h+='<tr><td>management fee — '+Math.round(pct*100)+'%</td><td class="r">'+fmt(conv(pv.managementFee,'USD',r))+'</td>'+
      (pm?'<td class="r">'+fmt(pr&&pr.partnerView?conv(pr.partnerView.managementFee,'USD',pr):null)+'</td>':'')+'</tr>';
-  h+='<tr class="net"><td>Your net payout</td><td class="r g">'+fmt(conv(pv.netPayout!=null?pv.netPayout:r.net,'USD',r))+'</td>'+
+  h+='<tr class="net"><td>Month result</td><td class="r g">'+fmt(conv(pv.netPayout!=null?pv.netPayout:r.net,'USD',r))+'</td>'+
      (pm?'<td class="r">'+fmt(pr?conv(pr.partnerView?pr.partnerView.netPayout:pr.net,'USD',pr):null)+'</td>':'')+'</tr>';
   h+='</table>';
   h+='<p class="note">Tap a cost line to see what it is made of — date, description, amount. '+

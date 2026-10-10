@@ -202,7 +202,7 @@ function csv(){
     out.push(['  '+(LABEL[k]||k)].concat(ms.map(function(m){ var v=costCell(m,k); return v==null?'':v.toFixed(2); })).join(','));
   });
   out.push(line('Management fee ('+CUR+')',function(r){return r.fee;}));
-  out.push(line('Net to you ('+CUR+')',function(r){return r.net;}));
+  out.push(line('Month result ('+CUR+')',function(r){return r.net;}));
   out.push(['Nights'].concat(ms.map(function(m){ return nightsIn(m); })).join(','));
   out.push(['Status'].concat(rs.map(function(r){ return r.open?'in progress':'final'; })).join(','));
   var blob=new Blob([out.join('\n')],{type:'text/csv;charset=utf-8;'});
@@ -308,7 +308,7 @@ function chanChart(){
     out+='<text x="'+(x+bw/2)+'" y="'+(h-pb+13)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+monShort(m)+'</text>';
     return out;
   }).join('');
-  var title={revenue:'revenue',net:'net paid to you',stays:'bookings completed',nights:'nights booked'}[CHAN];
+  var title={revenue:'revenue',net:'month result',stays:'bookings completed',nights:'nights booked'}[CHAN];
   return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:245px" preserveAspectRatio="xMidYMid meet">'+
     grid+
     '<text x="'+pl+'" y="13" font-size="10" font-weight="700" fill="#6b6b6b">'+title+' per month'+(money?' ('+CUR+')':' ('+unit+')')+'</text>'+
@@ -358,13 +358,13 @@ function render(){
     });
   }
   h+=line('Management fee — '+Math.round(pct*100)+'%',function(r){return r.fee;});
-  h+=line('Net to you',function(r){return r.net;},'tot');
+  h+=line('Month result',function(r){return r.net;},'tot');
   h+='</tbody></table></div>';
   h+='<div class="rowbtns" style="margin-top:9px"><button class="btn" onclick="csv()">Export CSV</button></div>';
   h+='<p class="note">All figures '+CUR+', each month converted at that month\'s own rate'+
      (anyOpen?' · <b>*</b> still open, may change until the month is closed':'')+
      '. Tap <b>Total revenue</b> to split it into earnings and other revenue, or <b>Costs</b> to see the categories. '+
-     'The column adds up: Net = Total revenue − Costs − Fee.</p></div>';
+     'The column adds up: Month result = Total revenue − Costs − Fee. What is actually paid out is on the Settlement card of This month.</p></div>';
 
   /* ---- occupancy & ADR ---- */
   h+='<div class="card"><div class="chead"><h3>Your flat — occupancy &amp; ADR</h3>'+timeSeg('occ')+'</div>'+
@@ -377,7 +377,7 @@ function render(){
      '<div class="rowbtns">'+seg([['revenue','Revenue'],['stays','Stays'],['nights','Nights'],['net','Net profit']],CHAN,'setChan')+
      timeSeg('chan')+'</div></div>'+
      '<div class="csub">'+(CHAN==='net'
-        ? 'what you were paid after costs and the management share — a month total, not something any one channel earns'
+        ? 'the result after costs and the management share — negative while costs are still being recovered; a month total, not something any one channel earns'
         : 'split by the channel each booking came through')+'</div>'+
      chanChart()+'</div>';
 
