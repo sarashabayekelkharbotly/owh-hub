@@ -45,6 +45,7 @@ table.d tr.net td{font-weight:700;border-top:2px solid var(--ink);border-bottom:
 .drill table{width:100%;border-collapse:collapse;font-size:10.5px}
 .drill td{padding:2px 7px;border:0;color:#5a4d4d}
 .drill tr.foot td{font-weight:700;color:var(--soft);font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;padding-top:5px}
+.drill tr.foot2 td{font-weight:700;border-top:1px solid var(--line);padding-bottom:4px}
 .note{font-size:10px;color:var(--soft);line-height:1.55;margin:7px 0 0}
 .muted{color:var(--soft);font-size:11px}
 .err{background:#f6e3e3;border:1px solid #e6b9b9;border-radius:10px;padding:12px;font-size:13px}
@@ -180,11 +181,11 @@ function dotFor(p){ var s=(p||'').toLowerCase();
   return s.indexOf('airbnb')>-1?'d-air':(s.indexOf('booking')>-1?'d-book':'d-dir'); }
 
 /* ---- cost lines, in the mock-up's order ---- */
-var ORDER=['cleaning-labor','laundry','supplies','electricity','tv-phone-internet','water','heat-gas','maintenance','compound-maintenance','opsmanager','services-contingency','contingency','gifts-contingency','general-contingency','subscription'];
+var ORDER=['cleaning-labor','laundry','supplies','electricity','tv-phone-internet','water','heat-gas','furniture','maintenance','compound-maintenance','opsmanager','services-contingency','contingency','gifts-contingency','general-contingency','subscription'];
 var LABEL={'cleaning-labor':'cleaning','laundry':'laundry','supplies':'supplies','electricity':'electricity','tv-phone-internet':'internet',
-  'water':'water','heat-gas':'gas','maintenance':'maintenance','compound-maintenance':'compound','opsmanager':'operations',
+  'water':'water','heat-gas':'gas','maintenance':'maintenance','furniture':'furniture','compound-maintenance':'compound','opsmanager':'operations',
   'services-contingency':'services','contingency':'contingency','gifts-contingency':'contingency','general-contingency':'contingency','subscription':'booking software'};
-var CATMAP={'electricity':'__electricity','subscription':'__subscription','laundry':'laundry','supplies':'supplies','cleaning-labor':'cleaning-labor','opsmanager':'opsManager','services-contingency':'Services','maintenance':'Maintenance','tv-phone-internet':'TV/Phone/Internet','water':'Water','heat-gas':'Heat/gas','compound-maintenance':'compound maintenance','contingency':'contingency','gifts-contingency':'Gifts','general-contingency':'General'};
+var CATMAP={'electricity':'__electricity','subscription':'__subscription','laundry':'laundry','supplies':'supplies','cleaning-labor':'cleaning-labor','opsmanager':'opsManager','services-contingency':'Services','maintenance':'Maintenance','furniture':'Furniture','tv-phone-internet':'TV/Phone/Internet','water':'Water','heat-gas':'Heat/gas','compound-maintenance':'compound maintenance','contingency':'contingency','gifts-contingency':'Gifts','general-contingency':'General'};
 function costKeys(a,b){
   var seen={}, keys=[];
   [a,b].forEach(function(r){ if(!r)return; (r.costs||[]).forEach(function(c){ if(c.amount) seen[c.key]=1; }); });
@@ -214,6 +215,46 @@ function drillBlock(key){
   return out ? '<tr><td colspan="3" style="padding:2px 4px"><div class="drill"><table>'+out+'</table></div></td></tr>' : '';
 }
 
+/* The balance with OWH, in words — minus = owed to OWH, plus = held for her. */
+function balWords(v,r){ var s=sym()+fmt(conv(Math.abs(v),'USD',r));
+  return v<-0.005 ? s+' owed to OWH' : (v>0.005 ? s+' held for you' : 'settled'); }
+
+/* WHERE THE BALANCE COMES FROM (Sarah 2026-10-10: "a breakdown drop down for the balance with OWH").
+   Month by month from the start, each block adds up on its own:
+     brought forward + prepayments + the month's result (revenue − each cost − fee) ± float = balance after
+   and the next block starts from this block's "balance after", so the chain reconciles to the figure on
+   the Settlement card. "Float" is the part of a good month that was kept back (or of a bad month that the
+   float absorbed) rather than moved against the balance. Every cost line opens onto its entries. */
+function balanceBreakdown(upTo){
+  var f=myFlat(), byM=(DATA.pnl&&DATA.pnl[f])||{};
+  var ms=Object.keys(byM).sort().filter(function(m){ return m<=upTo && byM[m].partnerLedger; });
+  var prev=0, out='', R=function(a,b,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+a+'</td><td style="text-align:right;white-space:nowrap">'+b+'</td></tr>'; };
+  var S=function(v,r){ return (v>0.005?'+ ':(v<-0.005?'− ':''))+sym()+fmt(conv(Math.abs(v),'USD',r)); };      // signed, in the chosen currency
+  ms.forEach(function(m){
+    var r=byM[m], pl=r.partnerLedger, rev=(r.revenue&&r.revenue.total)||0, opening=prev, prep=pl.prepay||0, res=pl.monthResult||0;
+    var adj=Math.round((pl.balanceAfter-opening-prep-res)*100)/100;
+    prev=pl.balanceAfter;
+    var costs=(r.costs||[]).filter(function(c){ return c.amount; });
+    if(!prep && !rev && !costs.length && Math.abs(adj)<0.005 && Math.abs(res)<0.005) return;     // a month that moved nothing says nothing
+    out+='<tr class="foot"><td colspan="2">'+monLabel(m)+'</td></tr>';
+    if(Math.abs(opening)>0.005) out+=R('brought forward',S(opening,r));
+    if(prep) out+=R('your prepayments received',S(prep,r));
+    if(rev) out+=R('revenue',S(rev,r));
+    costs.forEach(function(c){
+      var usd=conv(c.amount,c.currency,r), list=txFor(m,c.key);
+      out+=R(LABEL[c.key]||c.key,'− '+sym()+fmt(usd));
+      list.forEach(function(t){ out+='<tr><td style="padding-left:16px;color:#7a6a6a">'+dayLabel(t.date)+' · '+esc(shortDesc(t.desc))+'</td>'+
+        '<td style="text-align:right;color:#7a6a6a;white-space:nowrap">'+fmt(conv(t.amount,t.currency,r))+'</td></tr>'; });
+    });
+    if(pl.fee>0.005) out+=R('management fee — '+Math.round((pl.feePct||0)*100)+'%','− '+sym()+fmt(conv(pl.fee,'USD',r)));
+    out+=R('<b>month result</b>','<b>'+(res<0?'− ':'')+sym()+fmt(conv(Math.abs(res),'USD',r))+'</b>');
+    if(Math.abs(adj)>0.005) out+=R(adj<0?'kept in the float / payable to you':'covered from the float',(adj<0?'− ':'+ ')+sym()+fmt(conv(Math.abs(adj),'USD',r)));
+    out+=R('<b>balance after '+monShort(m)+'</b>','<b>'+balWords(pl.balanceAfter,r)+'</b>','foot2');
+  });
+  if(!out) return '<table><tr><td>Nothing has moved the balance yet.</td></tr></table>';
+  return '<table>'+out+'</table><p class="note" style="padding:0 7px 5px">Minus = owed to OWH, plus = held for you. Each cost line lists the entries it is made of.</p>';
+}
+
 function render(){
   if(!DATA) return;
   if(isAdmin() && !(DATA.meta.demo&&DATA.meta.demo.active)){
@@ -228,13 +269,15 @@ function render(){
 
   h+='<p class="h1">'+esc(f)+' <span class="sub">· your numbers</span></p>';
 
-  /* KPIs — paid to date counts only closed months, so nothing provisional is ever claimed as banked */
-  var paidToDate=0, closed=0;
-  ms.forEach(function(m){ var x=recFor(m);                       // each month at its OWN rate, then summed
-    if(x&&x.status==='final'){ paidToDate+=conv((x.partnerView&&x.partnerView.netPayout)||0,'USD',x)||0; closed++; } });
+  /* KPIs — "paid to you" is money that has actually been PAID: the payouts recorded in the owner
+     ledger, cumulative, as the Clause-7 waterfall carries them (partnerLedger.paidToDate). It used
+     to add up each closed month's net result, which put a loss month's −57.26 under "paid to you". */
+  var paidToDate=0, paidAsOf=null, cmK=(DATA.meta&&DATA.meta.currentMonth)||'';
+  ms.forEach(function(m){ var x=recFor(m);
+    if(x&&x.partnerLedger&&(!cmK||m<=cmK)&&(!paidAsOf||m>paidAsOf)){ paidAsOf=m; paidToDate=conv(x.partnerLedger.paidToDate||0,'USD',x)||0; } });
   var nts=nightsIn(MONTH), occ=nts/daysIn(MONTH), adr=nts?conv(r.revenue.earnings,'USD',r)/nts:0;
   h+='<table class="kpis"><tr>'+
-     '<td><div class="kpi-l">Paid to you, to date</div><div class="kpi-v">'+sym()+fmt(paidToDate)+'</div><div class="kpi-s">'+closed+' closed month'+(closed===1?'':'s')+'</div></td>'+
+     '<td><div class="kpi-l">Paid to you, to date</div><div class="kpi-v">'+sym()+fmt(paidToDate)+'</div><div class="kpi-s">'+(paidToDate>0.005?'payouts recorded':'no payouts yet')+'</div></td>'+
      '<td><div class="kpi-l">This month net</div><div class="kpi-v">'+sym()+fmt(conv(pv.netPayout!=null?pv.netPayout:r.net,'USD',r))+'</div><div class="kpi-s">'+monLabel(MONTH)+', '+(isFinal?'final':'in progress')+'</div></td>'+
      '</tr></table>'+
      '<table class="kpis" style="margin-top:6px"><tr>'+
@@ -308,8 +351,8 @@ function render(){
     var fL=function(v){ return sym()+fmt(conv(v,'USD',r)); };
     h+='<div class="card"><h3>Settlement — how this month\'s money moves</h3><table class="d">';
     h+='<tr><td>Month result after the fee</td><td class="r">'+fL(pl.monthResult)+'</td></tr>';
-    h+='<tr><td>Balance with OWH after this month</td><td class="r">'+
-       (pl.balanceAfter<-0.005?fL(-pl.balanceAfter)+' owed to OWH':(pl.balanceAfter>0.005?fL(pl.balanceAfter)+' held for you':'settled'))+'</td></tr>';
+    h+='<tr class="drillable" onclick="toggleDrill(\'__bal\')"><td>Balance with OWH after this month '+(OPEN['__bal']?'▾':'▸')+'</td><td class="r">'+balWords(pl.balanceAfter,r)+'</td></tr>';
+    if(OPEN['__bal']) h+='<tr><td colspan="2" style="padding:2px 4px"><div class="drill">'+balanceBreakdown(MONTH)+'</div></td></tr>';
     h+='<tr><td>Security float'+
        (pl.floatRetained>0.005?' · retained '+fL(pl.floatRetained)+' this month':'')+
        (pl.floatDrawn>0.005?' · drawn '+fL(pl.floatDrawn)+' this month':'')+
