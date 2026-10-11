@@ -82,7 +82,12 @@ textarea{width:100%;min-height:90px;font-family:monospace;font-size:11px;border:
    paragraph-length source note was stretching the whole sheet sideways (Sarah 2026-08-08).
    Each line inside truncates with … and the full text stays on hover via the title attr. */
 .ditem{font-size:11px;color:#5a4d4d;padding-left:22px;line-height:1.35;padding-top:2px;padding-bottom:2px;max-width:0;overflow:hidden}
-.dname{unicode-bidi:isolate;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom;white-space:nowrap}
+/* max-width leaves room for the day-number (.ddate, ~20px) that precedes the name (2026-10-11): the
+   name is an inline-block, so if date+name overflow the cell by even a pixel the CELL's own
+   text-overflow drops the WHOLE name and shows just "…" (it can't partially clip an inline-block —
+   "Mahmoud Awad احمد محمد عوض الله" vanished). Capping the name's own width makes ITS ellipsis fire
+   first, so a long name reads "Mahmoud Awad…" instead of disappearing. */
+.dname{unicode-bidi:isolate;display:inline-block;max-width:calc(100% - 30px);overflow:hidden;text-overflow:ellipsis;vertical-align:bottom;white-space:nowrap}
 .dmeta{font-size:10px;color:#8a7a7a;margin-left:28px;unicode-bidi:isolate;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dnote{font-size:10.5px;color:#8a7a7a;padding-left:22px}
 .ddate{display:inline-block;width:20px;color:var(--soft);margin-right:8px;font-size:10.5px;vertical-align:bottom}
