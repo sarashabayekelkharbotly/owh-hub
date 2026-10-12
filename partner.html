@@ -45,6 +45,7 @@ table.d tr.net td{font-weight:700;border-top:2px solid var(--ink);border-bottom:
 .drill table{width:100%;border-collapse:collapse;font-size:10.5px}
 .drill td{padding:2px 7px;border:0;color:#5a4d4d}
 .drill tr.foot td{font-weight:700;color:var(--soft);font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;padding-top:5px}
+tr.cat td:first-child{padding-left:16px}
 .btn{font-family:inherit;font-size:11.5px;font-weight:600;border:1px solid var(--line);background:var(--white);color:var(--ink);border-radius:8px;padding:6px 10px;cursor:pointer}
 .btn:hover{background:#faf5f5}
 .drill tr.foot2 td{font-weight:700;border-top:1px solid var(--line);padding-bottom:4px}
@@ -301,7 +302,7 @@ function dotFor(p){ var s=(p||'').toLowerCase();
 var ORDER=['cleaning-labor','laundry','supplies','electricity','tv-phone-internet','water','heat-gas','furniture','maintenance','compound-maintenance','opsmanager','services-contingency','contingency','gifts-contingency','general-contingency','subscription'];
 var LABEL={'cleaning-labor':'cleaning','laundry':'laundry','supplies':'supplies','electricity':'electricity','tv-phone-internet':'internet',
   'water':'water','heat-gas':'gas','maintenance':'maintenance','furniture':'furniture','compound-maintenance':'compound','opsmanager':'operations',
-  'services-contingency':'services','contingency':'contingency','gifts-contingency':'contingency','general-contingency':'contingency','subscription':'booking software'};
+  'services-contingency':'services','contingency':'contingency','gifts-contingency':'gifts','general-contingency':'general','subscription':'booking software'};
 var CATMAP={'electricity':'__electricity','subscription':'__subscription','laundry':'laundry','supplies':'supplies','cleaning-labor':'cleaning-labor','opsmanager':'opsManager','services-contingency':'Services','maintenance':'Maintenance','furniture':'Furniture','tv-phone-internet':'TV/Phone/Internet','water':'Water','heat-gas':'Heat/gas','compound-maintenance':'compound maintenance','contingency':'contingency','gifts-contingency':'Gifts','general-contingency':'General'};
 function costKeys(a,b){
   var seen={}, keys=[];
@@ -310,6 +311,17 @@ function costKeys(a,b){
   for(var k in seen) keys.push(k);                     // anything new in the sheet still appears
   return keys;
 }
+/* The statement lists EVERY category the owner can be charged (zero ones as "—"), so she can see what is not being
+   charged as well as what is. 'subscription' is OWH's own cost and is never shown. Anything new in the sheet still appears. */
+function allCostKeys(a,b){
+  var seen={}, keys=[];
+  [a,b].forEach(function(r){ if(!r)return; (r.costs||[]).forEach(function(c){ seen[c.key]=1; }); });
+  ORDER.forEach(function(k){ if(k==='subscription') return; keys.push(k); delete seen[k]; });
+  for(var k in seen) if(k!=='subscription') keys.push(k);
+  return keys;
+}
+function costsOpen(){ return OPEN['__costs']!==false; }          // open by default, she can fold it away
+function toggleCosts(){ OPEN['__costs']=!costsOpen(); render(); }
 function amt(r,key){ if(!r) return null; var c=(r.costs||[]).filter(function(x){return x.key===key;})[0]; return c?c.amount:null; }
 function curOf(r,key){ if(!r) return null; var c=(r.costs||[]).filter(function(x){return x.key===key;})[0]; return c?c.currency:null; }
 
@@ -449,18 +461,54 @@ function render(){
   h+=srow('Net revenue',function(x){return x.T;},'tot',1);
   h+=srow('management fee — '+Math.round(pct*100)+'% of net revenue',function(x){return x.fee;},'',-1);
   h+=srow('Your share — '+Math.round((1-pct)*100)+'% of net revenue',function(x){return x.share;},'tot',1);
-  h+='<tr class="subrow"><td colspan="'+(pm?3:2)+'" style="font-weight:700">Costs paid on your behalf</td></tr>';
-  costKeys(r,pr).forEach(function(k){
-    var open=!!OPEN[k], canDrill=!!CATMAP[k];
+  var cOpen=costsOpen();
+  h+='<tr class="tot drillable" onclick="toggleCosts()"><td>Costs paid on your behalf '+(cOpen?'▾':'▸')+'</td><td class="r">'+cc(cm,cm.costs)+'</td>'+(pm?'<td class="r">'+cc(cp,cp?cp.costs:0)+'</td>':'')+'</tr>';
+  if(cOpen) allCostKeys(r,pr).forEach(function(k){
+    var open=!!OPEN[k], canDrill=!!CATMAP[k] && (txFor(MONTH,k).length>0 || (pm&&txFor(pm,k).length>0));
     var cu=curOf(r,k)||curOf(pr,k)||'EGP';
-    h+='<tr'+(canDrill?' class="drillable" onclick="toggleDrill(\''+k+'\')"':'')+'><td>'+(LABEL[k]||k)+(canDrill?' '+(open?'▾':'▸'):'')+'</td>'+
-       '<td class="r">'+fmt(conv(amt(r,k),cu,r))+'</td>'+(pm?'<td class="r">'+fmt(conv(amt(pr,k),cu,pr))+'</td>':'')+'</tr>';
+    var a1=amt(r,k), a2=amt(pr,k);
+    h+='<tr class="cat'+(canDrill?' drillable':'')+'"'+(canDrill?' onclick="toggleDrill(\''+k+'\')"':'')+'><td>'+(LABEL[k]||k)+(canDrill?' '+(open?'▾':'▸'):'')+'</td>'+
+       '<td class="r">'+(a1?fmt(conv(a1,cu,r)):'—')+'</td>'+(pm?'<td class="r">'+(a2?fmt(conv(a2,cu,pr)):'—')+'</td>':'')+'</tr>';
     if(open) h+=drillBlock(k);
   });
-  h+=srow('Total costs',function(x){return x.costs;},'tot',1);
   h+=srow('Month result',function(x){return x.res;},'net',1);
   h+='</table>';
-  h+='<p class="note">Tap a cost line to see what it is made of — date, description, amount. '+
+
+  /* ---- Clause 7 — what happens to the month result: the waterfall, with every step shown (Sarah 2026-10-13: the
+     statement must include the float and the settlement calculations). The SAME partnerLedger the admin Close shows. ---- */
+  var pl=r.partnerLedger;
+  if(pl){
+    var sL=function(v){ return (v>0.005?'+ ':(v<-0.005?'− ':''))+sym()+fmt(conv(Math.abs(v),'USD',r)); };
+    var pL=function(v){ return sym()+fmt(conv(v,'USD',r)); };
+    var prevPl=pr&&pr.partnerLedger, openBal=prevPl?prevPl.balanceAfter:0, prep=pl.prepay||0;
+    var applied=Math.round((pl.balanceAfter-openBal-prep)*100)/100;
+    var floatOpen=Math.round((pl.floatAfter-(pl.floatRetained||0)+(pl.floatDrawn||0))*100)/100;
+    var R2=function(a,b,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+a+'</td><td class="r">'+b+'</td></tr>'; };
+    h+='<h3 style="margin:14px 0 6px">Settlement — what happens to the month result</h3><table class="d">';
+    h+='<tr><th colspan="2">1 · Where '+monShort(MONTH)+'\'s result goes (clause 7)</th></tr>';
+    h+=R2('Month result',sL(pl.monthResult),'tot');
+    h+=R2('<span class="muted">to your balance with OWH</span>',sL(applied),'subrow');
+    if(pl.floatRetained>0.005) h+=R2('<span class="muted">kept in the security float</span>',sL(pl.floatRetained),'subrow');
+    if(pl.floatDrawn>0.005)    h+=R2('<span class="muted">of the shortfall, covered by the float</span>',sL(-pl.floatDrawn),'subrow');
+    h+=R2('<span class="muted">payable to you</span>',sL(pl.payable),'subrow');
+    h+='<tr><th colspan="2">2 · Your balance with OWH</th></tr>';
+    h+=R2('brought forward',openBal?sL(openBal):pL(0));
+    if(prep) h+=R2('your prepayments received',sL(prep));
+    h+=R2('from '+monShort(MONTH)+'\'s result',sL(applied));
+    h+='<tr class="net drillable" onclick="toggleDrill(\'__bal\')"><td>Balance after '+monShort(MONTH)+' '+(OPEN['__bal']?'▾':'▸')+'</td><td class="r">'+balWords(pl.balanceAfter,r)+'</td></tr>';
+    if(OPEN['__bal']) h+='<tr><td colspan="2" style="padding:2px 4px"><div class="drill">'+balanceBreakdown(MONTH)+'</div></td></tr>';
+    h+='<tr><th colspan="2">3 · Security float (target '+pL(pl.floatTarget)+')</th></tr>';
+    h+=R2('brought forward',pL(floatOpen));
+    if(pl.floatRetained>0.005) h+=R2('retained from '+monShort(MONTH)+'\'s result',sL(pl.floatRetained));
+    if(pl.floatDrawn>0.005)    h+=R2('drawn to cover a shortfall',sL(-pl.floatDrawn));
+    h+=R2('Float after '+monShort(MONTH),pL(pl.floatAfter)+' of '+pL(pl.floatTarget),'net');
+    h+='<tr><th colspan="2">4 · Payment to you</th></tr>';
+    h+=R2('Payable for '+monShort(MONTH),pL(pl.payable),'tot');
+    h+=R2('paid to date',pL(pl.paidToDate||0));
+    h+=R2('still to pay',pL(pl.outstanding||0));
+    h+='</table><p class="note">Minus = owed to OWH. Per clause 7: each month\'s result first pays down what you owe (set-up costs and advances), then fills the security float to its target; only the remainder is paid to you. In a loss month any prepayment absorbs it first, then the float. The float stays yours and is returned at the end, less anything properly owing (7.1.4).</p>';
+  }
+  h+='<p class="note">Tap a cost category to see what it is made of — date, description, amount. '+
      'Everything is shown in <b>'+CUR+'</b>, each month converted at that month\'s own rate ('+
      fmt(rateFor(r))+' EGP/USD for '+monLabel(MONTH)+'), so a closed month never changes when the rate moves.'+
      (isFinal?'':' This month is still open, so figures can change until it is closed.')+'</p></div>';
@@ -498,27 +546,6 @@ function render(){
      '<button class="btn" onclick="exportBookings()">All bookings</button>'+
      '<button class="btn" onclick="exportCosts()">All cost entries</button></div>'+
      '<p class="note">CSV files that open in Excel or Google Sheets — the statement, every booking with its gross, fees and net, and every cost entry.</p></div>';
-
-  /* ---- Clause-7 settlement — the waterfall (Sarah 2026-09-17: "the float must be visible in the
-     partner view"). The SAME partnerLedger figures the admin Close shows — one truth, two readers. */
-  var pl=r.partnerLedger;
-  if(pl){
-    var fL=function(v){ return sym()+fmt(conv(v,'USD',r)); };
-    h+='<div class="card"><h3>Settlement — how this month\'s money moves</h3><table class="d">';
-    h+='<tr><td>Month result after the fee</td><td class="r">'+fL(pl.monthResult)+'</td></tr>';
-    h+='<tr class="drillable" onclick="toggleDrill(\'__bal\')"><td>Balance with OWH after this month '+(OPEN['__bal']?'▾':'▸')+'</td><td class="r">'+balWords(pl.balanceAfter,r)+'</td></tr>';
-    if(OPEN['__bal']) h+='<tr><td colspan="2" style="padding:2px 4px"><div class="drill">'+balanceBreakdown(MONTH)+'</div></td></tr>';
-    h+='<tr><td>Security float'+
-       (pl.floatRetained>0.005?' · retained '+fL(pl.floatRetained)+' this month':'')+
-       (pl.floatDrawn>0.005?' · drawn '+fL(pl.floatDrawn)+' this month':'')+
-       '</td><td class="r">'+fL(pl.floatAfter)+' of '+fL(pl.floatTarget)+'</td></tr>';
-    h+='<tr class="net"><td>Payable to you this month</td><td class="r g">'+fL(pl.payable)+'</td></tr>';
-    if(pl.paidToDate>0.005||pl.outstanding>0.005)
-      h+='<tr><td>Paid to date · still to pay</td><td class="r">'+fL(pl.paidToDate)+' · '+fL(pl.outstanding)+'</td></tr>';
-    h+='</table><p class="note">Per Clause 7 of the agreement: each month\'s result first settles any '+
-       'carried balance (setup costs and prepayments), then keeps the security float at its target of '+fL(pl.floatTarget)+
-       '; only the remainder is paid out. In a negative month the float absorbs the shortfall first.</p></div>';
-  }
 
   $('#app').innerHTML=h;
 }
