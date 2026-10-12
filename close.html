@@ -813,6 +813,9 @@ function renderRecurring(){
   if(r.opsStartVW1!==undefined)
     rows+='<tr><td style="padding:3px 8px 3px 0">Ops fee · VW1 goes live</td><td><input id="rcopsstart" value="'+esc(r.opsStartVW1||'')+'" placeholder="yyyy-MM" style="width:70px;font-family:inherit;font-size:12px;border:1px solid var(--line,#ddd);border-radius:7px;padding:3px 6px;text-align:center">'+
         ' <span class="muted">'+(r.opsStartVW1?'live — same fee as every flat, Emad’s card follows':'empty = not live yet; set the month and Save')+'</span></td></tr>';
+  if(r.partnerStartVW1!==undefined)
+    rows+='<tr><td style="padding:3px 8px 3px 0">VW1 · commencement date</td><td><input id="rcpstart" value="'+esc(r.partnerStartVW1||'')+'" placeholder="yyyy-mm-dd" style="width:100px;font-family:inherit;font-size:12px;border:1px solid var(--line,#ddd);border-radius:7px;padding:3px 6px;text-align:center">'+
+        ' <span class="muted">'+(r.partnerStartVW1?'started — Heba’s page shows it, the ops fee goes live that month, her operating-costs ceiling starts':'empty = pre-launch; set the day it officially starts and Save (also starts the ops fee that month)')+'</span></td></tr>';
   rows+='<tr><td style="padding:3px 8px 3px 0">Landline · per flat</td><td>'+inp('rcll',r.landline==null?'':Math.round(r.landline*100)/100)+' <span class="muted">EGP</span></td></tr>';
   var s=r.sub||{};
   rows+='<tr><td style="padding:3px 8px 3px 0">Smoobu · total &amp; EUR/USD</td><td>'+inp('rceur',s.eur,58)+' <span class="muted">EUR</span> × '+inp('rcrate',s.rate,52)+
@@ -839,7 +842,7 @@ function saveRecurring(){
   document.getElementById('rcmsg').textContent='saving…';
   api('props_set_recurring',{month:MONTH,user:(ME&&ME.user)||'',rent:JSON.stringify(rent),
       rent17b:g('rc17b'),ops:g('rcops'),landline:g('rcll'),subEur:g('rceur'),subRate:g('rcrate'),
-      chmEgp:g('rcchm'),amal:g('rcamal'),grdn:g('rcgrdn'),opsStart:g('rcopsstart'),dueDays:JSON.stringify(dd)})
+      chmEgp:g('rcchm'),amal:g('rcamal'),grdn:g('rcgrdn'),opsStart:g('rcopsstart'),partnerStart:(document.getElementById('rcpstart')?g('rcpstart'):undefined),dueDays:JSON.stringify(dd)})
     .then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad');
       RECUR=j.recurring; renderRecurring();
       document.getElementById('rcmsg').textContent='saved ✓ — refresh to see the P&L follow';

@@ -88,6 +88,7 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
 AUTH_ROLE = 'partner';
 
 var DATA=null, MONTH=null, OPEN={}, CUR='USD';
+var OBJS=null, OBJ_DRAFT='', OBJ_TYPE='question', OBJ_MSG='', OBJ_BUSY=false;     // her questions & objections: the log, the unsent draft, the last result
 try{ CUR=localStorage.getItem('owh_cur')||'USD'; }catch(e){}          // the choice sticks between visits
 
 /* ---- one currency, everywhere ----------------------------------------------------------------
@@ -156,7 +157,7 @@ function previewBar(){
 }
 function isAdmin(){ return !!(ME && ME.role==='admin'); }
 function showErr(e){ if(DATA)return; $('#app').innerHTML='<div class="err">Couldn\'t load your numbers.<br><span class="muted">'+esc(e&&e.message||'')+'</span></div>'; }
-function onData(j){ if(j.partners){ renderChooser(j.partners); return; } DATA=j.data; DATA._gen=j.generatedAt; if(j.me) ME=j.me; initMonth(); render(); previewBar(); }
+function onData(j){ if(j.partners){ renderChooser(j.partners); return; } DATA=j.data; DATA._gen=j.generatedAt; if(j.me) ME=j.me; initMonth(); render(); previewBar(); loadObjs(); }
 
 function myFlat(){ return (ME&&ME.flat) || (DATA.meta.preview&&DATA.meta.preview.flat) || (DATA.meta.flatsOrder&&DATA.meta.flatsOrder[0]) || ''; }
 function flatName(){ var f=myFlat(), m=(DATA.flats||[]).filter(function(x){return x.id===f;})[0]; return (m&&m.name)||f; }
@@ -242,7 +243,65 @@ function addBizDays(ymd,n){
   return d;
 }
 function longDay(d){ return d.getDate()+' '+MON[d.getMonth()]+' '+d.getFullYear(); }
-function mailQ(subject,body){ return 'mailto:info@ourwelcomehome.com?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body||''); }
+/* a supporting-document request (clause 8.3) goes through the same written form as a question, so it is logged too */
+function askDoc(enc){ OBJ_DRAFT=decodeURIComponent(enc); OBJ_TYPE='question'; render(); var t=document.getElementById('objText'); if(t){ t.scrollIntoView({behavior:'smooth',block:'center'}); t.focus(); } }
+
+/* ---- questions & objections (Sarah 2026-10-13: written INSIDE the Hub, kept in a log, alerting OWH and confirming to her) ---- */
+function loadObjs(){ if(isAdmin()) return;                         // an admin preview never writes or reads her log
+  api('props_objections_mine').then(function(j){ if(j&&j.ok){ OBJS=j.items||[]; render(); } }).catch(function(){}); }
+function sendObjection(){
+  if(OBJ_BUSY||isAdmin()) return;
+  var ta=document.getElementById('objText'); if(ta) OBJ_DRAFT=ta.value;
+  var ty=document.getElementById('objType'); if(ty) OBJ_TYPE=ty.value;
+  if((OBJ_DRAFT||'').trim().length<3){ OBJ_MSG='Please write your message first.'; render(); return; }
+  OBJ_BUSY=true; OBJ_MSG='Sending…'; render();
+  api('props_objection_submit',{month:MONTH,type:OBJ_TYPE,text:OBJ_DRAFT}).then(function(j){
+    OBJ_BUSY=false;
+    if(j&&j.ok){ OBJ_DRAFT=''; OBJ_MSG='Sent ✓ — it is on record. '+(j.heba?'A confirmation was sent to your Telegram. ':'')+'Our reply will appear below'+(j.heba?' and on Telegram':'')+'.'; loadObjs(); }
+    else OBJ_MSG='Not sent: '+((j&&j.error)||'please try again');
+    render();
+  }).catch(function(){ OBJ_BUSY=false; OBJ_MSG='Not sent — please check your connection and try again.'; render(); });
+}
+function objStatusChip(o){
+  var c=o.status==='answered'?['#e4efe7','#3a7d4d','answered']:(o.status==='closed'?['#eee','#666','closed']:['#efe4d4','#8a6420','received']);
+  return '<span class="pill" style="background:'+c[0]+';color:'+c[1]+'">'+c[2]+'</span>';
+}
+function objCard(r,isFinal){
+  var pub=r.closedAt, dl=(isFinal&&pub)?addBizDays(pub,7):null, late=dl&&(new Date()>new Date(dl.getFullYear(),dl.getMonth(),dl.getDate(),23,59,59));
+  var h='<div class="card"><h3>Questions &amp; objections — '+monLabel(MONTH)+'</h3>';
+  h+='<p class="note" style="margin:0 0 6px;font-size:11.5px;color:var(--ink)">'+
+     (isFinal ? ('Published'+(pub?' <b>'+longDay(new Date(pub.slice(0,10)+'T12:00:00'))+'</b>':'')+'. '+
+        (dl ? (late ? 'The 7 business days for a specific objection ended about <b>'+longDay(dl)+'</b> — you can still write to us; it is logged with its date (clause 8.4).'
+                     : 'You have until about <b>'+longDay(dl)+'</b> — 7 business days, Friday and Saturday not counted — to raise a specific objection; after that the statement is final and binding (clause 8.4). Public holidays extend the date.')
+            : 'You have 7 business days to raise a specific objection (clause 8.4).'))
+              : 'Not published yet — the figures are provisional and can change until the month is closed. The statement is published by the 5th of the following month (clause 8.1). You can ask a question at any time.')+'</p>';
+  if(isAdmin()){
+    h+='<p class="note">Preview — sending is switched off here; the owner sees a form at this spot.</p>';
+  } else {
+    h+='<select id="objType" onchange="OBJ_TYPE=this.value" style="margin-bottom:6px"><option value="question"'+(OBJ_TYPE==='question'?' selected':'')+'>Question</option><option value="objection"'+(OBJ_TYPE==='objection'?' selected':'')+'>Objection to an item</option></select>'+
+       '<textarea id="objText" rows="4" maxlength="1500" oninput="OBJ_DRAFT=this.value" placeholder="Write your '+(OBJ_TYPE==='objection'?'objection — say which line or entry and why':'question')+' about the '+monLabel(MONTH)+' statement…" '+
+       'style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:9px;padding:8px 10px;resize:vertical">'+esc(OBJ_DRAFT)+'</textarea>'+
+       '<div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="btn" '+(OBJ_BUSY?'disabled ':'')+'onclick="sendObjection()">Send to OWH</button><span class="muted">'+esc(OBJ_MSG)+'</span></div>';
+  }
+  var mine=(OBJS||[]);
+  if(mine.length){
+    h+='<h3 style="margin:12px 0 6px;font-size:12px">Your messages</h3>';
+    mine.forEach(function(o){
+      h+='<div style="border-top:1px solid var(--line);padding:6px 0;font-size:11.5px">'+
+         '<div class="muted">'+esc((o.created||'').slice(0,10))+' · '+monLabel(o.month)+' · '+(o.type==='objection'?'objection':'question')+' '+objStatusChip(o)+
+         (o.inWindow===false&&o.statement==='final'?' <span class="muted">· after the 7-day period</span>':'')+'</div>'+
+         '<div style="margin:3px 0;white-space:pre-wrap">'+esc(o.text)+'</div>'+
+         (o.reply?'<div style="background:#f6f2f2;border-radius:8px;padding:6px 8px;margin-top:3px"><b>OWH:</b> <span style="white-space:pre-wrap">'+esc(o.reply)+'</span><div class="muted">'+esc((o.repliedAt||'').slice(0,10))+'</div></div>':'')+
+         '</div>';
+    });
+  } else if(OBJS===null && !isAdmin()) h+='<p class="note">Loading your messages…</p>';
+  return h+'</div>';
+}
+
+/* ---- the contract's Commencement Date (set by OWH from the Hub; empty = pre-launch) ---- */
+function commenceOf(){ var c=(DATA.meta&&DATA.meta.commencement)||{}; return c[myFlat()]||''; }
+function isDemoView(){ return !!(DATA.meta&&DATA.meta.demo&&DATA.meta.demo.active); }
+function preLaunch(ym){ if(isDemoView()) return false; var c=commenceOf(); return !c || ym<c.slice(0,7); }
 
 /* ---- downloads (contract 8.2.1: the statement and the records behind it, in a standard file format) ---- */
 function csvCell(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
@@ -340,7 +399,7 @@ function drillBlock(key){
     list.forEach(function(t){
       var big=((t.currency==='USD')?t.amount:(rr?t.amount/rateFor(rr):0))>100;
       out+='<tr><td style="white-space:nowrap">'+dayLabel(t.date)+'</td><td>'+esc(shortDesc(t.desc))+
-           (big?' <a href="'+mailQ(flatName()+' — supporting document, '+monLabel(ym),'Please send the supporting document for: '+dayLabel(t.date)+' · '+shortDesc(t.desc)+' · '+fmt(conv(t.amount,t.currency,rr))+' '+CUR)+'" style="color:var(--red);font-size:9.5px;white-space:nowrap" onclick="event.stopPropagation()">request document</a>':'')+
+           (big?' <a href="#" style="color:var(--red);font-size:9.5px;white-space:nowrap" onclick="event.stopPropagation();askDoc(\''+encodeURIComponent('Please send the supporting document for the '+monLabel(ym)+' entry: '+dayLabel(t.date)+' · '+shortDesc(t.desc)+' · '+fmt(conv(t.amount,t.currency,rr))+' '+CUR)+'\');return false">request document</a>':'')+
            '</td><td style="text-align:right">'+fmt(conv(t.amount,t.currency,rr))+'</td></tr>';
     });
   });
@@ -400,6 +459,7 @@ function render(){
   if(DATA.meta.demo&&DATA.meta.demo.active) h+='<div class="demo"><b>Sample.</b> Real figures from a running apartment, on the terms we are discussing.</div>';
 
   h+='<p class="h1">'+esc(f)+' <span class="sub">· your numbers</span></p>';
+  if(!isDemoView()) h+='<p class="note" style="margin:-4px 0 8px;font-size:11px">'+(commenceOf()?'Commencement date: <b>'+longDay(new Date(commenceOf()+'T12:00:00'))+'</b>':'<b>Pre-launch</b> — your commencement date has not been announced yet; the costs below are set-up costs being recorded.')+'</p>';
 
   /* KPIs — "paid to you" is money that has actually been PAID: the payouts recorded in the owner
      ledger, cumulative, as the Clause-7 waterfall carries them (partnerLedger.paidToDate). It used
@@ -419,7 +479,7 @@ function render(){
 
   h+='<div class="ctl">';
   if(ms.length>1) h+='<select onchange="MONTH=this.value;OPEN={};render()">'+
-     ms.slice().reverse().map(function(m){ return '<option value="'+m+'"'+(m===MONTH?' selected':'')+'>'+monLabel(m)+'</option>'; }).join('')+'</select>';
+     ms.slice().reverse().map(function(m){ return '<option value="'+m+'"'+(m===MONTH?' selected':'')+'>'+monLabel(m)+(preLaunch(m)&&m<=((DATA.meta&&DATA.meta.currentMonth)||'9999')?' · pre-launch':'')+'</option>'; }).join('')+'</select>';
   h+='<span class="seg"><button class="'+(CUR==='USD'?'on':'')+'" onclick="setCur(\'USD\')">USD</button>'+
      '<button class="'+(CUR==='EGP'?'on':'')+'" onclick="setCur(\'EGP\')">EGP</button></span></div>';
 
@@ -515,7 +575,11 @@ function render(){
 
   /* ---- operating costs budget — clause 6.5.1 ---- */
   var bg=budgetFor(MONTH);
-  if(bg){
+  if(bg && preLaunch(MONTH)){
+    h+='<div class="card"><h3>Operating costs budget — '+monShort(MONTH)+'</h3><p class="note" style="margin:0;font-size:11.5px;color:var(--ink)">'+
+       (commenceOf()?'This month is before the commencement date ('+longDay(new Date(commenceOf()+'T12:00:00'))+'): costs now are set-up costs, repayable under clause 5.3, and the monthly ceiling does not apply yet.'
+                    :'The commencement date has not been set yet. Costs so far are set-up costs, repayable under clause 5.3; the monthly operating-costs ceiling (clause 6.5.1) starts on the commencement date.')+'</p></div>';
+  } else if(bg){
     var bL=function(v){ return sym()+fmt(conv(v,'USD',bg.r)); }, over=bg.left<-0.005;
     h+='<div class="card"><h3>Operating costs budget — '+monShort(MONTH)+'</h3><table class="d">'+
        '<tr><td>Turnovers this month</td><td class="r">'+bg.tn+'</td></tr>'+
@@ -528,18 +592,8 @@ function render(){
        'Furniture and set-up purchases are not operating costs and are not counted here. The ceiling rises each anniversary of the start date.</p></div>';
   }
 
-  /* ---- statement status — clauses 8.2.2 and 8.4 ---- */
-  var qMail=mailQ(flatName()+' — statement '+monLabel(MONTH),'About my '+monLabel(MONTH)+' statement:\n\n');
-  h+='<div class="card"><h3>Statement status</h3>';
-  if(isFinal){
-    var pub=r.closedAt, dl=pub?addBizDays(pub,7):null;
-    h+='<p class="note" style="margin:0;font-size:11.5px;color:var(--ink)">'+
-       (pub?'Published <b>'+longDay(new Date(pub.slice(0,10)+'T12:00:00'))+'</b>. ':'Published. ')+
-       (dl?'You have until about <b>'+longDay(dl)+'</b> — 7 business days, Friday and Saturday not counted — to raise a specific objection; after that it is final and binding (clause 8.4). Public holidays extend the date.':'You have 7 business days to raise a specific objection (clause 8.4).')+'</p>';
-  } else {
-    h+='<p class="note" style="margin:0;font-size:11.5px;color:var(--ink)">Not published yet — the figures above are provisional and can change until the month is closed. The statement for a month is published by the 5th of the following month (clause 8.1).</p>';
-  }
-  h+='<p style="margin:8px 0 0"><a class="btn" href="'+qMail+'" style="text-decoration:none;display:inline-block">Question or object to this statement</a></p></div>';
+  /* ---- statement status, questions and objections — clauses 8.1, 8.2.2, 8.4 ---- */
+  h+=objCard(r,isFinal);
 
   h+='<div class="card"><h3>Download</h3><div style="display:flex;gap:6px;flex-wrap:wrap">'+
      '<button class="btn" onclick="exportStatement()">This month\'s statement</button>'+

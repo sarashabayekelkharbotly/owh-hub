@@ -98,13 +98,50 @@ function fetchOnce(){ return api('props_get_all',{scope:'live'}).then(function(j
 function cache(){ try{return JSON.parse(localStorage.getItem('owh_today'));}catch(e){return null;} }
 function showErr(e){ if(D)return; $('#app').innerHTML='<div class="err">Couldn\'t reach the endpoint.<br><span class="muted">'+(e&&e.message||'')+'</span></div>'; }
 var ALERTS=null;
-function onData(j,fromCache){ D=j.data; D._gen=j.generatedAt; STAYS=mergeStays(D.stays); try{ if(!fromCache)localStorage.setItem('owh_today',JSON.stringify(j)); }catch(e){} render(); demoTab(); if(!fromCache)fetchAlerts(); }
+var OBJX=null, OBJR={}, OBJBUSY={};      // owner questions & objections: the log, unsent reply drafts, ids being sent
+function onData(j,fromCache){ D=j.data; D._gen=j.generatedAt; STAYS=mergeStays(D.stays); try{ if(!fromCache)localStorage.setItem('owh_today',JSON.stringify(j)); }catch(e){} render(); demoTab(); if(!fromCache)fetchAlerts(); fetchObjs(); }
 /* The Demo tab exists only while demo mode is switched on — the switch itself is the on/off signal,
    so there is nothing extra to remember to hide before or after a partner meeting. The demo flat is
    never in this screen's data either way; this is only a way in. */
 function demoTab(){ /* v229: «👁 Partner view» is always there for an admin — the demo, when on, is one of its choices */ }
 /* light read-only alerts (WeShare pending confirmations) — fetched after the main render so the load stays fast */
 function fetchAlerts(){ api('props_alerts').then(function(j){ if(j&&j.ok){ ALERTS=j; render(); } }).catch(function(){}); }
+/* ---- owner questions & objections (2026-10-13): what an owner wrote on her statement, answered from here.
+   An answer goes to her Telegram and clears the alert on Sarah's alerts bot; "mark handled" closes it with no message. ---- */
+function fetchObjs(){ api('props_objections').then(function(j){ if(j&&j.ok){ OBJX=j.items||[]; render(); } }).catch(function(){}); }
+function objReply(id,close){
+  var ta=document.getElementById('objr_'+id), txt=ta?ta.value:(OBJR[id]||''); OBJR[id]=txt;
+  if(!close && txt.trim().length<2){ alert('Write a reply first, or use “mark handled”.'); return; }
+  if(OBJBUSY[id]) return; OBJBUSY[id]=true; render();
+  api('props_objection_reply',{id:id,reply:close?'':txt,action:close?'close':'answer'}).then(function(j){
+    OBJBUSY[id]=false;
+    if(j&&j.ok){ delete OBJR[id]; if(!close&&!j.telegram) alert('Answered and logged. Telegram did not reach her (not linked, or she has not pressed Start) — she will see the reply on her Hub page.'); fetchObjs(); }
+    else { alert('Not saved: '+((j&&j.error)||'try again')); render(); }
+  }).catch(function(){ OBJBUSY[id]=false; alert('Not saved — check the connection.'); render(); });
+}
+function objAdminCard(){
+  if(!OBJX||!OBJX.length) return '';
+  var open=OBJX.filter(function(o){ return o.status==='open'; }), done=OBJX.filter(function(o){ return o.status!=='open'; });
+  var chip=function(o){ return o.status==='answered'?'<span style="color:#3a7d4d;font-weight:700">answered</span>':(o.status==='closed'?'<span class="muted">handled</span>':'<span style="color:var(--red,#cc5f5f);font-weight:700">open</span>'); };
+  var win=function(o){ return o.statement==='final' ? (o.inWindow?' · <span class="muted">inside the 7-day period</span>':' · <b style="color:var(--red,#cc5f5f)">after the 7-day period</b>') : ' · <span class="muted">statement not yet published</span>'; };
+  var h='<div class="card"><h3>Owner questions &amp; objections<span class="rt">'+(open.length?open.length+' open':'all answered')+'</span></h3>';
+  open.forEach(function(o){
+    h+='<div style="border-top:1px solid var(--line);padding:8px 0"><div style="font-size:12px"><b>'+esc(o.flat)+'</b> · '+esc(o.month)+' · '+(o.type==='objection'?'<b>objection</b>':'question')+win(o)+' · <span class="muted">'+esc((o.created||'').replace('T',' ').slice(0,16))+'</span></div>'+
+       '<div style="margin:4px 0;font-size:12.5px;white-space:pre-wrap">'+esc(o.text)+'</div>'+
+       '<textarea id="objr_'+o.id+'" rows="3" placeholder="Your reply to '+esc(o.from)+'…" oninput="OBJR[\''+o.id+'\']=this.value" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:9px;padding:7px 9px;resize:vertical">'+esc(OBJR[o.id]||'')+'</textarea>'+
+       '<div style="margin-top:5px;display:flex;gap:8px;align-items:center"><button class="paybtn" '+(OBJBUSY[o.id]?'disabled ':'')+'onclick="objReply(\''+o.id+'\',false)">Send reply</button>'+
+       '<a href="#" onclick="objReply(\''+o.id+'\',true);return false" style="font-size:11.5px">mark handled, no reply</a>'+(OBJBUSY[o.id]?'<span class="muted">saving…</span>':'')+'</div></div>';
+  });
+  if(done.length){
+    h+='<details style="border-top:1px solid var(--line);padding-top:6px"><summary class="muted" style="cursor:pointer;font-size:12px">Log — '+done.length+' answered</summary>';
+    done.slice(0,30).forEach(function(o){
+      h+='<div style="padding:5px 0;font-size:11.5px;border-bottom:1px solid var(--line)"><b>'+esc(o.flat)+'</b> · '+esc(o.month)+' · '+(o.type==='objection'?'objection':'question')+' · '+chip(o)+' <span class="muted">'+esc((o.created||'').slice(0,10))+'</span>'+
+         '<div style="white-space:pre-wrap">'+esc(o.text)+'</div>'+(o.reply?'<div class="muted" style="white-space:pre-wrap">↳ '+esc(o.reply)+' <i>('+esc(o.repliedBy)+', '+esc((o.repliedAt||'').slice(0,10))+')</i></div>':'')+'</div>';
+    });
+    h+='</details>';
+  }
+  return h+'<div class="legend">Written by the owner inside her Hub page. Each one raises an alert on your alerts bot (and one line to Khaled) until it is answered; your reply goes to her Telegram and her page.</div></div>';
+}
 /* "seen, not fixing" — permanently hides these exact alert keys; a NEW mismatch or bill reappears */
 function dismissElec(keys){ api('props_dismiss_elec',{keys:keys}).then(function(j){ if(j&&j.ok) fetchAlerts(); }).catch(function(){}); }
 function dismissBtn(keys){ return ' <a href="#" onclick=\'dismissElec('+JSON.stringify(keys)+');return false\' style="font-weight:700;white-space:nowrap">✕ dismiss</a>'; }
@@ -249,6 +286,7 @@ function render(){
 
   // ---- needs you
   h+=needs(cm,pmY);
+  h+=objAdminCard();
   h+=ownerCard();
   h+=stripeCard();
 
