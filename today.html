@@ -355,21 +355,25 @@ function deltaPts(a,b){ var d=Math.round((a-b)*100); return '<span class="'+(d>=
 
 function happening(cm,asOf){
   var today=D.meta.asOf, rows=[];
-  // every flat always shown; same-day turnover (out + in) shows both rows
+  /* ONE ROW PER FLAT (Sarah 2026-10-13): a same-day turnover used to emit a separate out AND in row,
+     but Flat / Next action / Code are identical on both, so the extra full row only confused. Now the
+     turnover stacks its out+in as two sub-lines inside the single flat row (Event + Guest columns);
+     the channel dot sits next to each guest so both guests show their own channel. */
   airbnbFlats().forEach(function(f){
     var cur=null, coToday=null;
     STAYS.forEach(function(s){ if(s.flat!==f)return;
       if(day(s.checkIn)<=asOf&&asOf<day(s.checkOut))cur=s;   // occupied tonight (incl. check-in today)
       if(s.checkOut===today)coToday=s; });
-    if(coToday) rows.push({flat:f,portals:coToday.portals,guest:coToday.guest,kind:'out',
-      action:nextAction(coToday,asOf,today,true,false), code:doorCode(f,asOf)});
-    if(cur){
-      var inn=cur.checkIn===today;
-      rows.push({flat:f,portals:cur.portals,guest:cur.guest,kind:inn?'in':'stay',
-        action:nextAction(cur,asOf,today,false,inn), code:doorCode(f,asOf)});
+    var events=[];
+    if(coToday) events.push({kind:'out', guest:coToday.guest, portals:coToday.portals});
+    if(cur){ var inn=cur.checkIn===today; events.push({kind:inn?'in':'stay', guest:cur.guest, portals:cur.portals}); }
+    if(events.length){
+      var act = coToday ? nextAction(coToday,asOf,today,true,false)   // Flat/action/code are shared across a turnover
+                        : nextAction(cur,asOf,today,false,cur.checkIn===today);
+      rows.push({flat:f, events:events, action:act, code:doorCode(f,asOf)});
     } else if(!coToday){
-      var n=nextCheckIn(f,asOf), guest='', portal='', action, code='';
-      if(!n){ rows.push({flat:f,portal:'',guest:'',kind:'free',action:'No booking coming up',code:doorCode(f,asOf)}); }
+      var n=nextCheckIn(f,asOf), action, code=doorCode(f,asOf);
+      if(!n){ rows.push({flat:f, events:[{kind:'free',guest:'',portals:[]}], action:'No booking coming up', code:code}); }
       else {
         var inS=null; STAYS.forEach(function(s){ if(s.flat===f&&s.checkIn&&day(s.checkIn).getTime()===n.getTime())inS=s; });
         var portals=inS?inS.portals:[];   // guest stays blank — nobody has checked in yet
@@ -379,15 +383,18 @@ function happening(cm,asOf){
         if(sched) action=sched.label;                 // confirmed clean/repair from Week wins
         else if(gap>2){ var rev=new Date(n); rev.setDate(rev.getDate()-1); action='Revision clean '+dmon(ymd(rev)); }
         else action='clean → new guest '+(diff<=0?'today':(diff===1?'tomorrow':dmon(ymd(n))));
-        rows.push({flat:f,portals:portals,guest:guest,kind:'gap',action:action,code:doorCode(f,asOf)});
+        rows.push({flat:f, events:[{kind:'gap',guest:'',portals:portals}], action:action, code:code});
       }
     }
   });
   var h='<div class="card"><h3>Happening today</h3>';
   h+='<table><thead><tr><th>Flat</th><th style="text-align:left">Event</th><th style="text-align:left">Guest</th><th style="text-align:left">Next action</th><th>Code</th></tr></thead><tbody>';
+  function pillFor(k){ return k==='out'?'<span class="pill p-out">out</span>':(k==='in'?'<span class="pill p-in">in</span>':(k==='gap'?'<span class="pill p-gap">vacant</span>':(k==='free'?'<span class="pill p-free">not booked</span>':'<span class="pill p-stay">in stay</span>'))); }
   rows.forEach(function(r){
-    var pill=r.kind==='out'?'<span class="pill p-out">out</span>':(r.kind==='in'?'<span class="pill p-in">in</span>':(r.kind==='gap'?'<span class="pill p-gap">vacant</span>':(r.kind==='free'?'<span class="pill p-free">not booked</span>':'<span class="pill p-stay">in stay</span>')));
-    h+='<tr'+(r.kind==='free'?' class="rfree"':'')+'><td>'+((r.portals&&r.portals.length)?r.portals.map(dotp).join(''):'')+r.flat+'</td><td style="text-align:left">'+pill+'</td><td style="text-align:left">'+esc(r.guest||'')+'</td><td dir="ltr" style="text-align:left" class="soft">'+r.action+'</td><td class="code">'+(r.code||'')+'</td></tr>';
+    var isFree = r.events.length===1 && r.events[0].kind==='free';
+    var evCell = r.events.map(function(e){ return '<div style="min-height:24px;display:flex;align-items:center">'+pillFor(e.kind)+'</div>'; }).join('');
+    var gCell  = r.events.map(function(e){ return '<div style="min-height:24px;display:flex;align-items:center;gap:4px;white-space:nowrap">'+((e.portals&&e.portals.length)?e.portals.map(dotp).join(''):'')+esc(e.guest||'')+'</div>'; }).join('');
+    h+='<tr'+(isFree?' class="rfree"':'')+'><td>'+r.flat+'</td><td style="text-align:left">'+evCell+'</td><td style="text-align:left">'+gCell+'</td><td dir="ltr" style="text-align:left" class="soft">'+r.action+'</td><td class="code">'+(r.code||'')+'</td></tr>';
   });
   h+='</tbody></table><div class="legend"><span class="dot" style="background:var(--ch-airbnb)"></span>Airbnb <span class="dot" style="background:var(--ch-booking)"></span>Booking <span class="dot" style="background:var(--ch-direct)"></span>Direct</div></div>';
   return h;
