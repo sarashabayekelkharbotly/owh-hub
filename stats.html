@@ -120,7 +120,7 @@ function disp(usd,m){ return CUR==='USD'?usd:usd*rateFor(m); }         // conver
 function curU(){ return CUR==='USD'?'$':''; }                          // chart unit prefix
 var TRADES=[['سباك','plumbing','#4a7fb5'],['كهربائي','electric','#d9a441'],['فني تكييف','AC','#6f9a76'],['نجار','carpentry','#b58a5a'],['منجد','upholstery','#a97fb0'],['أخرى','other','#9aa7b5']];
 function esc(s){ return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
-function isLive(s){ var st=(s.status||'').toLowerCase(); return st.indexOf('cancel')<0 && st.indexOf('block')<0; }
+function isLive(s){ var st=(s.status||'').toLowerCase(); return st.indexOf('cancel')<0 && st.indexOf('block')<0 && st!=='pending'; }   // a VRBO request waiting for its payout is not booked (2026-10-13)
 function fmt(n){ n=+n||0; var a=Math.abs(n); return (n<0?'-':'')+(a>=1000?Math.round(a).toLocaleString('en-US'):String(Math.round(a*10)/10)); }
 function kf(n){ n=+n||0; var a=Math.abs(n); return (n<0?'-':'')+(a>=1000?(a/1000).toFixed(a>=10000?0:1)+'k':String(Math.round(a))); }
 /* ALWAYS in 'k' (2026-10-09): on an axis whose other bars read "-458k", a sub-1000 value printed raw
