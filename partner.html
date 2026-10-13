@@ -59,6 +59,19 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
 .seg button{font-family:inherit;font-size:12px;font-weight:600;border:0;background:var(--white);color:var(--soft);padding:5px 11px;cursor:pointer}
 .seg button.on{background:var(--red);color:#fff}
 .tabbar{display:flex;background:var(--white);border-top:1px solid var(--line)}
+.tabbar .tab{min-width:0;white-space:nowrap}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px;margin:0 0 6px;-webkit-overflow-scrolling:touch}
+.chips button{font-family:inherit;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--white);color:var(--soft);border-radius:16px;padding:4px 12px;white-space:nowrap;cursor:pointer;flex:none}
+.chips button.on{background:var(--red);color:#fff;border-color:var(--red)}
+.chips button.pre{font-style:italic}
+.pls{display:flex;gap:6px;margin:9px 0 0;flex-wrap:wrap}
+.pls button{font-family:inherit;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--white);color:var(--soft);border-radius:16px;padding:4px 12px;cursor:pointer}
+.pls button.on{background:#f3e0e0;color:var(--red);border-color:#e6b9b9}
+.kg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.kt{background:var(--white);border:1px solid var(--line);border-radius:11px;padding:8px 10px}
+.kt .kpi-v{font-size:19px}
+.pbar{height:8px;border-radius:5px;background:#efe6e6;margin:5px 0 3px;overflow:hidden}.pbar i{display:block;height:8px;border-radius:5px;background:var(--red)}
+.cal{display:grid;grid-template-columns:repeat(15,1fr);gap:3px;margin-top:6px}.cal i{display:block;height:13px;border-radius:3px;background:#efe6e6}.cal i.b{background:var(--red)}.cal i.r{background:#e0b25c}
 .tabbar .tab{flex:1;text-align:center;padding:7px 2px 8px;font-size:10px;color:var(--soft);text-decoration:none;font-weight:600;border-top:2px solid transparent}
 .tabbar .tab .ti{display:block;font-size:17px;line-height:1.15;margin-bottom:1px}
 .tabbar .tab.active{color:var(--red);border-top-color:var(--red)}
@@ -71,9 +84,12 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
     <div class="rib" id="rib"></div>
   </div>
   <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
-  <nav class="tabbar">
-    <a class="tab active" href="partner.html"><span class="ti">📄</span>This month</a>
+  <nav class="tabbar" id="tabbar">
+    <a class="tab" id="tb-overview" href="#overview" onclick="setTab('overview');return false"><span class="ti">🏠</span>Overview</a>
+    <a class="tab" id="tb-bookings" href="#bookings" onclick="setTab('bookings');return false"><span class="ti">📅</span>Bookings</a>
+    <a class="tab" id="tb-statement" href="#statement" onclick="setTab('statement');return false"><span class="ti">📄</span>Statement</a>
     <a class="tab" href="partner-history.html"><span class="ti">📊</span>Statistics</a>
+    <a class="tab" id="tb-ask" href="#ask" onclick="setTab('ask');return false"><span class="ti">💬</span>Ask OWH</a>
   </nav>
 </div>
 
@@ -89,6 +105,12 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
 AUTH_ROLE = 'partner';
 
 var DATA=null, MONTH=null, OPEN={}, CUR='USD';
+var TAB='overview', SUB='stmt';          // which of the five tabs is open, and which switch inside «Statement»
+(function(){ try{ var hh=(location.hash||'').replace('#','').split('/'); if(['overview','bookings','statement','ask'].indexOf(hh[0])>-1){ TAB=hh[0]; if(hh[1]==='settlement') SUB='settle'; else if(hh[1]==='months') SUB='months'; } }catch(e){} })();
+function setTab(t){ TAB=t; try{ history.replaceState(null,'','#'+t+(t==='statement'&&SUB!=='stmt'?'/'+(SUB==='settle'?'settlement':'months'):'')); }catch(e){} render(); try{ window.scrollTo(0,0); }catch(e){} }
+function setSub(x){ SUB=x; try{ history.replaceState(null,'','#statement'+(x==='stmt'?'':'/'+(x==='settle'?'settlement':'months'))); }catch(e){} render(); }
+function setMonth(m){ MONTH=m; OPEN={}; render(); }
+function openMonth(m){ MONTH=m; OPEN={}; TAB='statement'; SUB='stmt'; try{ history.replaceState(null,'','#statement'); }catch(e){} render(); try{ window.scrollTo(0,0); }catch(e){} }
 var OBJS=null, OBJ_DRAFT='', OBJ_TYPE='question', OBJ_MSG='', OBJ_BUSY=false;     // her questions & objections: the log, the unsent draft, the last result
 try{ CUR=localStorage.getItem('owh_cur')||'USD'; }catch(e){}          // the choice sticks between visits
 
@@ -224,7 +246,7 @@ function addBizDays(ymd,n){
 }
 function longDay(d){ return d.getDate()+' '+MON[d.getMonth()]+' '+d.getFullYear(); }
 /* a supporting-document request (clause 8.3) goes through the same written form as a question, so it is logged too */
-function askDoc(enc){ OBJ_DRAFT=decodeURIComponent(enc); OBJ_TYPE='question'; render(); var t=document.getElementById('objText'); if(t){ t.scrollIntoView({behavior:'smooth',block:'center'}); t.focus(); } }
+function askDoc(enc){ OBJ_DRAFT=decodeURIComponent(enc); OBJ_TYPE='question'; TAB='ask'; try{ history.replaceState(null,'','#ask'); }catch(e){} render(); var t=document.getElementById('objText'); if(t){ t.scrollIntoView({behavior:'smooth',block:'center'}); t.focus(); } }
 
 /* ---- questions & objections (Sarah 2026-10-13: written INSIDE the Hub, kept in a log, alerting OWH and confirming to her) ---- */
 function loadObjs(){ if(isAdmin()) return;                         // an admin preview never writes or reads her log
@@ -424,43 +446,68 @@ function render(){
   var f=flatName(), r=recFor(MONTH), pm=prevMonth(), pr=recFor(pm), ms=monthsAvailable();
   $('#rib').innerHTML=authWho()+' · '+esc(f);
   if(!r){ $('#app').innerHTML='<div class="card"><span class="muted">No numbers for this month yet.</span></div>'; return; }
-
   var pv=r.partnerView||{}, isFinal=(r.status==='final'), pct=pv.managementFeePct||0;
+  ['overview','bookings','statement','ask'].forEach(function(t){ var el=document.getElementById('tb-'+t); if(el) el.className='tab'+(TAB===t?' active':''); });
+
+  /* ---- shared: the statement rows for this month and the one before (partner-core.js) ---- */
+  var cm=PC.model(DATA,myFlat(),MONTH), cp=pm?PC.model(DATA,myFlat(),pm):null;
+  var defs=PC.rowDefs(cp?[cp,cm]:[cm]), stDefs=[], seDefs=[], into=stDefs;
+  defs.forEach(function(d){ if(d.sec&&/^Settlement/.test(d.sec)) into=seDefs; into.push(d); });
+  var cellOf=function(d,m){ if(!m) return ''; var v=d.get(m); if(v==null||!isFinite(v)) return '—';
+    if(d.t==='n') return fmtN(v); if(d.t==='p') return Math.round(v*100)+'%'; return fmt(CUR==='USD'?v:v*m.rate); };
+  var ncol=cp?3:2, cOpen=costsOpen();
+
   var h='';
   if(DATA.meta.demo&&DATA.meta.demo.active) h+='<div class="demo"><b>Sample.</b> Real figures from a running apartment, on the terms we are discussing.</div>';
-
   h+='<p class="h1">'+esc(f)+' <span class="sub">· your numbers</span></p>';
   if(!isDemoView()) h+='<p class="note" style="margin:-4px 0 8px;font-size:11px">'+(commenceOf()?'Commencement date: <b>'+longDay(new Date(commenceOf()+'T12:00:00'))+'</b>':'<b>Pre-launch</b> — your commencement date has not been announced yet; the costs below are set-up costs being recorded.')+'</p>';
 
-  /* KPIs — "paid to you" is money that has actually been PAID: the payouts recorded in the owner
-     ledger, cumulative, as the Clause-7 waterfall carries them (partnerLedger.paidToDate). It used
-     to add up each closed month's net result, which put a loss month's −57.26 under "paid to you". */
-  var paidToDate=0, paidAsOf=null, cmK=(DATA.meta&&DATA.meta.currentMonth)||'';
-  ms.forEach(function(m){ var x=recFor(m);
-    if(x&&x.partnerLedger&&(!cmK||m<=cmK)&&(!paidAsOf||m>paidAsOf)){ paidAsOf=m; paidToDate=conv(x.partnerLedger.paidToDate||0,'USD',x)||0; } });
-  var nts=nightsIn(MONTH), occ=nts/daysIn(MONTH), adr=nts?conv(r.revenue.earnings,'USD',r)/nts:0;
-  h+='<table class="kpis"><tr>'+
-     '<td><div class="kpi-l">Paid to you, to date</div><div class="kpi-v">'+sym()+fmt(paidToDate)+'</div><div class="kpi-s">'+(paidToDate>0.005?'payouts recorded':'no payouts yet')+'</div></td>'+
-     '<td><div class="kpi-l">This month result</div><div class="kpi-v">'+sym()+fmt(conv(pv.netPayout!=null?pv.netPayout:r.net,'USD',r))+'</div><div class="kpi-s">'+monLabel(MONTH)+', '+(isFinal?'final':'in progress')+'</div></td>'+
-     '</tr></table>'+
-     '<table class="kpis" style="margin-top:6px"><tr>'+
-     '<td><div class="kpi-l">Occupancy</div><div class="kpi-v">'+Math.round(occ*100)+'%</div><div class="kpi-s">this month</div></td>'+
-     '<td><div class="kpi-l">Avg nightly</div><div class="kpi-v">'+sym()+fmt2(adr)+'</div><div class="kpi-s">after discounts</div></td>'+
-     '</tr></table>';
+  /* ---- the month and the currency stay in view on every tab ---- */
+  h+='<div class="ctl" style="margin-top:0"><div class="chips" id="chips" style="flex:1;margin:0">'+ms.map(function(m){
+       var yr=m.slice(0,4)!==(MONTH||'').slice(0,4)?' '+m.slice(2,4):'';
+       return '<button class="'+(m===MONTH?'on':'')+(preLaunch(m)&&m<=((DATA.meta&&DATA.meta.currentMonth)||'9999')?' pre':'')+'" onclick="setMonth(\''+m+'\')">'+monShort(m)+yr+'</button>'; }).join('')+'</div>'+
+     '<span class="seg"><button class="'+(CUR==='USD'?'on':'')+'" onclick="setCur(\'USD\')">USD</button><button class="'+(CUR==='EGP'?'on':'')+'" onclick="setCur(\'EGP\')">EGP</button></span></div>';
 
-  h+='<div class="ctl">';
-  if(ms.length>1) h+='<select onchange="MONTH=this.value;OPEN={};render()">'+
-     ms.slice().reverse().map(function(m){ return '<option value="'+m+'"'+(m===MONTH?' selected':'')+'>'+monLabel(m)+(preLaunch(m)&&m<=((DATA.meta&&DATA.meta.currentMonth)||'9999')?' · pre-launch':'')+'</option>'; }).join('')+'</select>';
-  h+='<span class="seg"><button class="'+(CUR==='USD'?'on':'')+'" onclick="setCur(\'USD\')">USD</button>'+
-     '<button class="'+(CUR==='EGP'?'on':'')+'" onclick="setCur(\'EGP\')">EGP</button></span></div>';
+  var mv=function(x,m){ m=m||cm; x=(CUR==='USD'?x:x*m.rate); return (x<-0.005?'− ':'')+sym()+fmt(Math.abs(x)); };
+  var vb='';
 
+  if(TAB==='overview'){
+    /* ============ OVERVIEW — how is my home doing this month ============ */
+    var paidToDate=0, paidAsOf=null, cmK=(DATA.meta&&DATA.meta.currentMonth)||'';
+    ms.forEach(function(m){ var x=recFor(m);
+      if(x&&x.partnerLedger&&(!cmK||m<=cmK)&&(!paidAsOf||m>paidAsOf)){ paidAsOf=m; paidToDate=conv(x.partnerLedger.paidToDate||0,'USD',x)||0; } });
+    var tile=function(l,val,sub){ return '<div class="kt"><div class="kpi-l">'+l+'</div><div class="kpi-v">'+val+'</div><div class="kpi-s">'+(sub||'&nbsp;')+'</div></div>'; };
+    vb+='<div class="kg">'+
+       tile(monShort(MONTH)+' result',mv(cm.v.res),isFinal?'final':'in progress')+
+       tile('Paid to you, to date',sym()+fmt(paidToDate),paidToDate>0.005?'payouts recorded':'no payouts yet')+
+       tile('Occupancy',Math.round(cm.k.occ*100)+'%','this month')+
+       tile('Average nightly rate',cm.k.adr==null?'—':mv(cm.k.adr),'after discounts')+
+       tile('Stays completed',fmtN(cm.k.stays),'')+
+       tile('Turnovers',cm.k.turn==null?'—':fmtN(cm.k.turn),'cleanings that took place')+
+       tile('Nights',fmtN(cm.k.nights),'booked this month')+
+       tile('Balance with OWH',cm.led?balWords(cm.led.balAfter,cm.r):'—',cm.led?'after '+monShort(MONTH):'')+
+       '</div>';
+    vb+='<div class="card"><h3>Where the month\'s money goes <span class="pill '+(isFinal?'pf':'pa')+'" style="float:right">'+(isFinal?'final':'in progress')+'</span></h3><table class="d">'+
+       '<tr><td>Net revenue</td><td class="r">'+mv(cm.v.T)+'</td></tr>'+
+       '<tr class="subrow"><td>management fee — '+Math.round(pct*100)+'%</td><td class="r">'+mv(-cm.v.fee)+'</td></tr>'+
+       (Math.abs(cm.v.ret)>0.005?'<tr class="subrow"><td>review bookings you paid, returned to you</td><td class="r">'+mv(cm.v.ret)+'</td></tr>':'')+
+       '<tr class="subrow"><td>costs paid on your behalf</td><td class="r">'+mv(-cm.v.costs)+'</td></tr>'+
+       '<tr class="net"><td>Month result</td><td class="r">'+mv(cm.v.res)+'</td></tr></table>'+
+       '<p class="note">The full statement, line by line, is on the <a href="#statement" onclick="setTab(\'statement\');return false">Statement</a> tab; how the result is settled is under its <b>Settlement</b> switch.</p></div>';
+    var pubO=r.closedAt;
+    vb+='<div class="card"><h3>Statement status</h3><p class="note" style="margin:0;font-size:11.5px;color:var(--ink)">'+
+       (isFinal ? 'Published'+(pubO?' <b>'+longDay(new Date(pubO.slice(0,10)+'T12:00:00'))+'</b>':'')+'. If you disagree with a line, write to us in <a href="#ask" onclick="setTab(\'ask\');return false">Ask OWH</a> — see the deadline there.'
+                : 'Not published yet — the figures are provisional and can change until the month is closed. The statement is published by the 5th of the following month.')+'</p></div>';
+
+  } else if(TAB==='bookings'){
+    /* ============ BOOKINGS — every booking, the nights, the channels ============ */
   /* ---- the month's stays ---- */
   var st=staysIn(MONTH);
-  h+='<div class="card"><h3>'+monLabel(MONTH)+' stays <span class="pill '+(isFinal?'pf':'pa')+'" style="float:right">'+(isFinal?'final':'in progress')+'</span></h3>';
-  if(!st.length) h+='<p class="note" style="margin:0">No stays recorded for this month.</p>';
+  vb+='<div class="card"><h3>'+monLabel(MONTH)+' stays <span class="pill '+(isFinal?'pf':'pa')+'" style="float:right">'+(isFinal?'final':'in progress')+'</span></h3>';
+  if(!st.length) vb+='<p class="note" style="margin:0">No stays recorded for this month.</p>';
   else{
     var spans=false, tG=0, tF=0, tN=0, anyReview=false;
-    h+='<table class="d" style="font-size:11px"><tr><th>Guest</th><th>Stay</th><th class="c">N</th><th>Channel</th><th class="r">Gross</th><th class="r">Fees</th><th class="r">Net</th></tr>';
+    vb+='<table class="d" style="font-size:11px"><tr><th>Guest</th><th>Stay</th><th class="c">N</th><th>Channel</th><th class="r">Gross</th><th class="r">Fees</th><th class="r">Net</th></tr>';
     st.forEach(function(s){
       var nm=nightsOf(s,MONTH); if(nm!==(s.nights||nm)) spans=true;
       var p=stayParts(s,MONTH); tG+=p.gross; tF+=p.fees; tN+=p.net;
@@ -468,74 +515,100 @@ function render(){
       if(rv) anyReview=true;
       var tag=rv==='owh'?'<br><span class="pill pa">review booking · OWH-funded · no revenue</span>'
              :(rv==='owner'?'<br><span class="pill pa">review booking · you paid · '+(s.reviewGross>0?sym()+fmt(conv(s.reviewGross,'USD',r))+' returned to you':'returned to you')+'</span>':'');
-      h+='<tr><td>'+esc(s.guest||'—')+tag+'</td><td style="white-space:nowrap">'+dayLabel(s.checkIn)+' → '+dayLabel(s.checkOut)+'</td>'+
+      vb+='<tr><td>'+esc(s.guest||'—')+tag+'</td><td style="white-space:nowrap">'+dayLabel(s.checkIn)+' → '+dayLabel(s.checkOut)+'</td>'+
          '<td class="c">'+nm+'</td><td style="white-space:nowrap"><span class="dot '+dotFor(s.portal)+'"></span>'+esc(s.portal||'Direct')+'</td>'+
          (rv?'<td class="r">—</td><td class="r">—</td><td class="r">—</td></tr>'
             :'<td class="r">'+fmt(conv(p.gross,'USD',r))+'</td><td class="r">'+(p.fees>0.005?fmt(-conv(p.fees,'USD',r)):'—')+'</td><td class="r">'+fmt(conv(p.net,'USD',r))+'</td></tr>');
     });
-    h+='<tr class="tot"><td colspan="4">Total</td><td class="r">'+fmt(conv(tG,'USD',r))+'</td><td class="r">'+(tF>0.005?fmt(-conv(tF,'USD',r)):'—')+'</td><td class="r">'+fmt(conv(tN,'USD',r))+'</td></tr>';
-    h+='</table>';
-    h+='<p class="note" style="margin-top:5px">Gross = what the guest paid; Fees = platform commission, card/processing charges and taxes on them; Net = gross − fees.'+
-       (spans?' A stay crossing into another month is counted here only for the nights inside '+monLabel(MONTH)+'.':'')+' The Net column is the earnings line of the statement below.'+(anyReview?' A <b>review booking</b> is a booking made to earn a review: it is outside revenue, so it carries no fee and no money in the columns; its nights still count for occupancy but not for the average nightly rate. If you paid for it, what you paid is returned to you on the statement.':'')+'</p>';
+    vb+='<tr class="tot"><td colspan="4">Total</td><td class="r">'+fmt(conv(tG,'USD',r))+'</td><td class="r">'+(tF>0.005?fmt(-conv(tF,'USD',r)):'—')+'</td><td class="r">'+fmt(conv(tN,'USD',r))+'</td></tr>';
+    vb+='</table>';
+    vb+='<p class="note" style="margin-top:5px">Gross = what the guest paid; Fees = platform commission, card/processing charges and taxes on them; Net = gross − fees.'+
+       (spans?' A stay crossing into another month is counted here only for the nights inside '+monLabel(MONTH)+'.':'')+' The Net column is the earnings line of the statement.'+(anyReview?' A <b>review booking</b> is a booking made to earn a review: it is outside revenue, so it carries no fee and no money in the columns; its nights still count for occupancy but not for the average nightly rate. If you paid for it, what you paid is returned to you on the statement.':'')+'</p>';
   }
-  h+='</div>';
+  vb+='</div>';
 
-  /* ---- statement, this month beside last. The ROWS come from partner-core.js — the same rows the Statistics table and both
-     CSV exports use (Sarah 2026-10-13) — so nothing here is derived a second way. ---- */
-  var cm=PC.model(DATA,myFlat(),MONTH), cp=pm?PC.model(DATA,myFlat(),pm):null;
-  var defs=PC.rowDefs(cp?[cp,cm]:[cm]), stDefs=[], seDefs=[], into=stDefs;
-  defs.forEach(function(d){ if(d.sec&&/^Settlement/.test(d.sec)) into=seDefs; into.push(d); });
-  var cellOf=function(d,m){ if(!m) return ''; var v=d.get(m); if(v==null||!isFinite(v)) return '—';
-    if(d.t==='n') return fmtN(v); if(d.t==='p') return Math.round(v*100)+'%'; return fmt(CUR==='USD'?v:v*m.rate); };
-  var ncol=cp?3:2, cOpen=costsOpen();
-  h+='<div class="card"><h3>Statement — '+monShort(MONTH)+(pm?' vs '+monShort(pm):'')+'</h3><table class="d">'+
+
+    vb+='<div class="card"><h3>Nights booked in '+monLabel(MONTH)+' <span class="muted" style="float:right">'+Math.round(cm.k.occ*100)+'% occupied</span></h3><div class="cal">'+(function(){
+         var n=PC.daysIn(MONTH), out='', sts=staysIn(MONTH);
+         for(var d=1;d<=n;d++){ var ds=MONTH+'-'+('0'+d).slice(-2), cls='';
+           sts.forEach(function(s){ if(s.checkIn.slice(0,10)<=ds && ds<s.checkOut.slice(0,10)) cls=(s.review?'r':(cls==='r'?'r':'b')); });
+           out+='<i class="'+cls+'" title="'+d+' '+monShort(MONTH)+'"></i>'; }
+         return out; })()+'</div><p class="note">Filled squares are booked nights, one per day of the month; amber is a review booking.</p></div>';
+    var chN={Airbnb:0,Booking:0,Direct:0}, chT=0;
+    staysIn(MONTH).forEach(function(s){ var n=nightsOf(s,MONTH), k=dotFor(s.portal)==='d-air'?'Airbnb':(dotFor(s.portal)==='d-book'?'Booking':'Direct'); chN[k]+=n; chT+=n; });
+    var chP={}; (function(){ var ks=['Airbnb','Booking','Direct'], fl=0, rem=[]; ks.forEach(function(k){ var ex=chT?100*chN[k]/chT:0; chP[k]=Math.floor(ex); fl+=chP[k]; rem.push([k,ex-Math.floor(ex)]); }); rem.sort(function(a,b){ return b[1]-a[1]; }); for(var q=0;q<100-fl&&chT;q++) chP[rem[q%3][0]]++; })();
+    if(chT) vb+='<div class="card"><h3>Channel mix <span class="muted" style="float:right">by nights</span></h3><table class="d">'+
+       [['Airbnb','d-air'],['Booking','d-book'],['Direct','d-dir']].map(function(c){ return chN[c[0]]?'<tr><td><span class="dot '+c[1]+'"></span>'+c[0]+(c[0]==='Booking'?'.com':'')+'</td><td class="r">'+fmtN(chN[c[0]])+' nights</td><td class="r">'+chP[c[0]]+'%</td></tr>':''; }).join('')+'</table></div>';
+    vb+='<div class="card"><h3>Download</h3><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" onclick="exportBookings()">All bookings</button></div><p class="note">A CSV with every booking: dates, nights, channel, gross, fees, net, and which are review bookings.</p></div>';
+
+  } else if(TAB==='statement'){
+    /* ============ STATEMENT — the statement, how it settles, all months ============ */
+    vb+='<div class="pls"><button class="'+(SUB==='stmt'?'on':'')+'" onclick="setSub(\'stmt\')">Statement</button><button class="'+(SUB==='settle'?'on':'')+'" onclick="setSub(\'settle\')">Settlement</button><button class="'+(SUB==='months'?'on':'')+'" onclick="setSub(\'months\')">All months</button></div>';
+    if(SUB==='stmt'){
+  vb+='<div class="card"><h3>Statement — '+monShort(MONTH)+(pm?' vs '+monShort(pm):'')+'</h3><table class="d">'+
      '<tr><th>Line</th><th class="r">'+monShort(MONTH)+'</th>'+(pm?'<th class="r">'+monShort(pm)+'</th>':'')+'</tr>';
   stDefs.forEach(function(d){
-    if(d.sec){ h+='<tr class="subrow"><td colspan="'+ncol+'" style="font-weight:700">'+d.sec+'</td></tr>'; return; }
+    if(d.sec){ vb+='<tr class="subrow"><td colspan="'+ncol+'" style="font-weight:700">'+d.sec+'</td></tr>'; return; }
     if(d.cat && !cOpen) return;
     var cls=(d.cls==='sub'?'subrow':(d.cls||'')), lab=d.label, click='';
     if(d.id==='costs'){ cls+=' drillable'; click=' onclick="toggleCosts()"'; lab+=' '+(cOpen?'▾':'▸'); }
     if(d.cat){ var can=txFor(MONTH,d.key).length>0 || (pm&&txFor(pm,d.key).length>0);
       if(can){ cls+=' drillable'; click=' onclick="toggleDrill(\''+d.key+'\')"'; lab+=' '+(OPEN[d.key]?'▾':'▸'); } }
-    h+='<tr class="'+cls+'"'+click+'><td>'+lab+'</td><td class="r">'+cellOf(d,cm)+'</td>'+(pm?'<td class="r">'+cellOf(d,cp)+'</td>':'')+'</tr>';
-    if(d.cat && OPEN[d.key]) h+=drillBlock(d.key);
+    vb+='<tr class="'+cls+'"'+click+'><td>'+lab+'</td><td class="r">'+cellOf(d,cm)+'</td>'+(pm?'<td class="r">'+cellOf(d,cp)+'</td>':'')+'</tr>';
+    if(d.cat && OPEN[d.key]) vb+=drillBlock(d.key);
   });
-  h+='</table>';
+  vb+='</table>';
 
+
+      vb+='<p class="note">Tap a cost category to see what it is made of — date, description, amount. '+
+         'Everything is shown in <b>'+CUR+'</b>, each month converted at that month\'s own rate ('+
+         fmt(rateFor(r))+' EGP/USD for '+monLabel(MONTH)+'), so a closed month never changes when the rate moves.'+
+         (isFinal?'':' This month is still open, so figures can change until it is closed.')+'</p></div>';
+  vb+='<div class="card"><h3>Download</h3><div style="display:flex;gap:6px;flex-wrap:wrap">'+
+     '<button class="btn" onclick="exportStatement()">This month\'s statement</button>'+
+     '<button class="btn" onclick="exportBookings()">All bookings</button>'+
+     '<button class="btn" onclick="exportCosts()">All cost entries</button></div>'+
+     '<p class="note">CSV files that open in Excel or Google Sheets — the statement, every booking with its gross, fees and net, and every cost entry.</p></div>';
+
+
+    } else if(SUB==='settle'){
+      vb+='<div class="card">';
+      if(cm.led){
+        var pbF=cm.led.target>0?Math.max(0,Math.min(100,100*cm.led.floatAfter/cm.led.target)):0;
+        vb+='<h3>Security float <span class="muted" style="float:right">'+mv(cm.led.floatAfter)+' of '+mv(cm.led.target)+'</span></h3><div class="pbar"><i style="width:'+pbF.toFixed(0)+'%"></i></div>';
+      }
   /* ---- Clause 7 — what happens to the month result: the waterfall, every step shown. The SAME partnerLedger the admin Close shows. ---- */
   if(cm.led){
     var sL=function(v){ return (v>0.005?'+ ':(v<-0.005?'− ':''))+sym()+fmt(conv(Math.abs(v),'USD',cm.r)); };
     var pL=function(v){ return sym()+fmt(conv(v,'USD',cm.r)); };
     var PLAIN={f_open:1,f_after:1,p_pay:1,p_paid:1,p_still:1};
-    h+='<h3 style="margin:14px 0 6px">Settlement — what happens to the month result</h3><table class="d">';
+    vb+='<h3 style="margin:12px 0 6px">Settlement — what happens to the month result</h3><table class="d">';
     seDefs.forEach(function(d){
       if(d.sec) return;
-      if(d.sub){ h+='<tr><th colspan="2">'+d.sub+'</th></tr>'; return; }
+      if(d.sub){ vb+='<tr><th colspan="2">'+d.sub+'</th></tr>'; return; }
       var v=d.get(cm), cls=(d.cls==='sub'?'subrow':(d.cls||'')), val=PLAIN[d.id]?pL(v):sL(v);
       if(d.id==='f_after') val=pL(v)+' of '+pL(cm.led.target);
       if(d.id==='bal'){
-        h+='<tr class="net drillable" onclick="toggleDrill(\'__bal\')"><td>'+d.label+' '+(OPEN['__bal']?'▾':'▸')+'</td><td class="r">'+balWords(v,cm.r)+'</td></tr>';
-        if(OPEN['__bal']) h+='<tr><td colspan="2" style="padding:2px 4px"><div class="drill">'+balanceBreakdown(MONTH)+'</div></td></tr>';
+        vb+='<tr class="net drillable" onclick="toggleDrill(\'__bal\')"><td>'+d.label+' '+(OPEN['__bal']?'▾':'▸')+'</td><td class="r">'+balWords(v,cm.r)+'</td></tr>';
+        if(OPEN['__bal']) vb+='<tr><td colspan="2" style="padding:2px 4px"><div class="drill">'+balanceBreakdown(MONTH)+'</div></td></tr>';
         return;
       }
-      h+='<tr class="'+cls+'"><td>'+(d.cls==='sub'?'<span class="muted">'+d.label+'</span>':d.label)+'</td><td class="r">'+val+'</td></tr>';
+      vb+='<tr class="'+cls+'"><td>'+(d.cls==='sub'?'<span class="muted">'+d.label+'</span>':d.label)+'</td><td class="r">'+val+'</td></tr>';
     });
-    h+='</table><p class="note">Minus = owed to OWH. Per clause 7: each month\'s result first pays down what you owe (set-up costs and advances), then fills the security float to its target; only the remainder is paid to you. In a loss month any prepayment absorbs it first, then the float. The float stays yours and is returned at the end, less anything properly owing (7.1.4).</p>';
+    vb+='</table><p class="note">Minus = owed to OWH. Per clause 7: each month\'s result first pays down what you owe (set-up costs and advances), then fills the security float to its target; only the remainder is paid to you. In a loss month any prepayment absorbs it first, then the float. The float stays yours and is returned at the end, less anything properly owing (7.1.4).</p>';
   }
-  h+='<p class="note">Tap a cost category to see what it is made of — date, description, amount. '+
-     'Everything is shown in <b>'+CUR+'</b>, each month converted at that month\'s own rate ('+
-     fmt(rateFor(r))+' EGP/USD for '+monLabel(MONTH)+'), so a closed month never changes when the rate moves.'+
-     (isFinal?'':' This month is still open, so figures can change until it is closed.')+'</p></div>';
 
+      if(!cm.led) vb+='<p class="note" style="margin:0">The settlement for this month will appear once the month has a result to settle.</p>';
+      vb+='</div>';
   /* ---- operating costs budget — clause 6.5.1 ---- */
   var bg=budgetFor(MONTH);
   if(bg && preLaunch(MONTH)){
-    h+='<div class="card"><h3>Operating costs budget — '+monShort(MONTH)+'</h3><p class="note" style="margin:0;font-size:11.5px;color:var(--ink)">'+
+    vb+='<div class="card"><h3>Operating costs budget — '+monShort(MONTH)+'</h3><p class="note" style="margin:0;font-size:11.5px;color:var(--ink)">'+
        (commenceOf()?'This month is before the commencement date ('+longDay(new Date(commenceOf()+'T12:00:00'))+'): costs now are set-up costs, repayable under clause 5.3, and the monthly ceiling does not apply yet.'
                     :'The commencement date has not been set yet. Costs so far are set-up costs, repayable under clause 5.3; the monthly operating-costs ceiling (clause 6.5.1) starts on the commencement date.')+'</p></div>';
   } else if(bg){
     var bL=function(v){ return sym()+fmt(conv(v,'USD',bg.r)); }, over=bg.left<-0.005;
-    h+='<div class="card"><h3>Operating costs budget — '+monShort(MONTH)+'</h3><table class="d">'+
+    vb+='<div class="card"><h3>Operating costs budget — '+monShort(MONTH)+'</h3><table class="d">'+
        '<tr><td>Turnovers this month</td><td class="r">'+bg.tn+'</td></tr>'+
        '<tr><td>Ceiling — $45 × '+bg.tn+' + $60</td><td class="r">'+bL(bg.ceil)+'</td></tr>'+
        '<tr><td>Operating costs so far</td><td class="r">'+bL(bg.spent)+'</td></tr>'+
@@ -546,16 +619,28 @@ function render(){
        'Furniture and set-up purchases are not operating costs and are not counted here. The ceiling rises each anniversary of the start date.</p></div>';
   }
 
-  /* ---- statement status, questions and objections — clauses 8.1, 8.2.2, 8.4 ---- */
-  h+=objCard(r,isFinal);
 
-  h+='<div class="card"><h3>Download</h3><div style="display:flex;gap:6px;flex-wrap:wrap">'+
-     '<button class="btn" onclick="exportStatement()">This month\'s statement</button>'+
-     '<button class="btn" onclick="exportBookings()">All bookings</button>'+
-     '<button class="btn" onclick="exportCosts()">All cost entries</button></div>'+
-     '<p class="note">CSV files that open in Excel or Google Sheets — the statement, every booking with its gross, fees and net, and every cost entry.</p></div>';
+    } else {
+      vb+='<div class="card"><h3>All months</h3><table class="d">'+ms.slice().reverse().map(function(m){
+           var mm=PC.model(DATA,myFlat(),m); if(!mm) return '';
+           var fin=mm.status==='final', pb=mm.closedAt?' · published '+dayLabel(mm.closedAt):'';
+           return '<tr class="drillable" onclick="openMonth(\''+m+'\')"><td>'+monLabel(m)+(preLaunch(m)&&m<=((DATA.meta&&DATA.meta.currentMonth)||'9999')?' <span class="muted">· pre-launch</span>':'')+
+                  '<div class="muted">'+(fin?'final':'in progress')+pb+'</div></td><td class="r">'+mv(mm.v.res,mm)+'<div class="muted">month result</div></td></tr>'; }).join('')+'</table>'+
+         '<p class="note">Tap a month to open its statement.</p></div>';
+    }
 
-  $('#app').innerHTML=h;
+  } else {
+    /* ============ ASK OWH — questions, objections, documents ============ */
+    vb+=objCard(r,isFinal);
+    vb+='<div class="card"><h3>Documents</h3><table class="d">'+
+       '<tr><td>Management agreement</td><td class="r"><a href="#" onclick="askDoc(\''+encodeURIComponent('Please send me a copy of the management agreement.')+'\');return false">request a copy</a></td></tr>'+
+       '<tr><td>Annex B — furniture and contents list</td><td class="r muted">added when furnishing is complete</td></tr>'+
+       '<tr><td>Annex E — condition photos, room by room</td><td class="r muted">added at the start date</td></tr></table>'+
+       '<p class="note">Documents are not stored on this page; ask for a copy and we will send it to you.</p></div>';
+  }
+
+  $('#app').innerHTML=h+vb;
+  try{ var on=document.querySelector('#chips button.on'); if(on&&on.scrollIntoView) on.scrollIntoView({inline:'center',block:'nearest'}); }catch(e){}
 }
 
 AUTH_ON_LOGIN = boot; if (authGuard()) boot();
