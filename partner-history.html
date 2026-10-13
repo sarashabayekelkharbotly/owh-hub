@@ -450,7 +450,7 @@ function render(){
   h+='<p class="h1">'+esc(f)+' <span class="sub">· statistics</span></p>';
 
   /* ---- the summary: totals and averages for a time frame (the month-by-month detail is the Excel download below) ---- */
-  var sms=inRange(R.sum), S=summaryFor(sms), mm=function(x){ return sym()+fmt(x); };
+  var sms=inRange(R.sum), S=summaryFor(sms), mm=function(x){ return (x<-0.005?'− ':'')+sym()+fmt(Math.abs(x)); };
   var tile=function(l,v,s){ return '<div class="kt"><div class="kpi-l">'+l+'</div><div class="kpi-v">'+v+'</div><div class="kpi-s">'+(s||'&nbsp;')+'</div></div>'; };
   h+='<div class="card"><div class="chead"><h3>Summary</h3><div class="rowbtns">'+timeSeg('sum')+seg([['USD','USD'],['EGP','EGP']],CUR,'setCur')+'</div></div>'+
      '<div class="kg">'+
