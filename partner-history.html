@@ -160,7 +160,8 @@ function onData(j){ if(j.partners){ renderChooser(j.partners); return; } DATA=j.
 
 function myFlat(){ return (ME&&ME.flat) || (DATA.meta.preview&&DATA.meta.preview.flat) || (DATA.meta.flatsOrder&&DATA.meta.flatsOrder[0]) || ''; }
 function flatName(){ var f=myFlat(), m=(DATA.flats||[]).filter(function(x){return x.id===f;})[0]; return (m&&m.name)||f; }
-function allMonths(){ var f=myFlat(); return DATA.pnl&&DATA.pnl[f] ? Object.keys(DATA.pnl[f]).sort() : []; }
+/* the sheet carries empty rows far into the future; every table, chart and download here stops at next month */
+function allMonths(){ var f=myFlat(), lim=chipLimit(); return DATA.pnl&&DATA.pnl[f] ? Object.keys(DATA.pnl[f]).sort().filter(function(m){ return m<=lim; }) : []; }
 function recFor(m){ var f=myFlat(); return (DATA.pnl&&DATA.pnl[f]&&DATA.pnl[f][m])||null; }
 function daysIn(ym){ return new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate(); }
 
