@@ -43,6 +43,7 @@ table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
 .g{color:var(--g)}.neg{color:var(--red)}
 .btn{border:1px solid var(--line);background:var(--white);color:var(--ink);font-family:inherit;font-weight:700;font-size:12px;border-radius:9px;padding:6px 13px;cursor:pointer}
 .btn:hover{background:var(--grey)}
+.ctit{font-size:11.5px;font-weight:700;color:var(--soft);margin:10px 0 2px}
 .kg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 @media(max-width:560px){.kg{grid-template-columns:1fr 1fr}}
 .kt{background:var(--white);border:1px solid var(--line);border-radius:11px;padding:8px 10px}
@@ -75,12 +76,12 @@ table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
     <a class="tab" href="partner.html#bookings"><span class="ti">📅</span>Bookings</a>
     <a class="tab" href="partner.html#statement"><span class="ti">📄</span>Statement</a>
     <a class="tab active" href="partner-history.html"><span class="ti">📊</span>Statistics</a>
-    <a class="tab" href="partner.html#ask"><span class="ti">💬</span>Ask OWH</a>
+    <a class="tab" href="partner.html#contract"><span class="ti">📜</span>Contract</a>
   </nav>
 </div>
 
 <script src="auth.js"></script>
-<script src="partner-core.js?v=5"></script>
+<script src="partner-core.js?v=6"></script>
 <script>
 /* SCREEN 7 — Partner, history & statistics.
    Each card carries its own time range, the same 3M/6M/YTD/12M/all control the Statistics screen uses,
@@ -89,8 +90,7 @@ table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
 AUTH_ROLE = 'partner';
 
 var DATA=null, CUR='USD', OPEN={cost:true}, CHAN='revenue';      // the cost categories are open by default, like the statement
-var R={sum:'12M', dl:'12M', occ:'12M', chan:'12M'};
-var DL={from:'', to:''};           // a custom From–To for the download; empty = use the quick range above it
+var R={sum:'12M', occ:'12M', chan:'12M'};
 try{ CUR=localStorage.getItem('owh_cur')||'USD'; }catch(e){}
 
 var $=function(s){return document.querySelector(s);};
@@ -176,14 +176,6 @@ function seg(opts,cur,fn){ return '<div class="seg">'+opts.map(function(o){
   return '<button class="'+(cur===v?'on':'')+'" onclick="'+fn+'(\''+v+'\')">'+lbl+'</button>'; }).join('')+'</div>'; }
 function timeSeg(k){ return seg(['3M','6M','YTD','12M','all'], R[k], 'setR_'+k); }
 function setR_sum(v){ R.sum=v; render(); }
-function setR_dl(v){ R.dl=v; DL.from=''; DL.to=''; render(); }
-function setDl(){ var a=document.getElementById('dlFrom'), b=document.getElementById('dlTo'); DL.from=a?a.value:''; DL.to=b?b.value:''; render(); }
-/* the months the download covers: a custom From–To when set, else the quick range */
-function dlMonths(){
-  var all=allMonths(), lim=(DATA.meta&&DATA.meta.currentMonth)?chipLimit():'9999';
-  if(DL.from||DL.to){ var a=DL.from||'0000-00', b=DL.to||'9999-99'; return all.filter(function(m){ return m>=a&&m<=b; }); }
-  return inRange(R.dl).filter(function(m){ return m<=lim; });
-}
 function chipLimit(){ var c=(DATA&&DATA.meta&&DATA.meta.currentMonth)||''; if(!c) return '9999'; var y=+c.slice(0,4), mo=+c.slice(5,7)+1; if(mo>12){ y++; mo=1; } return y+'-'+('0'+mo).slice(-2); }
 function setR_occ(v){ R.occ=v; render(); }
 function setR_chan(v){ R.chan=v; render(); }
@@ -231,212 +223,52 @@ function rowFor(m){
 function modelsIn(ms){ return ms.map(function(m){ return PC.model(DATA,myFlat(),m); }).filter(Boolean); }
 function cellTxt(d,m){ var v=d.get(m); if(v==null||!isFinite(v)) return '—';
   if(d.t==='n') return fmtN(v); if(d.t==='p') return Math.round(v*100)+'%'; if(d.t==='r') return v.toFixed(2); return fmt(CUR==='USD'?v:v*m.rate); }
-function csv(){
-  var ms=dlMonths(), models=modelsIn(ms), defs=PC.rowDefs(models);
-  var q=function(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
-  var cellCsv=function(d,m){ var v=d.get(m); if(v==null||!isFinite(v)) return ''; if(d.t==='n') return String(Math.round(v)); if(d.t==='p') return (v*100).toFixed(1)+'%'; if(d.t==='r') return v.toFixed(2); return (CUR==='USD'?v:v*m.rate).toFixed(2); };
-  var out=[['Line'].concat(models.map(function(m){ return monLabel(m.ym)+' ('+CUR+')'; }))];
-  defs.forEach(function(d){
-    if(d.sec){ out.push([]); out.push([d.sec.toUpperCase()]); return; }
-    if(d.sub){ out.push([d.sub]); return; }
-    out.push([(d.cat?'   ':'')+d.label].concat(models.map(function(m){ return cellCsv(d,m); })));
-  });
-  out.push([]); out.push(['Status'].concat(models.map(function(m){ return m.status==='final'?'final':'in progress'; })));
-  /* the entries behind every cost category, for the months in range */
-  out.push([]); out.push(['COST ENTRIES — the detail behind every category above']);
-  out.push(['Month','Category','Date','Description','Amount','Currency',"USD at that month's rate"]);
-  var inR={}; ms.forEach(function(m){ inR[m]=1; });
-  var catKey={}; Object.keys(PC.CATMAP).forEach(function(k){ catKey[PC.CATMAP[k]]=k; });
-  (DATA.tx||[]).filter(function(t){ return t.flat===myFlat() && inR[t.ym]; })
-    .sort(function(a,b){ return (a.ym+a.date)<(b.ym+b.date)?-1:1; })
-    .forEach(function(t){ var m=models.filter(function(x){ return x.ym===t.ym; })[0], usd=(t.currency==='USD')?t.amount:(m?t.amount/m.rate:null);
-      var k=catKey[t.cat]; out.push([monLabel(t.ym),(k&&LABEL[k])||t.cat,t.date||'',t.desc||'',t.amount==null?'':Number(t.amount).toFixed(2),t.currency||'',usd==null?'':usd.toFixed(2)]); });
-  var blob=new Blob(['\uFEFF'+out.map(function(r){ return r.map(q).join(','); }).join('\r\n')],{type:'text/csv;charset=utf-8;'});
-  var a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=flatName().replace(/\s+/g,'-')+'-statistics-'+(ms[0]||'')+'-to-'+(ms[ms.length-1]||'')+'.csv';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+/* ---- charts. They are drawn at the size they are SHOWN — the old ones were drawn 980 units wide and shrunk, so on a phone the labels came out 3px tall.
+   Each month gets at least 50px (the chart scrolls sideways if there are more months than fit); labels are 12px; a month with nothing to show says so. ---- */
+function chartW(n){ var host=document.getElementById('app'); var w=(host&&host.clientWidth?host.clientWidth:340)-28; return Math.max(w,n*50+54); }
+function monAxis(ms,i,cx,y){
+  var newYr=(i===0||ms[i].slice(0,4)!==ms[i-1].slice(0,4));
+  return '<text x="'+cx+'" y="'+y+'" font-size="12" text-anchor="middle" fill="#6b6b6b">'+monShort(ms[i])+'</text>'+
+         (newYr?'<text x="'+cx+'" y="'+(y+13)+'" font-size="10" text-anchor="middle" fill="#9a8a8a">'+ms[i].slice(0,4)+'</text>':'');
 }
+function svgWrap(W,H,inner){ return '<div style="overflow-x:auto"><svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="display:block;max-width:none">'+inner+'</svg></div>'; }
 
-/* ---- the Excel download: the statement's own rows, one column per month, for the chosen time frame; plus every cost entry and every booking.
-   FORMATTED (Sarah 2026-10-13): title and subtitle, brand-coloured header, section bands, bold totals, indented breakdowns, negatives in red, zeros as a dash,
-   real numbers and real dates, frozen headers, filters, widths, landscape printing. ExcelJS is fetched only when the button is pressed; if it cannot load,
-   the same data downloads as CSV instead. ---- */
-function loadXlsx(cb){
-  if(window.ExcelJS) return cb(true);
-  var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
-  sc.onload=function(){ cb(!!window.ExcelJS); }; sc.onerror=function(){ cb(false); };
-  document.head.appendChild(sc);
-}
-function dlMsg(t){ var e=document.getElementById('dlmsg'); if(e) e.textContent=t; }
-function xlDate(ymd){ var m=(ymd||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m?new Date(Date.UTC(+m[1],+m[2]-1,+m[3])):(ymd||null); }
-function buildWorkbook(E,ms){
-  var models=modelsIn(ms), defs=PC.rowDefs(models), f=myFlat(), flat=flatName();
-  var RED='FFCC5F5F', BLUSH='FFF9F0F0', LINE='FFECDEDE', GREY='FF6B6B6B', SOFT='FF7A6A6A', INK='FF1A1A1A', AMBER='FFFDF1D8';
-  var MONEY=CUR==='USD'?'#,##0.00;[Red]-#,##0.00;"–"':'#,##0;[Red]-#,##0;"–"';
-  var fill=function(a){ return {type:'pattern',pattern:'solid',fgColor:{argb:a}}; };
-  var hair={style:'thin',color:{argb:LINE}}, dark={style:'thin',color:{argb:INK}};
-  var wb=new E.Workbook(); wb.creator='The Hub · OurWelcomeHome'; wb.created=new Date();
-  var when=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
-  var range=monLabel(ms[0])+(ms.length>1?' → '+monLabel(ms[ms.length-1]):'');
-
-  /* ---------- sheet 1 — the statement, month by month ---------- */
-  var ws=wb.addWorksheet('Statement by month',{properties:{tabColor:{argb:RED}},views:[{state:'frozen',xSplit:1,ySplit:5,showGridLines:false}],
-    pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'4:5'}});
-  var nc=models.length+1;
-  ws.columns=[{width:54}].concat(models.map(function(){ return {width:15}; }));
-  ws.mergeCells(1,1,1,nc); var t1=ws.getCell(1,1); t1.value=flat+' — statement by month'; t1.font={name:'Calibri',size:16,bold:true,color:{argb:RED}}; ws.getRow(1).height=26;
-  ws.mergeCells(2,1,2,nc); var t2=ws.getCell(2,1);
-  t2.value=range+' · '+models.length+' month'+(models.length===1?'':'s')+' · amounts in '+CUR+(CUR==='EGP'?'':' (each month converted at its own EGP/USD rate, shown in the statement)')+' · prepared '+when;
-  t2.font={name:'Calibri',size:10,color:{argb:GREY}};
-  ws.addRow([]);
-  var hr=ws.addRow(['Line'].concat(models.map(function(m){ return monLabel(m.ym); })));
-  hr.height=22; hr.eachCell(function(c,n){ c.font={name:'Calibri',size:11,bold:true,color:{argb:'FFFFFFFF'}}; c.fill=fill(RED); c.alignment={vertical:'middle',horizontal:n===1?'left':'right'}; });
-  var sr=ws.addRow([''].concat(models.map(function(m){ return m.status==='final'?'final':'in progress'; })));
-  sr.eachCell(function(c,n){ c.font={name:'Calibri',size:9,italic:true,color:{argb:GREY}}; c.fill=fill(BLUSH); c.alignment={horizontal:n===1?'left':'right'}; c.border={bottom:hair}; });
-
-  defs.forEach(function(d){
-    if(d.sec){
-      var sh=ws.addRow([d.sec.toUpperCase()]);
-      for(var k=1;k<=nc;k++){ var c=sh.getCell(k); c.fill=fill(BLUSH); c.font={name:'Calibri',size:10,bold:true,color:{argb:GREY}}; c.border={top:hair,bottom:hair}; }
-      sh.height=20; return;
-    }
-    if(d.sub){ var sb=ws.addRow([d.sub]); sb.getCell(1).font={name:'Calibri',size:10,bold:true,italic:true,color:{argb:SOFT}}; sb.getCell(1).alignment={indent:0}; return; }
-    var vals=models.map(function(m){ var v=d.get(m); if(v==null||!isFinite(v)) return null;
-      if(d.t==='n') return Math.round(v); if(d.t==='p') return Math.round(v*1000)/1000; if(d.t==='r') return Math.round(v*100)/100; return Math.round((CUR==='USD'?v:v*m.rate)*100)/100; });
-    var row=ws.addRow([d.label].concat(vals));
-    var fmtz=d.t==='n'?'#,##0':(d.t==='p'?'0.0%':(d.t==='r'?'0.00':MONEY));
-    var bold=(d.cls==='tot'||d.cls==='net'), grey=(d.cls==='sub'||d.cls==='cat');
-    row.eachCell({includeEmpty:true},function(c,n){
-      if(n>nc) return;
-      c.font={name:'Calibri',size:11,bold:bold,color:{argb:grey?SOFT:INK}};
-      c.border={bottom:hair};
-      if(n===1){ c.alignment={horizontal:'left',indent:d.cat?2:(d.cls==='sub'?1:0)}; }
-      else { c.numFmt=fmtz; c.alignment={horizontal:'right'}; }
-      if(d.cls==='tot') c.border={top:dark,bottom:hair};
-      if(d.cls==='net'){ c.fill=fill(BLUSH); c.border={top:dark,bottom:dark}; }
-    });
-  });
-  ws.addRow([]);
-  var notes=['Minus on the balance means owed to OWH. Management fee and costs are shown as they reduce your share.',
-             'Every cost category is a line above; the entries behind each are on the “Cost entries” sheet, and every booking is on the “Bookings” sheet.'];
-  notes.forEach(function(t){ var r=ws.addRow([t]); ws.mergeCells(r.number,1,r.number,nc); r.getCell(1).font={name:'Calibri',size:9,italic:true,color:{argb:GREY}}; r.getCell(1).alignment={wrapText:true,vertical:'top'}; r.height=26; });
-
-  /* ---------- sheet 2 — every cost entry ---------- */
-  var inR={}; ms.forEach(function(m){ inR[m]=1; });
-  var catKey={}; Object.keys(PC.CATMAP).forEach(function(k){ catKey[PC.CATMAP[k]]=k; });
-  var w2=wb.addWorksheet('Cost entries',{properties:{tabColor:{argb:'FF8A6420'}},views:[{state:'frozen',ySplit:1}],pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'1:1'}});
-  w2.columns=[{header:'Month',width:11},{header:'Category',width:20},{header:'Date',width:13},{header:'Description',width:52},{header:'Amount',width:13},{header:'Currency',width:10},{header:"USD at that month's rate",width:22}];
-  var entries=(DATA.tx||[]).filter(function(t){ return t.flat===f&&inR[t.ym]; }).sort(function(a,b){ return (a.ym+a.date)<(b.ym+b.date)?-1:1; });
-  entries.forEach(function(t){
-    var m=models.filter(function(x){ return x.ym===t.ym; })[0], usd=(t.currency==='USD')?t.amount:(m?t.amount/m.rate:null), k=catKey[t.cat];
-    w2.addRow([monLabel(t.ym),(k&&LABEL[k])||t.cat,xlDate(t.date),t.desc||'',t.amount==null?null:Math.round(t.amount*100)/100,t.currency||'',usd==null?null:Math.round(usd*100)/100]); });
-  var h2=w2.getRow(1); h2.height=22; h2.eachCell(function(c,n){ c.font={name:'Calibri',size:11,bold:true,color:{argb:'FFFFFFFF'}}; c.fill=fill('FF8A6420'); c.alignment={vertical:'middle',horizontal:n>=5&&n!==6?'right':'left'}; });
-  for(var r2=2;r2<=entries.length+1;r2++){ var rw=w2.getRow(r2);
-    rw.getCell(3).numFmt='dd mmm yyyy'; rw.getCell(3).alignment={horizontal:'left'}; rw.getCell(5).numFmt='#,##0.00'; rw.getCell(7).numFmt='#,##0.00';
-    rw.eachCell({includeEmpty:true},function(c){ c.font={name:'Calibri',size:11}; c.border={bottom:hair}; }); }
-  if(entries.length){
-    w2.autoFilter={from:{row:1,column:1},to:{row:entries.length+1,column:7}};
-    var tr=w2.addRow(['Total (visible rows)','','','','','',{formula:'SUBTOTAL(109,G2:G'+(entries.length+1)+')'}]);
-    tr.eachCell({includeEmpty:true},function(c,n){ if(n>7) return; c.font={name:'Calibri',size:11,bold:true}; c.fill=fill(BLUSH); c.border={top:dark}; });
-    tr.getCell(7).numFmt='#,##0.00';
-  }
-
-  /* ---------- sheet 3 — every booking ---------- */
-  var lo=ms[0], hi=ms[ms.length-1];
-  var w3=wb.addWorksheet('Bookings',{properties:{tabColor:{argb:'FF4A7FB5'}},views:[{state:'frozen',ySplit:1}],pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'1:1'}});
-  w3.columns=[{header:'Guest',width:24},{header:'Channel',width:14},{header:'Status',width:12},{header:'Booked',width:13},{header:'Check-in',width:13},{header:'Check-out',width:13},{header:'Nights',width:8},
-              {header:'Gross guest payment (USD)',width:16},{header:'Platform and card fees (USD)',width:16},{header:'Net (USD)',width:12},{header:'Other revenue (USD)',width:14},{header:'Review booking',width:30},{header:'Returned to you (USD)',width:16}];
-  var bs=(DATA.stays||[]).filter(function(s){ return s.flat===f&&s.portal!=='Blocked'&&s.checkIn&&s.checkOut&&s.checkIn.slice(0,7)<=hi&&s.checkOut.slice(0,7)>=lo; }).sort(function(a,b){ return a.checkIn<b.checkIn?-1:1; });
-  var r2d=function(x){ return Math.round(x*100)/100; };
-  bs.forEach(function(s){
-    var w=(s.allIn||0)-(s.other||0), g=(s.gross>0&&s.gross>=w)?s.gross:w;
-    w3.addRow([s.guest||'',s.portal||'Direct',s.status||'',xlDate(s.booked),xlDate(s.checkIn),xlDate(s.checkOut),s.nights||null,r2d(g),r2d(g-w),r2d(w),r2d(s.other||0),
-      s.review==='owh'?'OWH-funded (outside revenue)':(s.review==='owner'?'owner-funded (outside revenue)':''),s.review==='owner'?r2d(s.reviewGross||0):null]); });
-  var h3=w3.getRow(1); h3.height=34; h3.eachCell(function(c,n){ c.font={name:'Calibri',size:10,bold:true,color:{argb:'FFFFFFFF'}}; c.fill=fill('FF4A7FB5'); c.alignment={vertical:'middle',wrapText:true,horizontal:(n>=7&&n!==12)?'right':'left'}; });
-  for(var r3=2;r3<=bs.length+1;r3++){ var b=w3.getRow(r3), flagged=!!b.getCell(12).value;
-    [4,5,6].forEach(function(n){ b.getCell(n).numFmt='dd mmm yyyy'; b.getCell(n).alignment={horizontal:'left'}; });
-    [8,9,10,11,13].forEach(function(n){ b.getCell(n).numFmt='#,##0.00;[Red]-#,##0.00'; b.getCell(n).alignment={horizontal:'right'}; });
-    b.getCell(7).alignment={horizontal:'right'};
-    b.eachCell({includeEmpty:true},function(c,n){ if(n>13) return; c.font={name:'Calibri',size:11}; c.border={bottom:hair}; if(flagged) c.fill=fill(AMBER); }); }
-  if(bs.length){
-    w3.autoFilter={from:{row:1,column:1},to:{row:bs.length+1,column:13}};
-    var tb=w3.addRow(['Total (visible rows)','','','','','',{formula:'SUBTOTAL(109,G2:G'+(bs.length+1)+')'},{formula:'SUBTOTAL(109,H2:H'+(bs.length+1)+')'},{formula:'SUBTOTAL(109,I2:I'+(bs.length+1)+')'},{formula:'SUBTOTAL(109,J2:J'+(bs.length+1)+')'},{formula:'SUBTOTAL(109,K2:K'+(bs.length+1)+')'},'',{formula:'SUBTOTAL(109,M2:M'+(bs.length+1)+')'}]);
-    tb.eachCell({includeEmpty:true},function(c,n){ if(n>13) return; c.font={name:'Calibri',size:11,bold:true}; c.fill=fill(BLUSH); c.border={top:dark}; if(n>=7&&n!==12){ c.alignment={horizontal:'right'}; c.numFmt=n===7?'#,##0':'#,##0.00;[Red]-#,##0.00'; } });
-  }
-  return wb;
-}
-function saveBlob(buf,name){
-  var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} },4000);
-}
-function xlsxDownload(){
-  var ms=dlMonths(); if(!ms.length){ dlMsg('Choose at least one month.'); return; }
-  dlMsg('Preparing…');
-  loadXlsx(function(ok){
-    if(!ok){ dlMsg('Excel could not be prepared here — downloading a CSV instead.'); csv(); return; }
-    try{
-      var wb=buildWorkbook(window.ExcelJS,ms), name=flatName().replace(/\s+/g,'-')+'-statement-'+ms[0]+'-to-'+ms[ms.length-1]+'.xlsx';
-      wb.xlsx.writeBuffer().then(function(buf){ saveBlob(buf,name); dlMsg('Downloaded ✓'); })
-        .catch(function(){ dlMsg('Excel could not be prepared — downloading a CSV instead.'); csv(); });
-    }catch(e){ dlMsg('Excel could not be prepared — downloading a CSV instead.'); csv(); }
-  });
-}
-
-/* ---- occupancy bars + ADR line ---- */
+/* occupancy: one bar per month, the percentage written on it */
 function occChart(){
-  var ms=inRange(R.occ);
-  if(!ms.length) return '<div class="muted">No data in range.</div>';
-  var w=980,h=250,pl=52,pr=62,pt=26,pb=30, iw=(w-pl-pr)/ms.length, adrMax=1, ih=h-pt-pb;
-  var pts=ms.map(function(m){
-    var r=recFor(m), n=nightsIn(m), adr=n?cv((r&&r.revenue.earnings)||0,rateFor(r))/n:0;
-    if(adr>adrMax) adrMax=adr;
-    return {m:m, occ:n/daysIn(m), adr:adr, n:n};
+  var ms=inRange(R.occ); if(!ms.length) return '<div class="muted">No data in range.</div>';
+  var n=ms.length, W=chartW(n), H=190, pl=40, pr=10, pt=22, pb=40, iw=(W-pl-pr)/n, ph=H-pt-pb, g='', b='';
+  [0,0.5,1].forEach(function(f){ var y=pt+ph*(1-f);
+    g+='<line x1="'+pl+'" y1="'+y+'" x2="'+(W-pr)+'" y2="'+y+'" stroke="'+(f===0?'#cdbcbc':'#efe6e6')+'"></line><text x="'+(pl-6)+'" y="'+(y+4)+'" font-size="11" text-anchor="end" fill="#6b6b6b">'+Math.round(f*100)+'%</text>'; });
+  ms.forEach(function(m,i){
+    var md=PC.model(DATA,myFlat(),m), occ=md?md.k.occ:0, nn=md?md.k.nights:0, bw=Math.min(iw*0.62,44), x=pl+i*iw+(iw-bw)/2, bh=ph*Math.min(occ,1), y=pt+ph-bh;
+    b+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="3" fill="var(--occ)" opacity=".85"><title>'+monLabel(m)+' · '+Math.round(occ*100)+'% · '+nn+' nights</title></rect>'+
+       '<text x="'+(x+bw/2)+'" y="'+(y-5)+'" font-size="12" font-weight="700" text-anchor="middle" fill="#4c4040">'+Math.round(occ*100)+'%</text>'+monAxis(ms,i,x+bw/2,H-pb+16);
   });
-  var ny=function(f){ return h-pb-ih*f; };                       // 0..1 -> y
-  /* No axis scales: every value is written on the mark it belongs to, which is one less thing to
-     read across. Faint gridlines stay for shape. */
-  var grid='';
-  [0.25,0.5,0.75,1].forEach(function(f){
-    grid+='<line x1="'+pl+'" y1="'+ny(f)+'" x2="'+(w-pr)+'" y2="'+ny(f)+'" stroke="#f7efef"></line>';
+  return svgWrap(W,H,g+b);
+}
+/* average nightly rate: one bar per month with the amount written on it; a month with no priced nights shows a dash, not a drop to zero */
+function adrChart(){
+  var ms=inRange(R.occ); if(!ms.length) return '<div class="muted">No data in range.</div>';
+  var n=ms.length, W=chartW(n), H=190, pl=10, pr=10, pt=22, pb=40, iw=(W-pl-pr)/n, ph=H-pt-pb, g='', b='';
+  var vals=ms.map(function(m){ var md=PC.model(DATA,myFlat(),m); return (md&&md.k.adr!=null)?cv(md.k.adr,md.rate):null; });
+  var max=Math.max.apply(null,vals.map(function(v){ return v||0; }).concat([1]))*1.12;
+  g+='<line x1="'+pl+'" y1="'+(pt+ph)+'" x2="'+(W-pr)+'" y2="'+(pt+ph)+'" stroke="#cdbcbc"></line>';
+  ms.forEach(function(m,i){
+    var v=vals[i], bw=Math.min(iw*0.62,44), x=pl+i*iw+(iw-bw)/2, cx=x+bw/2;
+    if(v==null) b+='<text x="'+cx+'" y="'+(pt+ph-6)+'" font-size="12" text-anchor="middle" fill="#9a8a8a">—</text>';
+    else { var bh=ph*(v/max), y=pt+ph-bh;
+      b+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="3" fill="var(--adr)" opacity=".85"><title>'+monLabel(m)+' · '+sym()+fmt2(v)+' a night</title></rect>'+
+         '<text x="'+cx+'" y="'+(y-5)+'" font-size="12" font-weight="700" text-anchor="middle" fill="#4c4040">'+sym()+fmt(v)+'</text>'; }
+    b+=monAxis(ms,i,cx,H-pb+16);
   });
-  var bars=pts.map(function(p,i){
-    var bh=ih*Math.min(p.occ,1), x=pl+i*iw+iw*0.24, bw=Math.max(iw*0.52,3);
-    var pctTxt=Math.round(p.occ*100)+'%';
-    // inside the bar when it is tall enough to hold the text, just above it when it is not
-    var lbl = bh>=17
-      ? '<text x="'+(x+bw/2)+'" y="'+(h-pb-bh+12)+'" font-size="9" font-weight="700" text-anchor="middle" fill="#fff">'+pctTxt+'</text>'
-      : '<text x="'+(x+bw/2)+'" y="'+(h-pb-bh-4)+'" font-size="9" font-weight="700" text-anchor="middle" fill="var(--occ)">'+pctTxt+'</text>';
-    return '<rect x="'+x+'" y="'+(h-pb-bh)+'" width="'+bw+'" height="'+bh+'" rx="2" fill="var(--occ)" opacity=".82">'+
-           '<title>'+monLabel(p.m)+' · '+pctTxt+' occupied · '+p.n+' nights</title></rect>'+lbl+
-           '<text x="'+(x+bw/2)+'" y="'+(h-pb+13)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+monShort(p.m)+'</text>';
-  }).join('');
-  // the nightly rate written above each point
-  var adrLbl=pts.map(function(p,i){
-    return '<text x="'+(pl+i*iw+iw/2)+'" y="'+(ny(p.adr/adrMax)-7)+'" font-size="9" font-weight="700" '+
-           'text-anchor="middle" fill="var(--adr)">'+sym()+fmt(p.adr)+'</text>';
-  }).join('');
-  var line=pts.map(function(p,i){ return (i?'L':'M')+(pl+i*iw+iw/2)+','+ny(p.adr/adrMax); }).join(' ');
-  var circles=pts.map(function(p,i){
-    return '<circle cx="'+(pl+i*iw+iw/2)+'" cy="'+ny(p.adr/adrMax)+'" r="2.6" fill="var(--adr)">'+
-           '<title>'+monLabel(p.m)+' · '+sym()+fmt2(p.adr)+' a night</title></circle>';
-  }).join('');
-  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:250px" preserveAspectRatio="xMidYMid meet">'+
-    grid+
-    '<text x="'+pl+'" y="13" font-size="10" font-weight="700" fill="var(--occ)" text-anchor="start">bars · occupancy %</text>'+
-    '<text x="'+(w-pr)+'" y="13" font-size="10" font-weight="700" fill="var(--adr)" text-anchor="end">line · nightly rate ('+CUR+')</text>'+
-    '<line x1="'+pl+'" y1="'+(h-pb)+'" x2="'+(w-pr)+'" y2="'+(h-pb)+'" stroke="#e0d0d0"></line>'+
-    bars+'<path d="'+line+'" fill="none" stroke="var(--adr)" stroke-width="1.9"></path>'+circles+adrLbl+'</svg>'+
-    '<div class="legend"><span><i style="background:var(--occ)"></i>occupancy % — share of the month\'s nights booked</span>'+
-    '<span><i style="background:var(--adr)"></i>ADR — earnings ÷ nights, in '+CUR+'</span></div>';
+  return svgWrap(W,H,g+b);
 }
 
-/* ---- the bottom chart: revenue / stays / nights by channel, or net (which no channel owns) ---- */
+/* ---- by channel: revenue / stays / nights (stacked by channel), or the MONTH RESULT of the statement (which no channel owns) ---- */
 function chanData(ms){
   var out={};
   ms.forEach(function(m){ out[m]={Airbnb:0,Booking:0,Direct:0}; });
-  if(CHAN==='net'){ ms.forEach(function(m){ var r=rowFor(m); out[m]={Net:r?r.net:0}; }); return out; }
+  if(CHAN==='result'){ ms.forEach(function(m){ var md=PC.model(DATA,myFlat(),m); out[m]={Result:md?(CUR==='USD'?md.v.res:md.v.res*md.rate):0}; }); return out; }
   liveStays().forEach(function(s){
     ms.forEach(function(m){
       var n=nightsOf(s,m); if(!n) return;
@@ -449,44 +281,31 @@ function chanData(ms){
   return out;
 }
 function chanChart(){
-  var ms=inRange(R.chan);
-  if(!ms.length) return '<div class="muted">No data in range.</div>';
-  var data=chanData(ms), series=(CHAN==='net')?[['Net','var(--g)']]:CH;
-  var money=(CHAN==='revenue'||CHAN==='net');
-  var unit={revenue:CUR,net:CUR,stays:'bookings',nights:'nights'}[CHAN];
-  var val=function(v){ return money ? sym()+fmt(v) : fmtN(v); };      // counts never grow decimals
-  var w=980,h=245,pl=22,pr=16,pt=26,pb=30, iw=(w-pl-pr)/ms.length, max=1, ih=h-pt-pb;
-  ms.forEach(function(m){ var t=series.reduce(function(a,c){ return a+(data[m][c[0]]||0); },0); if(t>max)max=t; });
-  var ny=function(f){ return h-pb-ih*f; };
-  var grid='';                                    // shape only — every number is written on its own segment
-  [0.25,0.5,0.75,1].forEach(function(f){
-    grid+='<line x1="'+pl+'" y1="'+ny(f)+'" x2="'+(w-pr)+'" y2="'+ny(f)+'" stroke="#f7efef"></line>';
-  });
-  var body=ms.map(function(m,i){
-    var y=h-pb, x=pl+i*iw+iw*0.22, bw=Math.max(iw*0.56,3), out='', lbls='';
+  var ms=inRange(R.chan); if(!ms.length) return '<div class="muted">No data in range.</div>';
+  var data=chanData(ms), isRes=(CHAN==='result'), series=isRes?[['Result','var(--g)']]:CH;
+  var money=(CHAN==='revenue'||isRes), val=function(v){ return money ? (v<0?'− ':'')+sym()+fmt(Math.abs(v)) : fmtN(v); };
+  var n=ms.length, W=chartW(n), H=230, pl=10, pr=10, pt=24, pb=40, iw=(W-pl-pr)/n, ph=H-pt-pb;
+  var maxPos=1, maxNeg=0;
+  ms.forEach(function(m){ var pos=0, neg=0; series.forEach(function(c){ var v=data[m][c[0]]||0; if(v>0) pos+=v; else neg+=v; }); if(pos>maxPos) maxPos=pos; if(neg<maxNeg) maxNeg=neg; });
+  var span=maxPos+Math.abs(maxNeg), zeroY=pt+ph*(maxPos/span), unit=ph/span, out='';
+  out+='<line x1="'+pl+'" y1="'+zeroY+'" x2="'+(W-pr)+'" y2="'+zeroY+'" stroke="#cdbcbc"></line>';
+  ms.forEach(function(m,i){
+    var bw=Math.min(iw*0.62,46), x=pl+i*iw+(iw-bw)/2, cx=x+bw/2, up=zeroY, tot=0;
     series.forEach(function(c){
-      var v=data[m][c[0]]||0; if(v<=0) return;
-      var bh=ih*(v/max); y-=bh;
-      out+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" fill="'+c[1]+'" opacity=".88">'+
-           '<title>'+monLabel(m)+' · '+c[0]+' · '+val(v)+'</title></rect>';
-      /* the split written on the segment itself — the point of a stacked bar is the breakdown, and
-         reading it off a shared axis is guesswork. Skipped when the slice is too thin to hold text. */
-      if(bh>=13) lbls+='<text x="'+(x+bw/2)+'" y="'+(y+bh/2+3.5)+'" font-size="9" font-weight="700" '+
-                       'text-anchor="middle" fill="#fff">'+val(v)+'</text>';
+      var v=data[m][c[0]]||0; if(v===0) return; tot+=v;
+      var bh=Math.abs(v)*unit, y=v>0?(up-bh):zeroY, col=(isRes&&v<0)?'var(--red)':c[1];
+      if(v>0){ up-=bh; }
+      out+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" fill="'+col+'" opacity=".88"><title>'+monLabel(m)+' · '+c[0]+' · '+val(v)+'</title></rect>';
+      if(!isRes && bh>=17) out+='<text x="'+cx+'" y="'+(y+bh/2+4)+'" font-size="11" font-weight="700" text-anchor="middle" fill="#fff">'+val(v)+'</text>';
     });
-    var tot=series.reduce(function(a,c){ return a+(data[m][c[0]]||0); },0);
-    if(tot>0) out+='<text x="'+(x+bw/2)+'" y="'+(y-5)+'" font-size="9.5" font-weight="700" text-anchor="middle" fill="#4c4040">'+val(tot)+'</text>';
-    out+=lbls;
-    out+='<text x="'+(x+bw/2)+'" y="'+(h-pb+13)+'" font-size="9" text-anchor="middle" fill="#6b6b6b">'+monShort(m)+'</text>';
-    return out;
-  }).join('');
-  var title={revenue:'revenue',net:'month result',stays:'bookings completed',nights:'nights booked'}[CHAN];
-  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:245px" preserveAspectRatio="xMidYMid meet">'+
-    grid+
-    '<text x="'+pl+'" y="13" font-size="10" font-weight="700" fill="#6b6b6b">'+title+' per month'+(money?' ('+CUR+')':' ('+unit+')')+'</text>'+
-    '<line x1="'+pl+'" y1="'+(h-pb)+'" x2="'+(w-pr)+'" y2="'+(h-pb)+'" stroke="#e0d0d0"></line>'+body+'</svg>'+
-    '<div class="legend">'+series.map(function(c){ return '<span><i style="background:'+c[1]+'"></i>'+c[0]+'</span>'; }).join('')+
-    '<span>figures above each bar are the month total</span></div>';
+    if(isRes){ var vv=data[m].Result||0, ty=vv>=0?(zeroY-Math.abs(vv)*unit-5):(zeroY+Math.abs(vv)*unit+15);
+      out+='<text x="'+cx+'" y="'+(Math.abs(vv)<0.005?zeroY-5:ty)+'" font-size="12" font-weight="700" text-anchor="middle" fill="'+(vv<0?'#a33':'#2d6a3e')+'">'+val(vv)+'</text>'; }
+    else if(tot>0) out+='<text x="'+cx+'" y="'+(zeroY-tot*unit-5)+'" font-size="12" font-weight="700" text-anchor="middle" fill="#4c4040">'+val(tot)+'</text>';
+    out+=monAxis(ms,i,cx,H-pb+16);
+  });
+  return svgWrap(W,H,out)+
+    '<div class="legend">'+(isRes?'<span><i style="background:var(--g)"></i>a month that earned</span><span><i style="background:var(--red)"></i>a month still recovering set-up costs</span>'
+                               :series.map(function(c){ return '<span><i style="background:'+c[1]+'"></i>'+c[0]+'</span>'; }).join(''))+'</div>';
 }
 
 function render(){
@@ -515,31 +334,21 @@ function render(){
   });
   h+='</tbody></table></div>'+
      '<p class="note">Minus on the balance means owed to OWH. All figures '+CUR+', each month converted at the rate shown above (the rate for that month)'+(anyOpen?' · <b>*</b> still open, may change until the month is closed':'')+
-     '. This is the short version: every cost category, the settlement steps, every cost entry and every booking are in the Excel download below.</p></div>';
+     '. This is the short version: every cost category, the settlement steps, every cost entry and every booking are in the Excel download on the <a href="partner.html#statement">Statement</a> tab.</p></div>';
 
-  /* ---- the Excel download: month by month, for the time frame chosen ---- */
-  var dms=dlMonths();
-  h+='<div class="card"><h3>Download — month by month</h3>'+
-     '<p class="note" style="margin:2px 0 6px">Pick a time frame. You get an Excel file with one column per month — the same lines as your statement, every cost category — plus a sheet with every cost entry and one with every booking.</p>'+
-     '<div class="rowbtns">'+seg(['3M','6M','YTD','12M','all'], (DL.from||DL.to)?'':R.dl, 'setR_dl')+'</div>'+
-     '<div class="dl"><label>From <input type="month" id="dlFrom" value="'+esc(DL.from)+'" min="'+(allMonths()[0]||'')+'" max="'+chipLimit()+'" onchange="setDl()"></label>'+
-     '<label>To <input type="month" id="dlTo" value="'+esc(DL.to)+'" min="'+(allMonths()[0]||'')+'" max="'+chipLimit()+'" onchange="setDl()"></label></div>'+
-     '<div class="muted">'+(dms.length?monLabel(dms[0])+(dms.length>1?' → '+monLabel(dms[dms.length-1]):'')+' · '+dms.length+' month'+(dms.length===1?'':'s'):'No months in this time frame')+'</div>'+
-     '<div class="rowbtns" style="margin-top:8px"><button class="btn" onclick="xlsxDownload()">Download Excel</button><span class="muted" id="dlmsg"></span></div></div>';
+  /* ---- occupancy & average nightly rate ---- */
+  h+='<div class="card"><div class="chead"><h3>Occupancy and average nightly rate</h3>'+timeSeg('occ')+'</div>'+
+     '<div class="csub">Occupancy is the share of the month\'s nights that were booked. The nightly rate is earnings ÷ nights; review-booking nights are left out of it.</div>'+
+     '<div class="ctit">Occupancy</div>'+occChart()+
+     '<div class="ctit">Average nightly rate ('+CUR+')</div>'+adrChart()+'</div>';
 
-
-  /* ---- occupancy & ADR ---- */
-  h+='<div class="card"><div class="chead"><h3>Your flat — occupancy &amp; ADR</h3>'+timeSeg('occ')+'</div>'+
-     '<div class="csub">bars = share of nights booked · line = average nightly rate, earnings ÷ nights</div>'+
-     occChart()+'</div>';
-
-  /* ---- by channel ---- */
-  var lbl={revenue:'revenue',stays:'stays',nights:'nights',net:'net profit'}[CHAN];
-  h+='<div class="card"><div class="chead"><h3>Your flat — '+lbl+' by month</h3>'+
-     '<div class="rowbtns">'+seg([['revenue','Revenue'],['stays','Stays'],['nights','Nights'],['net','Net profit']],CHAN,'setChan')+
+  /* ---- by channel, or the monthly result ---- */
+  var lbl={revenue:'revenue',stays:'stays',nights:'nights',result:'monthly result'}[CHAN];
+  h+='<div class="card"><div class="chead"><h3>Your flat — '+(CHAN==='result'?lbl:lbl+' by month')+'</h3>'+
+     '<div class="rowbtns">'+seg([['revenue','Revenue'],['stays','Stays'],['nights','Nights'],['result','Monthly result']],CHAN,'setChan')+
      timeSeg('chan')+'</div></div>'+
-     '<div class="csub">'+(CHAN==='net'
-        ? 'the result after costs and the management share — negative while costs are still being recovered; a month total, not something any one channel earns'
+     '<div class="csub">'+(CHAN==='result'
+        ? 'the Month result of your statement — your share after costs, plus any review bookings you paid that are returned to you. It is negative while set-up costs are still being recovered.'
         : 'split by the channel each booking came through')+'</div>'+
      chanChart()+'</div>';
 

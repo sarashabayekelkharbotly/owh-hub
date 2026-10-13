@@ -91,12 +91,12 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
     <a class="tab" id="tb-bookings" href="#bookings" onclick="setTab('bookings');return false"><span class="ti">📅</span>Bookings</a>
     <a class="tab" id="tb-statement" href="#statement" onclick="setTab('statement');return false"><span class="ti">📄</span>Statement</a>
     <a class="tab" href="partner-history.html"><span class="ti">📊</span>Statistics</a>
-    <a class="tab" id="tb-ask" href="#ask" onclick="setTab('ask');return false"><span class="ti">💬</span>Ask OWH</a>
+    <a class="tab" id="tb-contract" href="#contract" onclick="setTab('contract');return false"><span class="ti">📜</span>Contract</a>
   </nav>
 </div>
 
 <script src="auth.js"></script>
-<script src="partner-core.js?v=5"></script>
+<script src="partner-core.js?v=6"></script>
 <script>
 /* SCREEN 6 — Partner, this month. Built to the mock-up (OWH_final_2.html §6):
    4 KPIs · the month's stays · statement with this month beside last month · drill-down per cost line.
@@ -108,7 +108,7 @@ AUTH_ROLE = 'partner';
 
 var DATA=null, MONTH=null, OPEN={}, CUR='USD';
 var TAB='overview', SUB='stmt';          // which of the five tabs is open, and which switch inside «Statement»
-(function(){ try{ var hh=(location.hash||'').replace('#','').split('/'); if(['overview','bookings','statement','ask'].indexOf(hh[0])>-1){ TAB=hh[0]; if(hh[1]==='settlement') SUB='settle'; else if(hh[1]==='months') SUB='months'; } }catch(e){} })();
+(function(){ try{ var hh=(location.hash||'').replace('#','').split('/'); if(hh[0]==='ask') hh[0]='contract'; if(['overview','bookings','statement','contract'].indexOf(hh[0])>-1){ TAB=hh[0]; if(hh[1]==='settlement') SUB='settle'; else if(hh[1]==='months') SUB='months'; } }catch(e){} })();
 function setTab(t){ TAB=t; try{ history.replaceState(null,'','#'+t+(t==='statement'&&SUB!=='stmt'?'/'+(SUB==='settle'?'settlement':'months'):'')); }catch(e){} render(); try{ window.scrollTo(0,0); }catch(e){} }
 function setSub(x){ SUB=x; try{ history.replaceState(null,'','#statement'+(x==='stmt'?'':'/'+(x==='settle'?'settlement':'months'))); }catch(e){} render(); }
 /* the month chips stop at next month — the sheet carries empty rows far into the future that would only be noise */
@@ -258,7 +258,7 @@ function addBizDays(ymd,n){
 }
 function longDay(d){ return d.getDate()+' '+MON[d.getMonth()]+' '+d.getFullYear(); }
 /* a supporting-document request (clause 8.3) goes through the same written form as a question, so it is logged too */
-function askDoc(enc){ OBJ_DRAFT=decodeURIComponent(enc); OBJ_TYPE='question'; TAB='ask'; try{ history.replaceState(null,'','#ask'); }catch(e){} render(); var t=document.getElementById('objText'); if(t){ t.scrollIntoView({behavior:'smooth',block:'center'}); t.focus(); } }
+function askDoc(enc){ OBJ_DRAFT=decodeURIComponent(enc); OBJ_TYPE='question'; TAB='contract'; try{ history.replaceState(null,'','#contract'); }catch(e){} render(); var t=document.getElementById('objText'); if(t){ t.scrollIntoView({behavior:'smooth',block:'center'}); t.focus(); } }
 
 /* ---- questions & objections (Sarah 2026-10-13: written INSIDE the Hub, kept in a log, alerting OWH and confirming to her) ---- */
 function loadObjs(){ if(isAdmin()) return;                         // an admin preview never writes or reads her log
@@ -317,55 +317,54 @@ function commenceOf(){ var c=(DATA.meta&&DATA.meta.commencement)||{}; return c[m
 function isDemoView(){ return !!(DATA.meta&&DATA.meta.demo&&DATA.meta.demo.active); }
 function preLaunch(ym){ if(isDemoView()) return false; var c=commenceOf(); return !c || ym<c.slice(0,7); }
 
-/* ---- downloads (contract 8.2.1: the statement and the records behind it, in a standard file format) ---- */
-function csvCell(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
-function download(name,rows){
-  var out=rows.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
-  var blob=new Blob(['\uFEFF'+out],{type:'text/csv;charset=utf-8;'});       // BOM so Excel reads any Arabic correctly
-  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download=flatName().replace(/\s+/g,'-')+'-'+name+'.csv';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+/* ---- the Excel download (contract 8.2.1: the statement and the records behind it, in a standard file format). Sarah 2026-10-13: Excel, formatted,
+   for a time frame of her choosing; no CSVs. The workbook itself is built by partner-core.js (PC.buildWorkbook); ExcelJS is fetched only when the button is pressed. ---- */
+var DLR='12M', DLF='', DLT='';
+function inRangeP(rng){
+  var all=monthsAvailable().filter(function(m){ return m<=chipLimit(); }); if(rng==='all') return all;
+  if(rng==='YTD'){ var y=(all[all.length-1]||'').slice(0,4); return all.filter(function(m){ return m.slice(0,4)===y; }); }
+  return all.slice(-(rng==='3M'?3:(rng==='6M'?6:12)));
 }
-function n2(v){ return (v==null||!isFinite(v))?'':v.toFixed(2); }
-function exportStatement(){
-  var f=myFlat(), cm=PC.model(DATA,f,MONTH), pmM=prevMonth(), cp=pmM?PC.model(DATA,f,pmM):null; if(!cm) return;
-  var cols=cp?[cm,cp]:[cm], defs=PC.rowDefs(cols);
-  var cellOf=function(d,m){ var v=d.get(m); if(v==null||!isFinite(v)) return ''; if(d.t==='n') return String(Math.round(v)); if(d.t==='p') return (v*100).toFixed(1)+'%'; if(d.t==='r') return v.toFixed(2); return n2(CUR==='USD'?v:v*m.rate); };
-  var rows=[['Line'].concat(cols.map(function(m){ return monLabel(m.ym)+' ('+CUR+')'; }))];
-  defs.forEach(function(d){
-    if(d.sec){ rows.push([]); rows.push([d.sec.toUpperCase()]); return; }
-    if(d.sub){ rows.push([d.sub]); return; }
-    rows.push([(d.cat?'   ':'')+d.label].concat(cols.map(function(m){ return cellOf(d,m); })));
+function dlMonths(){
+  var all=monthsAvailable().filter(function(m){ return m<=chipLimit(); });
+  if(DLF||DLT){ var a=DLF||'0000-00', b=DLT||'9999-99'; return all.filter(function(m){ return m>=a&&m<=b; }); }
+  return inRangeP(DLR);
+}
+function setDlr(v){ DLR=v; DLF=''; DLT=''; render(); }
+function setDlc(){ var a=document.getElementById('dlFrom'), b=document.getElementById('dlTo'); DLF=a?a.value:''; DLT=b?b.value:''; render(); }
+function loadXlsx(cb){
+  if(window.ExcelJS) return cb(true);
+  var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+  sc.onload=function(){ cb(!!window.ExcelJS); }; sc.onerror=function(){ cb(false); };
+  document.head.appendChild(sc);
+}
+function dlMsg(t){ var e=document.getElementById('dlmsg'); if(e) e.textContent=t; }
+function saveBlob(buf,name){
+  var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} },4000);
+}
+function xlsxDownload(){
+  var ms=dlMonths(); if(!ms.length){ dlMsg('Choose at least one month.'); return; }
+  dlMsg('Preparing…');
+  loadXlsx(function(ok){
+    if(!ok){ dlMsg('Excel could not be prepared — check your connection and try again.'); return; }
+    try{
+      var wb=PC.buildWorkbook(window.ExcelJS,DATA,myFlat(),flatName(),CUR,ms), name=flatName().replace(/\s+/g,'-')+'-statement-'+ms[0]+'-to-'+ms[ms.length-1]+'.xlsx';
+      wb.xlsx.writeBuffer().then(function(buf){ saveBlob(buf,name); dlMsg('Downloaded ✓'); }).catch(function(){ dlMsg('Excel could not be prepared — try again.'); });
+    }catch(e){ dlMsg('Excel could not be prepared — try again.'); }
   });
-  rows.push([]); rows.push(['Status'].concat(cols.map(function(m){ return m.status==='final'?'final':'in progress'; })));
-  /* the entries behind every cost category, for each month shown */
-  rows.push([]); rows.push(['COST ENTRIES — the detail behind every category above']);
-  rows.push(['Month','Category','Date','Description','Amount','Currency',"USD at that month's rate"]);
-  cols.forEach(function(m){
-    PC.costKeys(cols).forEach(function(k){
-      txFor(m.ym,k).sort(function(a,b){ return (a.date||'')<(b.date||'')?-1:1; }).forEach(function(t){
-        var usd=(t.currency==='USD')?t.amount:(t.amount/m.rate);
-        rows.push([monLabel(m.ym),LABEL[k]||k,t.date||'',shortDesc(t.desc),n2(t.amount),t.currency||'',n2(usd)]);
-      });
-    });
-  });
-  download('statement-'+MONTH,rows);
 }
-function exportBookings(){
-  var f=myFlat(), rows=[['Guest','Channel','Status','Booked','Check-in','Check-out','Nights','Gross guest payment (USD)','Platform and card fees (USD)','Net (USD)','Other revenue (USD)','Review booking','Returned to you (USD)']];
-  (DATA.stays||[]).filter(function(s){ return s.flat===f && s.portal!=='Blocked'; })
-    .sort(function(a,b){ return (a.checkIn||'')<(b.checkIn||'')?-1:1; })
-    .forEach(function(s){ var w=(s.allIn||0)-(s.other||0), g=(s.gross>0&&s.gross>=w)?s.gross:w;
-      rows.push([s.guest||'',s.portal||'Direct',s.status||'',s.booked||'',s.checkIn||'',s.checkOut||'',s.nights||'',n2(g),n2(g-w),n2(w),n2(s.other||0),
-        s.review==='owh'?'OWH-funded (outside revenue)':(s.review==='owner'?'owner-funded (outside revenue)':''),s.review==='owner'?n2(s.reviewGross||0):'']); });
-  download('bookings',rows);
-}
-function exportCosts(){
-  var f=myFlat(), rows=[['Date','Month','Category','Description','Amount','Currency',"USD at that month's rate"]];
-  (DATA.tx||[]).filter(function(t){ return t.flat===f; }).sort(function(a,b){ return (a.date||'')<(b.date||'')?-1:1; })
-    .forEach(function(t){ var rr=recFor(t.ym), usd=(t.currency==='USD')?t.amount:(rr?t.amount/rateFor(rr):null);
-      rows.push([t.date||'',t.ym||'',t.cat==='__electricity'?'electricity':(t.cat==='__subscription'?'booking software':t.cat),shortDesc(t.desc),n2(t.amount),t.currency||'',n2(usd)]); });
-  download('cost-entries',rows);
+function excelCard(){
+  var dms=dlMonths(), q=function(v,l){ return '<button class="'+(((DLF||DLT)?'':DLR)===v?'on':'')+'" onclick="setDlr(\''+v+'\')">'+l+'</button>'; };
+  var first=(monthsAvailable()[0]||''), lim=chipLimit();
+  return '<div class="card"><h3>Download — month by month (Excel)</h3>'+
+    '<p class="note" style="margin:2px 0 4px">Pick a time frame. You get a formatted Excel file with one column per month — the same lines as your statement, every cost category — plus a sheet with every cost entry and a sheet with every booking.</p>'+
+    '<div class="pls" style="margin-top:6px">'+q('3M','3M')+q('6M','6M')+q('YTD','YTD')+q('12M','12M')+q('all','All')+'</div>'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"><label class="muted">From <input type="month" id="dlFrom" value="'+esc(DLF)+'" min="'+first+'" max="'+lim+'" onchange="setDlc()" style="font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:9px;padding:5px 8px"></label>'+
+    '<label class="muted">To <input type="month" id="dlTo" value="'+esc(DLT)+'" min="'+first+'" max="'+lim+'" onchange="setDlc()" style="font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:9px;padding:5px 8px"></label></div>'+
+    '<div class="muted">'+(dms.length?monLabel(dms[0])+(dms.length>1?' → '+monLabel(dms[dms.length-1]):'')+' · '+dms.length+' month'+(dms.length===1?'':'s')+' · '+CUR:'No months in this time frame')+'</div>'+
+    '<div style="display:flex;gap:8px;align-items:center;margin-top:8px"><button class="btn" onclick="xlsxDownload()">Download Excel</button><span class="muted" id="dlmsg"></span></div></div>';
 }
 
 /* Cost descriptions are our internal working notes. A partner wants "what was this", not our
@@ -458,7 +457,7 @@ function render(){
   $('#rib').innerHTML=authWho()+' · '+esc(f);
   if(!r){ $('#app').innerHTML='<div class="card"><span class="muted">No numbers for this month yet.</span></div>'; return; }
   var pv=r.partnerView||{}, isFinal=(r.status==='final'), pct=pv.managementFeePct||0;
-  ['overview','bookings','statement','ask'].forEach(function(t){ var el=document.getElementById('tb-'+t); if(el) el.className='tab'+(TAB===t?' active':''); });
+  ['overview','bookings','statement','contract'].forEach(function(t){ var el=document.getElementById('tb-'+t); if(el) el.className='tab'+(TAB===t?' active':''); });
 
   /* ---- shared: the statement rows for this month and the one before (partner-core.js) ---- */
   var cm=PC.model(DATA,myFlat(),MONTH), cp=pm?PC.model(DATA,myFlat(),pm):null;
@@ -511,7 +510,7 @@ function render(){
        '<p class="note">The full statement, line by line, is on the <a href="#statement" onclick="setTab(\'statement\');return false">Statement</a> tab; how the result is settled is under its <b>Settlement</b> switch.</p></div>';
     var pubO=r.closedAt;
     vb+='<div class="card"><h3>Statement status</h3><p class="note" style="margin:0;font-size:11.5px;color:var(--ink)">'+
-       (isFinal ? 'Published'+(pubO?' <b>'+longDay(new Date(pubO.slice(0,10)+'T12:00:00'))+'</b>':'')+'. If you disagree with a line, write to us in <a href="#ask" onclick="setTab(\'ask\');return false">Ask OWH</a> — see the deadline there.'
+       (isFinal ? 'Published'+(pubO?' <b>'+longDay(new Date(pubO.slice(0,10)+'T12:00:00'))+'</b>':'')+'. If you disagree with a line, write to us in <a href="#contract" onclick="setTab(\'contract\');return false">Contract</a> — see the deadline there.'
                 : 'Not published yet — the figures are provisional and can change until the month is closed. The statement is published by the 5th of the following month.')+'</p></div>';
 
   } else if(TAB==='bookings'){
@@ -554,7 +553,7 @@ function render(){
     var chP={}; (function(){ var ks=['Airbnb','Booking','Direct'], fl=0, rem=[]; ks.forEach(function(k){ var ex=chT?100*chN[k]/chT:0; chP[k]=Math.floor(ex); fl+=chP[k]; rem.push([k,ex-Math.floor(ex)]); }); rem.sort(function(a,b){ return b[1]-a[1]; }); for(var q=0;q<100-fl&&chT;q++) chP[rem[q%3][0]]++; })();
     if(chT) vb+='<div class="card"><h3>Channel mix <span class="muted" style="float:right">by nights</span></h3><table class="d">'+
        [['Airbnb','d-air'],['Booking','d-book'],['Direct','d-dir']].map(function(c){ return chN[c[0]]?'<tr><td><span class="dot '+c[1]+'"></span>'+c[0]+(c[0]==='Booking'?'.com':'')+'</td><td class="r">'+fmtN(chN[c[0]])+' nights</td><td class="r">'+chP[c[0]]+'%</td></tr>':''; }).join('')+'</table></div>';
-    vb+='<div class="card"><h3>Download</h3><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" onclick="exportBookings()">All bookings</button></div><p class="note">A CSV with every booking: dates, nights, channel, gross, fees, net, and which are review bookings.</p></div>';
+
 
   } else if(TAB==='statement'){
     /* ============ STATEMENT — the statement, how it settles, all months ============ */
@@ -579,12 +578,7 @@ function render(){
          'Everything is shown in <b>'+CUR+'</b>, each month converted at that month\'s own rate ('+
          fmt(rateFor(r))+' EGP/USD for '+monLabel(MONTH)+'), so a closed month never changes when the rate moves.'+
          (isFinal?'':' This month is still open, so figures can change until it is closed.')+'</p></div>';
-  vb+='<div class="card"><h3>Download</h3><div style="display:flex;gap:6px;flex-wrap:wrap">'+
-     '<button class="btn" onclick="exportStatement()">This month\'s statement</button>'+
-     '<button class="btn" onclick="exportBookings()">All bookings</button>'+
-     '<button class="btn" onclick="exportCosts()">All cost entries</button></div>'+
-     '<p class="note">CSV files that open in Excel or Google Sheets — the statement, every booking with its gross, fees and net, and every cost entry.</p></div>';
-
+  vb+=excelCard();
 
     } else if(SUB==='settle'){
       vb+='<div class="card">';
@@ -645,13 +639,13 @@ function render(){
     }
 
   } else {
-    /* ============ ASK OWH — questions, objections, documents ============ */
-    vb+=objCard(r,isFinal);
-    vb+='<div class="card"><h3>Documents</h3><table class="d">'+
+    /* ============ CONTRACT — the agreement and its documents, then questions and objections ============ */
+    vb+='<div class="card"><h3>Your agreement and documents</h3><table class="d">'+
        '<tr><td>Management agreement</td><td class="r"><a href="#" onclick="askDoc(\''+encodeURIComponent('Please send me a copy of the management agreement.')+'\');return false">request a copy</a></td></tr>'+
        '<tr><td>Annex B — furniture and contents list</td><td class="r muted">added when furnishing is complete</td></tr>'+
        '<tr><td>Annex E — condition photos, room by room</td><td class="r muted">added at the start date</td></tr></table>'+
        '<p class="note">Documents are not stored on this page; ask for a copy and we will send it to you.</p></div>';
+    vb+=objCard(r,isFinal);
   }
 
   $('#app').innerHTML=h+vb;
