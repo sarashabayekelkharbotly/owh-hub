@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Hub · History &amp; statistics</title>
+<title>The Hub · Statistics</title>
 <link rel="icon" href="hub-logo.png">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
@@ -58,17 +58,18 @@ table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
 <body>
 <div class="frame">
   <div class="topbar">
-    <div class="brand"><img class="logo" src="hub-logo.png" alt="The Hub"><span class="bn">The Hub</span><span class="bs">History &amp; statistics</span></div>
+    <div class="brand"><img class="logo" src="hub-logo.png" alt="The Hub"><span class="bn">The Hub</span><span class="bs">Statistics</span></div>
     <div class="rib" id="rib"></div>
   </div>
   <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
   <nav class="tabbar">
     <a class="tab" href="partner.html"><span class="ti">📄</span>This month</a>
-    <a class="tab active" href="partner-history.html"><span class="ti">📊</span>History</a>
+    <a class="tab active" href="partner-history.html"><span class="ti">📊</span>Statistics</a>
   </nav>
 </div>
 
 <script src="auth.js"></script>
+<script src="partner-core.js?v=1"></script>
 <script>
 /* SCREEN 7 — Partner, history & statistics.
    Each card carries its own time range, the same 3M/6M/YTD/12M/all control the Statistics screen uses,
@@ -76,7 +77,7 @@ table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
    security boundary; this page only ever holds their own flat. */
 AUTH_ROLE = 'partner';
 
-var DATA=null, CUR='USD', OPEN={rev:false,cost:false}, CHAN='revenue';
+var DATA=null, CUR='USD', OPEN={cost:true}, CHAN='revenue';      // the cost categories are open by default, like the statement
 var R={hist:'12M', occ:'12M', chan:'12M'};
 try{ CUR=localStorage.getItem('owh_cur')||'USD'; }catch(e){}
 
@@ -142,7 +143,7 @@ function previewBar(){
     '<a href="#" onclick="try{sessionStorage.removeItem(\'owh_preview_as\')}catch(e){};location.href=location.pathname;return false">Switch home</a> · <a href="today.html">← Back to the Hub</a></div>';
 }
 function isAdmin(){ return !!(ME && ME.role==='admin'); }
-function showErr(e){ if(DATA)return; $('#app').innerHTML='<div class="err">Couldn\'t load your history.<br><span class="muted">'+esc(e&&e.message||'')+'</span></div>'; }
+function showErr(e){ if(DATA)return; $('#app').innerHTML='<div class="err">Couldn\'t load your statistics.<br><span class="muted">'+esc(e&&e.message||'')+'</span></div>'; }
 function onData(j){ if(j.partners){ renderChooser(j.partners); return; } DATA=j.data; if(j.me) ME=j.me; render(); previewBar(); }
 
 function myFlat(){ return (ME&&ME.flat) || (DATA.meta.preview&&DATA.meta.preview.flat) || (DATA.meta.flatsOrder&&DATA.meta.flatsOrder[0]) || ''; }
@@ -190,23 +191,7 @@ var CH=[['Airbnb','var(--d-air)'],['Booking','var(--d-book)'],['Direct','var(--d
 function nightsIn(ym){ return liveStays().reduce(function(a,s){ return a+nightsOf(s,ym); },0); }
 
 /* ---- cost categories ---- */
-var ORDER=['cleaning-labor','laundry','supplies','electricity','tv-phone-internet','water','heat-gas','maintenance','compound-maintenance','opsmanager','services-contingency','contingency','gifts-contingency','general-contingency','subscription'];
-var LABEL={'cleaning-labor':'cleaning','laundry':'laundry','supplies':'supplies','electricity':'electricity','tv-phone-internet':'internet',
-  'water':'water','heat-gas':'gas','maintenance':'maintenance','compound-maintenance':'compound','opsmanager':'operations',
-  'services-contingency':'services','contingency':'contingency','gifts-contingency':'contingency','general-contingency':'contingency','subscription':'booking software'};
-function usedCostKeys(ms){
-  var seen={}, keys=[];
-  ms.forEach(function(m){ var r=recFor(m); if(!r) return;
-    (r.costs||[]).forEach(function(c){ if(c.amount) seen[c.key]=1; }); });
-  ORDER.forEach(function(k){ if(seen[k]){ keys.push(k); delete seen[k]; } });
-  for(var k in seen) keys.push(k);
-  return keys;
-}
-function costCell(m,key){
-  var r=recFor(m); if(!r) return null;
-  var c=(r.costs||[]).filter(function(x){return x.key===key;})[0];
-  return c ? cvCost(c.amount, c.currency, rateFor(r)) : null;
-}
+var ORDER=PC.ORDER, LABEL=PC.LABEL;
 
 /* ---- one row of the history table ---- */
 function rowFor(m){
@@ -219,25 +204,36 @@ function rowFor(m){
     pct:pv.managementFeePct||0, open:(r.status!=='final') };
 }
 
+/* The table and the CSV are the statement's own rows (partner-core.js) laid over the months in range, so «Statistics»
+   can never show a different set of lines than «This month» (Sarah 2026-10-13). */
+function modelsIn(ms){ return ms.map(function(m){ return PC.model(DATA,myFlat(),m); }).filter(Boolean); }
+function cellTxt(d,m){ var v=d.get(m); if(v==null||!isFinite(v)) return '—';
+  if(d.t==='n') return fmtN(v); if(d.t==='p') return Math.round(v*100)+'%'; return fmt(CUR==='USD'?v:v*m.rate); }
 function csv(){
-  var ms=inRange(R.hist), rs=ms.map(rowFor).filter(Boolean);
-  var line=function(lbl,pick){ return [lbl].concat(rs.map(function(r){ var v=pick(r); return v==null?'':v.toFixed(2); })).join(','); };
-  var out=[['Line'].concat(ms.map(monLabel)).join(',')];
-  out.push(line('Total revenue ('+CUR+')',function(r){return r.rev;}));
-  out.push(line('  Earnings',function(r){return r.earn;}));
-  out.push(line('  Other revenue',function(r){return r.other;}));
-  out.push(line('Costs ('+CUR+')',function(r){return r.costs;}));
-  usedCostKeys(ms).forEach(function(k){
-    out.push(['  '+(LABEL[k]||k)].concat(ms.map(function(m){ var v=costCell(m,k); return v==null?'':v.toFixed(2); })).join(','));
+  var ms=inRange(R.hist), models=modelsIn(ms), defs=PC.rowDefs(models);
+  var q=function(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  var cellCsv=function(d,m){ var v=d.get(m); if(v==null||!isFinite(v)) return ''; if(d.t==='n') return String(Math.round(v)); if(d.t==='p') return (v*100).toFixed(1)+'%'; return (CUR==='USD'?v:v*m.rate).toFixed(2); };
+  var out=[['Line'].concat(models.map(function(m){ return monLabel(m.ym)+' ('+CUR+')'; }))];
+  defs.forEach(function(d){
+    if(d.sec){ out.push([]); out.push([d.sec.toUpperCase()]); return; }
+    if(d.sub){ out.push([d.sub]); return; }
+    out.push([(d.cat?'   ':'')+d.label].concat(models.map(function(m){ return cellCsv(d,m); })));
   });
-  out.push(line('Management fee ('+CUR+')',function(r){return r.fee;}));
-  out.push(line('Month result ('+CUR+')',function(r){return r.net;}));
-  out.push(['Nights'].concat(ms.map(function(m){ return nightsIn(m); })).join(','));
-  out.push(['Status'].concat(rs.map(function(r){ return r.open?'in progress':'final'; })).join(','));
-  var blob=new Blob([out.join('\n')],{type:'text/csv;charset=utf-8;'});
+  out.push([]); out.push(['Status'].concat(models.map(function(m){ return m.status==='final'?'final':'in progress'; })));
+  out.push(['EGP per USD'].concat(models.map(function(m){ return m.rate.toFixed(2); })));
+  /* the entries behind every cost category, for the months in range */
+  out.push([]); out.push(['COST ENTRIES — the detail behind every category above']);
+  out.push(['Month','Category','Date','Description','Amount','Currency',"USD at that month's rate"]);
+  var inR={}; ms.forEach(function(m){ inR[m]=1; });
+  var catKey={}; Object.keys(PC.CATMAP).forEach(function(k){ catKey[PC.CATMAP[k]]=k; });
+  (DATA.tx||[]).filter(function(t){ return t.flat===myFlat() && inR[t.ym]; })
+    .sort(function(a,b){ return (a.ym+a.date)<(b.ym+b.date)?-1:1; })
+    .forEach(function(t){ var m=models.filter(function(x){ return x.ym===t.ym; })[0], usd=(t.currency==='USD')?t.amount:(m?t.amount/m.rate:null);
+      var k=catKey[t.cat]; out.push([monLabel(t.ym),(k&&LABEL[k])||t.cat,t.date||'',t.desc||'',t.amount==null?'':Number(t.amount).toFixed(2),t.currency||'',usd==null?'':usd.toFixed(2)]); });
+  var blob=new Blob(['\uFEFF'+out.map(function(r){ return r.map(q).join(','); }).join('\r\n')],{type:'text/csv;charset=utf-8;'});
   var a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download=flatName().replace(/\s+/g,'-')+'-history-'+(ms[0]||'')+'-to-'+(ms[ms.length-1]||'')+'.csv';
+  a.download=flatName().replace(/\s+/g,'-')+'-statistics-'+(ms[0]||'')+'-to-'+(ms[ms.length-1]||'')+'.csv';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
@@ -354,46 +350,33 @@ function render(){
   $('#rib').innerHTML=authWho()+' · '+esc(f);
   if(!allMonths().length){ $('#app').innerHTML='<div class="card"><span class="muted">No history yet.</span></div>'; return; }
 
-  var ms=inRange(R.hist), rs=ms.map(rowFor).filter(Boolean);
-  var anyOpen=rs.some(function(r){ return r.open; });
-  var pct=(rs[rs.length-1]||{}).pct||0;
-  var keys=usedCostKeys(ms);
+  var ms=inRange(R.hist), models=modelsIn(ms), defs=PC.rowDefs(models);
+  var anyOpen=models.some(function(m){ return m.status!=='final'; });
+  var ncol=models.length+1;
 
   var h='';
   if(DATA.meta.demo&&DATA.meta.demo.active) h+='<div class="demo"><b>Sample.</b> Real figures from a running apartment, on the terms we are discussing.</div>';
-  h+='<p class="h1">'+esc(f)+' <span class="sub">· history &amp; statistics</span></p>';
+  h+='<p class="h1">'+esc(f)+' <span class="sub">· statistics</span></p>';
 
-  /* ---- history table ---- */
+  /* ---- the statement, month by month — the SAME rows as «This month» ---- */
   h+='<div class="card"><div class="chead"><h3>Your history — all months</h3>'+
      '<div class="rowbtns">'+timeSeg('hist')+
      seg([['USD','USD'],['EGP','EGP']],CUR,'setCur')+'</div></div>';
   h+='<div class="wrap"><table class="d"><thead><tr><th>Line</th>'+
-     ms.map(function(m){ var r=rowFor(m); return '<th>'+monShort(m)+(r&&r.open?'*':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
-
-  var line=function(lbl,pick,cls,click){
-    return '<tr'+(cls?' class="'+cls+'"':'')+(click?' onclick="toggle(\''+click+'\')"':'')+'><td>'+lbl+'</td>'+
-      rs.map(function(r){ var v=pick(r); return '<td class="'+(v<0?'neg':'')+'">'+fmt(v)+'</td>'; }).join('')+'</tr>';
-  };
-  h+=line('Total revenue '+(OPEN.rev?'▾':'▸'),function(r){return r.rev;},'head drillable','rev');
-  if(OPEN.rev){
-    h+=line('earnings',function(r){return r.earn;},'sub');
-    h+=line('other revenue',function(r){return r.other;},'sub');
-  }
-  h+=line('Costs '+(OPEN.cost?'▾':'▸'),function(r){return r.costs;},'head drillable','cost');
-  if(OPEN.cost){
-    keys.forEach(function(k){
-      h+='<tr class="sub"><td>'+(LABEL[k]||k)+'</td>'+
-         ms.map(function(m){ return '<td>'+fmt(costCell(m,k))+'</td>'; }).join('')+'</tr>';
-    });
-  }
-  h+=line('Management fee — '+Math.round(pct*100)+'%',function(r){return r.fee;});
-  h+=line('Month result',function(r){return r.net;},'tot');
+     models.map(function(m){ return '<th>'+monShort(m.ym)+(m.status!=='final'?'*':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
+  defs.forEach(function(d){
+    if(d.sec){ h+='<tr class="head"><td colspan="'+ncol+'" style="background:#f6f2f2;font-weight:700;text-transform:uppercase;font-size:10px;letter-spacing:.04em">'+d.sec+'</td></tr>'; return; }
+    if(d.sub){ h+='<tr class="sub"><td colspan="'+ncol+'" style="font-weight:700">'+d.sub+'</td></tr>'; return; }
+    if(d.cat && !OPEN.cost) return;
+    var cls=(d.cls==='cat'?'sub':(d.cls||'')), click='', lab=d.label;
+    if(d.id==='costs'){ cls=(cls+' head drillable').trim(); click=' onclick="toggle(\'cost\')"'; lab+=' '+(OPEN.cost?'▾':'▸'); }
+    h+='<tr class="'+cls+'"'+click+'><td>'+lab+'</td>'+models.map(function(m){ var v=d.get(m); return '<td class="'+(v!=null&&v<0?'neg':'')+'">'+cellTxt(d,m)+'</td>'; }).join('')+'</tr>';
+  });
   h+='</tbody></table></div>';
   h+='<div class="rowbtns" style="margin-top:9px"><button class="btn" onclick="csv()">Export CSV</button></div>';
-  h+='<p class="note">All figures '+CUR+', each month converted at that month\'s own rate'+
+  h+='<p class="note">These are the same lines as the statement on <b>This month</b>, one column per month. All figures '+CUR+', each month converted at that month\'s own rate'+
      (anyOpen?' · <b>*</b> still open, may change until the month is closed':'')+
-     '. Tap <b>Total revenue</b> to split it into earnings and other revenue, or <b>Costs</b> to see the categories. '+
-     'The column adds up: Month result = Total revenue − Costs − Fee. What is actually paid out is on the Settlement card of This month.</p></div>';
+     '. Tap <b>Costs paid on your behalf</b> to fold the categories away. The CSV has the same lines plus every cost entry behind them.</p></div>';
 
   /* ---- occupancy & ADR ---- */
   h+='<div class="card"><div class="chead"><h3>Your flat — occupancy &amp; ADR</h3>'+timeSeg('occ')+'</div>'+

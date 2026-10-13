@@ -73,11 +73,12 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
   <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
   <nav class="tabbar">
     <a class="tab active" href="partner.html"><span class="ti">📄</span>This month</a>
-    <a class="tab" href="partner-history.html"><span class="ti">📊</span>History</a>
+    <a class="tab" href="partner-history.html"><span class="ti">📊</span>Statistics</a>
   </nav>
 </div>
 
 <script src="auth.js"></script>
+<script src="partner-core.js?v=1"></script>
 <script>
 /* SCREEN 6 — Partner, this month. Built to the mock-up (OWH_final_2.html §6):
    4 KPIs · the month's stays · statement with this month beside last month · drill-down per cost line.
@@ -198,36 +199,16 @@ function nightsIn(ym){ return staysIn(ym).reduce(function(a,s){ return a+nightsO
    the column adds up to the revenue line instead of overstating it by the part earned elsewhere. */
 function earnedIn(s,ym){ var tot=s.nights||nightsOf(s,ym)||1; return (s.allIn||0)*nightsOf(s,ym)/tot; }
 
-/* A stay's money for one month, in USD, on the settled revenue rule: (All-in − Other) ÷ nights, per night
-   inside the month. Gross is what the guest paid; fees = gross − net recorded, so the three columns ALWAYS add
-   up (gross − fees = net) whatever the sheet's commission/charge/VAT split looks like underneath. A booking with
-   no gross on record shows no fees rather than a made-up figure. */
-function stayParts(s,ym){
-  var tot=s.nights||nightsOf(s,ym)||1, k=nightsOf(s,ym)/tot, w=(s.allIn||0)-(s.other||0);
-  var net=w*k, gross=(s.gross>0 && s.gross>=w) ? s.gross*k : net;
-  return { gross:gross, fees:gross-net, net:net };
-}
-/* The statement chain for one month (USD): gross → fees → earnings → + other = net revenue → fee → owner share →
-   operating costs → month result. The costs total is derived as share − result so the column always reconciles. */
-function monthChain(ym){
-  var r=recFor(ym); if(!r) return null;
-  var G=0,N=0; staysIn(ym).forEach(function(s){ var p=stayParts(s,ym); G+=p.gross; N+=p.net; });
-  var E=r.revenue.earnings||0, O=r.revenue.other||0, T=r.revenue.total||0, pv=r.partnerView||{};
-  var fee=pv.managementFee||0, res=(pv.netPayout!=null?pv.netPayout:r.net);
-  return { r:r, G:G, F:G-N, adj:E-N, E:E, O:O, T:T, fee:fee, share:T-fee, res:res, costs:(T-fee)-res };
-}
+/* The statement's money and rows are defined ONCE, in partner-core.js, and shared with the Statistics screen and both CSVs.
+   A stay's money for one month (gross / fees / net) is PC.parts. */
+function stayParts(s,ym){ return PC.parts(s,ym); }
+function fmtN(n){ if(n==null||!isFinite(n)) return '—'; return Math.round(n).toLocaleString('en-US'); }
 
 /* ---- the Operating Costs Budget (clause 6.5.1): US$45 × turnovers in the month + US$60, a CEILING not a charge.
    A turnover = an occasion the home is cleaned and its linen changed: checkout / mid-stay / weekly cleans on the
    confirmed schedule, or — where the schedule no longer holds that month — the stays that ended in it, whichever is
    more. Furniture is the purchase of items (5.2/5.3), not an operating cost (6.4), so it never counts against the ceiling. ---- */
-function turnoversIn(ym){
-  var f=myFlat(), n=0;
-  (DATA.cleans||[]).forEach(function(c){ if(c.flat===f && (c.date||'').slice(0,7)===ym && /^(checkout|midstay|weekly)$/.test(c.type||'')) n++; });
-  var ended=(DATA.stays||[]).filter(function(s){ var st=(s.status||'').toLowerCase();
-    return s.flat===f && s.portal!=='Blocked' && st.indexOf('cancel')<0 && st.indexOf('block')<0 && (s.checkOut||'').slice(0,7)===ym; }).length;
-  return Math.max(n,ended);
-}
+function turnoversIn(ym){ var m=PC.model(DATA,myFlat(),ym); return m?m.k.turn:0; }
 function budgetFor(ym){
   var r=recFor(ym); if(!r) return null;
   var tn=turnoversIn(ym), ceil=45*tn+60, spent=0;
@@ -314,18 +295,28 @@ function download(name,rows){
 }
 function n2(v){ return (v==null||!isFinite(v))?'':v.toFixed(2); }
 function exportStatement(){
-  var cm=monthChain(MONTH), cp=prevMonth()?monthChain(prevMonth()):null; if(!cm) return;
-  var c=function(ch,v){ return ch?n2(conv(v,'USD',ch.r)):''; };
-  var rows=[['Line',monLabel(MONTH)+' ('+CUR+')'].concat(cp?[monLabel(prevMonth())+' ('+CUR+')']:[])];
-  var add=function(lbl,fn){ rows.push([lbl,c(cm,fn(cm))].concat(cp?[c(cp,fn(cp))]:[])); };
-  add('Gross guest payments',function(x){return x.G;}); add('Platform and card fees',function(x){return -x.F;});
-  add('Adjustments',function(x){return x.adj;}); add('Earnings',function(x){return x.E;}); add('Other revenue',function(x){return x.O;});
-  add('Net revenue',function(x){return x.T;}); add('Management fee',function(x){return -x.fee;}); add('Your share',function(x){return x.share;});
-  costKeys(cm.r,cp&&cp.r).forEach(function(k){ var cu=curOf(cm.r,k)||(cp&&curOf(cp.r,k))||'EGP';
-    rows.push(['Cost: '+(LABEL[k]||k), n2(conv(amt(cm.r,k),cu,cm.r))].concat(cp?[n2(conv(amt(cp.r,k),cu,cp.r))]:[])); });
-  add('Total costs',function(x){return x.costs;}); add('Month result',function(x){return x.res;});
-  rows.push(['Status',cm.r.status==='final'?'final':'in progress'].concat(cp?[cp.r.status==='final'?'final':'in progress']:[]));
-  rows.push(['EGP per USD',n2(rateFor(cm.r))].concat(cp?[n2(rateFor(cp.r))]:[]));
+  var f=myFlat(), cm=PC.model(DATA,f,MONTH), pmM=prevMonth(), cp=pmM?PC.model(DATA,f,pmM):null; if(!cm) return;
+  var cols=cp?[cm,cp]:[cm], defs=PC.rowDefs(cols);
+  var cellOf=function(d,m){ var v=d.get(m); if(v==null||!isFinite(v)) return ''; if(d.t==='n') return String(Math.round(v)); if(d.t==='p') return (v*100).toFixed(1)+'%'; return n2(CUR==='USD'?v:v*m.rate); };
+  var rows=[['Line'].concat(cols.map(function(m){ return monLabel(m.ym)+' ('+CUR+')'; }))];
+  defs.forEach(function(d){
+    if(d.sec){ rows.push([]); rows.push([d.sec.toUpperCase()]); return; }
+    if(d.sub){ rows.push([d.sub]); return; }
+    rows.push([(d.cat?'   ':'')+d.label].concat(cols.map(function(m){ return cellOf(d,m); })));
+  });
+  rows.push([]); rows.push(['Status'].concat(cols.map(function(m){ return m.status==='final'?'final':'in progress'; })));
+  rows.push(['EGP per USD'].concat(cols.map(function(m){ return n2(m.rate); })));
+  /* the entries behind every cost category, for each month shown */
+  rows.push([]); rows.push(['COST ENTRIES — the detail behind every category above']);
+  rows.push(['Month','Category','Date','Description','Amount','Currency',"USD at that month's rate"]);
+  cols.forEach(function(m){
+    PC.costKeys(cols).forEach(function(k){
+      txFor(m.ym,k).sort(function(a,b){ return (a.date||'')<(b.date||'')?-1:1; }).forEach(function(t){
+        var usd=(t.currency==='USD')?t.amount:(t.amount/m.rate);
+        rows.push([monLabel(m.ym),LABEL[k]||k,t.date||'',shortDesc(t.desc),n2(t.amount),t.currency||'',n2(usd)]);
+      });
+    });
+  });
   download('statement-'+MONTH,rows);
 }
 function exportBookings(){
@@ -358,27 +349,7 @@ function dotFor(p){ var s=(p||'').toLowerCase();
   return s.indexOf('airbnb')>-1?'d-air':(s.indexOf('booking')>-1?'d-book':'d-dir'); }
 
 /* ---- cost lines, in the mock-up's order ---- */
-var ORDER=['cleaning-labor','laundry','supplies','electricity','tv-phone-internet','water','heat-gas','furniture','maintenance','compound-maintenance','opsmanager','services-contingency','contingency','gifts-contingency','general-contingency','subscription'];
-var LABEL={'cleaning-labor':'cleaning','laundry':'laundry','supplies':'supplies','electricity':'electricity','tv-phone-internet':'internet',
-  'water':'water','heat-gas':'gas','maintenance':'maintenance','furniture':'furniture','compound-maintenance':'compound','opsmanager':'operations',
-  'services-contingency':'services','contingency':'contingency','gifts-contingency':'gifts','general-contingency':'general','subscription':'booking software'};
-var CATMAP={'electricity':'__electricity','subscription':'__subscription','laundry':'laundry','supplies':'supplies','cleaning-labor':'cleaning-labor','opsmanager':'opsManager','services-contingency':'Services','maintenance':'Maintenance','furniture':'Furniture','tv-phone-internet':'TV/Phone/Internet','water':'Water','heat-gas':'Heat/gas','compound-maintenance':'compound maintenance','contingency':'contingency','gifts-contingency':'Gifts','general-contingency':'General'};
-function costKeys(a,b){
-  var seen={}, keys=[];
-  [a,b].forEach(function(r){ if(!r)return; (r.costs||[]).forEach(function(c){ if(c.amount) seen[c.key]=1; }); });
-  ORDER.forEach(function(k){ if(seen[k]){ keys.push(k); delete seen[k]; } });
-  for(var k in seen) keys.push(k);                     // anything new in the sheet still appears
-  return keys;
-}
-/* The statement lists EVERY category the owner can be charged (zero ones as "—"), so she can see what is not being
-   charged as well as what is. 'subscription' is OWH's own cost and is never shown. Anything new in the sheet still appears. */
-function allCostKeys(a,b){
-  var seen={}, keys=[];
-  [a,b].forEach(function(r){ if(!r)return; (r.costs||[]).forEach(function(c){ seen[c.key]=1; }); });
-  ORDER.forEach(function(k){ if(k==='subscription') return; keys.push(k); delete seen[k]; });
-  for(var k in seen) if(k!=='subscription') keys.push(k);
-  return keys;
-}
+var ORDER=PC.ORDER, LABEL=PC.LABEL, CATMAP=PC.CATMAP;
 function costsOpen(){ return OPEN['__costs']!==false; }          // open by default, she can fold it away
 function toggleCosts(){ OPEN['__costs']=!costsOpen(); render(); }
 function amt(r,key){ if(!r) return null; var c=(r.costs||[]).filter(function(x){return x.key===key;})[0]; return c?c.amount:null; }
@@ -504,68 +475,46 @@ function render(){
   }
   h+='</div>';
 
-  /* ---- statement, this month beside last ---- */
+  /* ---- statement, this month beside last. The ROWS come from partner-core.js — the same rows the Statistics table and both
+     CSV exports use (Sarah 2026-10-13) — so nothing here is derived a second way. ---- */
+  var cm=PC.model(DATA,myFlat(),MONTH), cp=pm?PC.model(DATA,myFlat(),pm):null;
+  var defs=PC.rowDefs(cp?[cp,cm]:[cm]), stDefs=[], seDefs=[], into=stDefs;
+  defs.forEach(function(d){ if(d.sec&&/^Settlement/.test(d.sec)) into=seDefs; into.push(d); });
+  var cellOf=function(d,m){ if(!m) return ''; var v=d.get(m); if(v==null||!isFinite(v)) return '—';
+    if(d.t==='n') return fmtN(v); if(d.t==='p') return Math.round(v*100)+'%'; return fmt(CUR==='USD'?v:v*m.rate); };
+  var ncol=cp?3:2, cOpen=costsOpen();
   h+='<div class="card"><h3>Statement — '+monShort(MONTH)+(pm?' vs '+monShort(pm):'')+'</h3><table class="d">'+
      '<tr><th>Line</th><th class="r">'+monShort(MONTH)+'</th>'+(pm?'<th class="r">'+monShort(pm)+'</th>':'')+'</tr>';
-  /* The chain follows clause 8.1 line by line: gross guest payments → platform & card fees → net revenue →
-     management fee → the owner's 75% → operating costs → month result. Every column adds up. */
-  var cm=monthChain(MONTH), cp=pm?monthChain(pm):null;
-  var cc=function(ch,v){ return ch?fmt(conv(v,'USD',ch.r)):null; };
-  var srow=function(lbl,get,cls,sign){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+lbl+'</td><td class="r">'+cc(cm,sign*get(cm))+'</td>'+(pm?'<td class="r">'+cc(cp,cp?sign*get(cp):0)+'</td>':'')+'</tr>'; };
-  var showAdj=(Math.abs(cm.adj)>0.02)||(cp&&Math.abs(cp.adj)>0.02);
-  h+=srow('Gross guest payments',function(x){return x.G;},'',1);
-  h+=srow('platform &amp; card fees',function(x){return x.F;},'subrow',-1);
-  if(showAdj) h+=srow('other adjustments',function(x){return x.adj;},'subrow',1);
-  h+=srow('Earnings (net of fees)',function(x){return x.E;},'',1);
-  h+=srow('other revenue',function(x){return x.O;},'subrow',1);
-  h+=srow('Net revenue',function(x){return x.T;},'tot',1);
-  h+=srow('management fee — '+Math.round(pct*100)+'% of net revenue',function(x){return x.fee;},'',-1);
-  h+=srow('Your share — '+Math.round((1-pct)*100)+'% of net revenue',function(x){return x.share;},'tot',1);
-  var cOpen=costsOpen();
-  h+='<tr class="tot drillable" onclick="toggleCosts()"><td>Costs paid on your behalf '+(cOpen?'▾':'▸')+'</td><td class="r">'+cc(cm,cm.costs)+'</td>'+(pm?'<td class="r">'+cc(cp,cp?cp.costs:0)+'</td>':'')+'</tr>';
-  if(cOpen) allCostKeys(r,pr).forEach(function(k){
-    var open=!!OPEN[k], canDrill=!!CATMAP[k] && (txFor(MONTH,k).length>0 || (pm&&txFor(pm,k).length>0));
-    var cu=curOf(r,k)||curOf(pr,k)||'EGP';
-    var a1=amt(r,k), a2=amt(pr,k);
-    h+='<tr class="cat'+(canDrill?' drillable':'')+'"'+(canDrill?' onclick="toggleDrill(\''+k+'\')"':'')+'><td>'+(LABEL[k]||k)+(canDrill?' '+(open?'▾':'▸'):'')+'</td>'+
-       '<td class="r">'+(a1?fmt(conv(a1,cu,r)):'—')+'</td>'+(pm?'<td class="r">'+(a2?fmt(conv(a2,cu,pr)):'—')+'</td>':'')+'</tr>';
-    if(open) h+=drillBlock(k);
+  stDefs.forEach(function(d){
+    if(d.sec){ h+='<tr class="subrow"><td colspan="'+ncol+'" style="font-weight:700">'+d.sec+'</td></tr>'; return; }
+    if(d.cat && !cOpen) return;
+    var cls=(d.cls==='sub'?'subrow':(d.cls||'')), lab=d.label, click='';
+    if(d.id==='costs'){ cls+=' drillable'; click=' onclick="toggleCosts()"'; lab+=' '+(cOpen?'▾':'▸'); }
+    if(d.cat){ var can=txFor(MONTH,d.key).length>0 || (pm&&txFor(pm,d.key).length>0);
+      if(can){ cls+=' drillable'; click=' onclick="toggleDrill(\''+d.key+'\')"'; lab+=' '+(OPEN[d.key]?'▾':'▸'); } }
+    h+='<tr class="'+cls+'"'+click+'><td>'+lab+'</td><td class="r">'+cellOf(d,cm)+'</td>'+(pm?'<td class="r">'+cellOf(d,cp)+'</td>':'')+'</tr>';
+    if(d.cat && OPEN[d.key]) h+=drillBlock(d.key);
   });
-  h+=srow('Month result',function(x){return x.res;},'net',1);
   h+='</table>';
 
-  /* ---- Clause 7 — what happens to the month result: the waterfall, with every step shown (Sarah 2026-10-13: the
-     statement must include the float and the settlement calculations). The SAME partnerLedger the admin Close shows. ---- */
-  var pl=r.partnerLedger;
-  if(pl){
-    var sL=function(v){ return (v>0.005?'+ ':(v<-0.005?'− ':''))+sym()+fmt(conv(Math.abs(v),'USD',r)); };
-    var pL=function(v){ return sym()+fmt(conv(v,'USD',r)); };
-    var prevPl=pr&&pr.partnerLedger, openBal=prevPl?prevPl.balanceAfter:0, prep=pl.prepay||0;
-    var applied=Math.round((pl.balanceAfter-openBal-prep)*100)/100;
-    var floatOpen=Math.round((pl.floatAfter-(pl.floatRetained||0)+(pl.floatDrawn||0))*100)/100;
-    var R2=function(a,b,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+a+'</td><td class="r">'+b+'</td></tr>'; };
+  /* ---- Clause 7 — what happens to the month result: the waterfall, every step shown. The SAME partnerLedger the admin Close shows. ---- */
+  if(cm.led){
+    var sL=function(v){ return (v>0.005?'+ ':(v<-0.005?'− ':''))+sym()+fmt(conv(Math.abs(v),'USD',cm.r)); };
+    var pL=function(v){ return sym()+fmt(conv(v,'USD',cm.r)); };
+    var PLAIN={f_open:1,f_after:1,p_pay:1,p_paid:1,p_still:1};
     h+='<h3 style="margin:14px 0 6px">Settlement — what happens to the month result</h3><table class="d">';
-    h+='<tr><th colspan="2">1 · Where '+monShort(MONTH)+'\'s result goes (clause 7)</th></tr>';
-    h+=R2('Month result',sL(pl.monthResult),'tot');
-    h+=R2('<span class="muted">to your balance with OWH</span>',sL(applied),'subrow');
-    if(pl.floatRetained>0.005) h+=R2('<span class="muted">kept in the security float</span>',sL(pl.floatRetained),'subrow');
-    if(pl.floatDrawn>0.005)    h+=R2('<span class="muted">of the shortfall, covered by the float</span>',sL(-pl.floatDrawn),'subrow');
-    h+=R2('<span class="muted">payable to you</span>',sL(pl.payable),'subrow');
-    h+='<tr><th colspan="2">2 · Your balance with OWH</th></tr>';
-    h+=R2('brought forward',openBal?sL(openBal):pL(0));
-    if(prep) h+=R2('your prepayments received',sL(prep));
-    h+=R2('from '+monShort(MONTH)+'\'s result',sL(applied));
-    h+='<tr class="net drillable" onclick="toggleDrill(\'__bal\')"><td>Balance after '+monShort(MONTH)+' '+(OPEN['__bal']?'▾':'▸')+'</td><td class="r">'+balWords(pl.balanceAfter,r)+'</td></tr>';
-    if(OPEN['__bal']) h+='<tr><td colspan="2" style="padding:2px 4px"><div class="drill">'+balanceBreakdown(MONTH)+'</div></td></tr>';
-    h+='<tr><th colspan="2">3 · Security float (target '+pL(pl.floatTarget)+')</th></tr>';
-    h+=R2('brought forward',pL(floatOpen));
-    if(pl.floatRetained>0.005) h+=R2('retained from '+monShort(MONTH)+'\'s result',sL(pl.floatRetained));
-    if(pl.floatDrawn>0.005)    h+=R2('drawn to cover a shortfall',sL(-pl.floatDrawn));
-    h+=R2('Float after '+monShort(MONTH),pL(pl.floatAfter)+' of '+pL(pl.floatTarget),'net');
-    h+='<tr><th colspan="2">4 · Payment to you</th></tr>';
-    h+=R2('Payable for '+monShort(MONTH),pL(pl.payable),'tot');
-    h+=R2('paid to date',pL(pl.paidToDate||0));
-    h+=R2('still to pay',pL(pl.outstanding||0));
+    seDefs.forEach(function(d){
+      if(d.sec) return;
+      if(d.sub){ h+='<tr><th colspan="2">'+d.sub+'</th></tr>'; return; }
+      var v=d.get(cm), cls=(d.cls==='sub'?'subrow':(d.cls||'')), val=PLAIN[d.id]?pL(v):sL(v);
+      if(d.id==='f_after') val=pL(v)+' of '+pL(cm.led.target);
+      if(d.id==='bal'){
+        h+='<tr class="net drillable" onclick="toggleDrill(\'__bal\')"><td>'+d.label+' '+(OPEN['__bal']?'▾':'▸')+'</td><td class="r">'+balWords(v,cm.r)+'</td></tr>';
+        if(OPEN['__bal']) h+='<tr><td colspan="2" style="padding:2px 4px"><div class="drill">'+balanceBreakdown(MONTH)+'</div></td></tr>';
+        return;
+      }
+      h+='<tr class="'+cls+'"><td>'+(d.cls==='sub'?'<span class="muted">'+d.label+'</span>':d.label)+'</td><td class="r">'+val+'</td></tr>';
+    });
     h+='</table><p class="note">Minus = owed to OWH. Per clause 7: each month\'s result first pays down what you owe (set-up costs and advances), then fills the security float to its target; only the remainder is paid to you. In a loss month any prepayment absorbs it first, then the float. The float stays yours and is returned at the end, less anything properly owing (7.1.4).</p>';
   }
   h+='<p class="note">Tap a cost category to see what it is made of — date, description, amount. '+
