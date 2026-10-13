@@ -98,14 +98,52 @@ function fetchOnce(){ return api('props_get_all',{scope:'live'}).then(function(j
 function cache(){ try{return JSON.parse(localStorage.getItem('owh_today'));}catch(e){return null;} }
 function showErr(e){ if(D)return; $('#app').innerHTML='<div class="err">Couldn\'t reach the endpoint.<br><span class="muted">'+(e&&e.message||'')+'</span></div>'; }
 var ALERTS=null;
+var RVW=null, RVWBUSY={}, RVWSHOW=false;      // review bookings: the list from the server, ids being saved, the flagged list open or not
 var OBJX=null, OBJR={}, OBJBUSY={};      // owner questions & objections: the log, unsent reply drafts, ids being sent
-function onData(j,fromCache){ D=j.data; D._gen=j.generatedAt; STAYS=mergeStays(D.stays); try{ if(!fromCache)localStorage.setItem('owh_today',JSON.stringify(j)); }catch(e){} render(); demoTab(); if(!fromCache)fetchAlerts(); fetchObjs(); }
+function onData(j,fromCache){ D=j.data; D._gen=j.generatedAt; STAYS=mergeStays(D.stays); try{ if(!fromCache)localStorage.setItem('owh_today',JSON.stringify(j)); }catch(e){} render(); demoTab(); if(!fromCache)fetchAlerts(); fetchObjs(); fetchReview(); }
 /* The Demo tab exists only while demo mode is switched on — the switch itself is the on/off signal,
    so there is nothing extra to remember to hide before or after a partner meeting. The demo flat is
    never in this screen's data either way; this is only a way in. */
 function demoTab(){ /* v229: «👁 Partner view» is always there for an admin — the demo, when on, is one of its choices */ }
 /* light read-only alerts (WeShare pending confirmations) — fetched after the main render so the load stays fast */
 function fetchAlerts(){ api('props_alerts').then(function(j){ if(j&&j.ok){ ALERTS=j; render(); } }).catch(function(){}); }
+/* ---- review bookings (Sarah 2026-10-13): fictional bookings made on Airbnb / Booking.com to earn reviews. Every new booking on a
+   flat in its review phase asks once: Normal · OWH paid · Owner paid. OWH-/owner-funded is OUTSIDE revenue — no 25% fee, no owner share;
+   an owner-funded one is returned to her through her settlement. Mark final waits for the unanswered ones. ---- */
+function fetchReview(){ api('props_review_list').then(function(j){ if(j&&j.ok){ RVW=j; render(); } }).catch(function(){}); }
+function reviewSet(id,val){
+  if(RVWBUSY[id]) return; RVWBUSY[id]=true; render();
+  api('props_review_set',{id:id,value:val}).then(function(j){
+    RVWBUSY[id]=false;
+    if(j&&j.ok){ if((j.touchesFinal||[]).length) alert('Saved. Note: this booking falls in a month that is already final ('+j.touchesFinal.join(', ')+') — that month\'s revenue changed. Re-publish it if the owner has already seen it.'); fetchReview(); }
+    else { alert('Not saved: '+((j&&j.error)||'try again')); render(); }
+  }).catch(function(){ RVWBUSY[id]=false; alert('Not saved — check the connection.'); render(); });
+}
+function reviewPhase(flat,on){ api('props_review_phase',{flat:flat,on:on?'1':'0'}).then(function(){ fetchReview(); }).catch(function(){}); }
+function reviewStartSel(){ var el=document.getElementById('rvStart'); if(el&&el.value) reviewPhase(el.value,true); }
+function reviewCard(){
+  if(!RVW) return '';
+  var phase=RVW.phase||{}, flats=Object.keys(phase), pend=RVW.pending||[], fl=RVW.flagged||[];
+  var h='<div class="card"><h3>Review bookings<span class="rt">'+(pend.length?pend.length+' to answer':(flats.length?'all answered':'off'))+'</span></h3>';
+  var btn=function(id,v,lbl,hot){ return '<button class="paybtn" '+(RVWBUSY[id]?'disabled ':'')+'style="'+(hot?'':'background:#fff;color:var(--ink);border:1px solid var(--line)')+'" onclick="reviewSet(\''+id+'\',\''+v+'\')">'+lbl+'</button>'; };
+  pend.forEach(function(b){
+    h+='<div style="border-top:1px solid var(--line);padding:8px 0"><div style="font-size:12.5px"><b>'+esc(b.flat)+'</b> · '+esc(b.guest||'—')+' · '+esc(b.portal)+' · '+esc(b.checkIn)+' → '+esc(b.checkOut)+' ('+b.nights+'n) · <b>$'+fmt(b.gross)+'</b></div>'+
+       '<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+btn(b.id,'normal','Normal',true)+btn(b.id,'owh','OWH paid',false)+btn(b.id,'owner','Owner paid',false)+(RVWBUSY[b.id]?'<span class="muted">saving…</span>':'')+'</div></div>';
+  });
+  if(!pend.length&&flats.length) h+='<div class="muted" style="padding:2px 0 6px">Nothing waiting — every new booking on '+flats.map(esc).join(', ')+' has been answered.</div>';
+  // which flats are prompting
+  h+='<div style="border-top:1px solid var(--line);padding-top:6px;font-size:12px">'+(flats.length?'Asking about new bookings on: '+flats.map(function(f){ return '<b>'+esc(f)+'</b> <span class="muted">since '+esc(phase[f])+'</span> <a href="#" onclick="reviewPhase(\''+f+'\',false);return false">stop</a>'; }).join(' · ')
+     :'No flat is collecting reviews.')+
+     ' <select id="rvStart" style="font:inherit;font-size:11.5px;margin-left:6px"><option value="">start for…</option>'+((D.meta.flatsOrder||[]).filter(function(f){ return !phase[f]; }).map(function(f){ return '<option>'+esc(f)+'</option>'; }).join(''))+'</select> <a href="#" onclick="reviewStartSel();return false">start</a></div>';
+  if(fl.length){
+    h+='<div style="margin-top:6px"><a href="#" onclick="RVWSHOW=!RVWSHOW;render();return false" style="font-size:12px">'+(RVWSHOW?'▾':'▸')+' Flagged review bookings ('+fl.length+') · cost to OWH <b>$'+fmt(RVW.owhCost||0)+'</b></a></div>';
+    if(RVWSHOW) fl.forEach(function(b){
+      h+='<div style="padding:5px 0;font-size:11.5px;border-bottom:1px solid var(--line)"><b>'+esc(b.flat)+'</b> · '+esc(b.guest||'—')+' · '+esc(b.portal)+' · '+esc(b.checkIn)+' → '+esc(b.checkOut)+' · '+(b.value==='owner'?'<b>owner paid</b> — $'+fmt(b.gross)+' returned to her':'<b>OWH paid</b>')+' · platform charges (OWH) $'+fmt(b.owhCost||0)+
+         ' · <a href="#" onclick="reviewSet(\''+b.id+'\',\'normal\');return false">make it a normal booking</a></div>';
+    });
+  }
+  return h+'<div class="legend">An OWH- or owner-funded review booking is outside revenue: net revenue from it is zero, so no 25% fee and no owner share. OWH bears the platform charges. Owner-funded: what she paid is returned to her in that month, through her settlement.</div></div>';
+}
 /* ---- owner questions & objections (2026-10-13): what an owner wrote on her statement, answered from here.
    An answer goes to her Telegram and clears the alert on Sarah's alerts bot; "mark handled" closes it with no message. ---- */
 function fetchObjs(){ api('props_objections').then(function(j){ if(j&&j.ok){ OBJX=j.items||[]; render(); } }).catch(function(){}); }
@@ -287,6 +325,7 @@ function render(){
   // ---- needs you
   h+=needs(cm,pmY);
   h+=objAdminCard();
+  h+=reviewCard();
   h+=ownerCard();
   h+=stripeCard();
 

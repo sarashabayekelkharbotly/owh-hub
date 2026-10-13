@@ -72,7 +72,8 @@ var PC = (function () {
       if ((s.checkOut || '').slice(0, 7) === ym) done++;
     });
     var E = r.revenue.earnings || 0, O = r.revenue.other || 0, T = r.revenue.total || 0;
-    var fee = pv.managementFee || 0, res = (pv.netPayout != null ? pv.netPayout : r.net);
+    var fee = pv.managementFee || 0, ret = pv.reviewReturn || 0;                 // owner-funded review bookings, returned to her (outside revenue, no fee)
+    var res = (pv.netPayout != null ? pv.netPayout : r.net) + ret;
     var cost = {}, costNative = {};
     (r.costs || []).forEach(function (c) {
       if (c.key === 'subscription') return;                                    // OWH's own cost, never shown
@@ -88,7 +89,7 @@ var PC = (function () {
     }
     return { ym: ym, r: r, rate: rate, status: r.status, closedAt: r.closedAt || null, pct: pv.managementFeePct || 0,
              k: { stays: done, turn: turnoversOf(D, f, ym, done), nights: nights, occ: nights / daysIn(ym), adr: nightsAdr ? E / nightsAdr : null },
-             v: { G: G, F: G - N, adj: E - N, E: E, O: O, T: T, fee: fee, share: T - fee, res: res, costs: (T - fee) - res },
+             v: { G: G, F: G - N, adj: E - N, E: E, O: O, T: T, fee: fee, share: T - fee, ret: ret, res: res, costs: (T - fee) + ret - res },
              cost: cost, costNative: costNative, led: led };
   }
 
@@ -124,6 +125,8 @@ var PC = (function () {
     rows.push({ id: 'net', label: 'Net revenue', cls: 'tot', t: 'm', get: function (m) { return m.v.T; } });
     rows.push({ id: 'fee', label: 'management fee — ' + Math.round(pct * 100) + '% of net revenue', t: 'm', get: function (m) { return -m.v.fee; } });
     rows.push({ id: 'share', label: 'Your share — ' + Math.round((1 - pct) * 100) + '% of net revenue', cls: 'tot', t: 'm', get: function (m) { return m.v.share; } });
+    if (any(function (m) { return Math.abs(m.v.ret) > 0.005; }))
+      rows.push({ id: 'ret', label: 'Review bookings you paid — returned to you (no fee)', t: 'm', get: function (m) { return m.v.ret; } });
     rows.push({ id: 'costs', label: 'Costs paid on your behalf', cls: 'tot', t: 'm', get: function (m) { return m.v.costs; }, group: 'costs' });
     costKeys(ms).forEach(function (k) {
       rows.push({ id: 'cost:' + k, key: k, label: LABEL[k] || k, cls: 'cat', t: 'm', cat: true, get: function (m) { return m.cost[k] ? m.cost[k] : null; } });

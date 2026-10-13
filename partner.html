@@ -78,7 +78,7 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
 </div>
 
 <script src="auth.js"></script>
-<script src="partner-core.js?v=1"></script>
+<script src="partner-core.js?v=2"></script>
 <script>
 /* SCREEN 6 — Partner, this month. Built to the mock-up (OWH_final_2.html §6):
    4 KPIs · the month's stays · statement with this month beside last month · drill-down per cost line.
@@ -320,11 +320,12 @@ function exportStatement(){
   download('statement-'+MONTH,rows);
 }
 function exportBookings(){
-  var f=myFlat(), rows=[['Guest','Channel','Status','Booked','Check-in','Check-out','Nights','Gross guest payment (USD)','Platform and card fees (USD)','Net (USD)','Other revenue (USD)']];
+  var f=myFlat(), rows=[['Guest','Channel','Status','Booked','Check-in','Check-out','Nights','Gross guest payment (USD)','Platform and card fees (USD)','Net (USD)','Other revenue (USD)','Review booking','Returned to you (USD)']];
   (DATA.stays||[]).filter(function(s){ return s.flat===f && s.portal!=='Blocked'; })
     .sort(function(a,b){ return (a.checkIn||'')<(b.checkIn||'')?-1:1; })
     .forEach(function(s){ var w=(s.allIn||0)-(s.other||0), g=(s.gross>0&&s.gross>=w)?s.gross:w;
-      rows.push([s.guest||'',s.portal||'Direct',s.status||'',s.booked||'',s.checkIn||'',s.checkOut||'',s.nights||'',n2(g),n2(g-w),n2(w),n2(s.other||0)]); });
+      rows.push([s.guest||'',s.portal||'Direct',s.status||'',s.booked||'',s.checkIn||'',s.checkOut||'',s.nights||'',n2(g),n2(g-w),n2(w),n2(s.other||0),
+        s.review==='owh'?'OWH-funded (outside revenue)':(s.review==='owner'?'owner-funded (outside revenue)':''),s.review==='owner'?n2(s.reviewGross||0):'']); });
   download('bookings',rows);
 }
 function exportCosts(){
@@ -459,19 +460,24 @@ function render(){
   h+='<div class="card"><h3>'+monLabel(MONTH)+' stays <span class="pill '+(isFinal?'pf':'pa')+'" style="float:right">'+(isFinal?'final':'in progress')+'</span></h3>';
   if(!st.length) h+='<p class="note" style="margin:0">No stays recorded for this month.</p>';
   else{
-    var spans=false, tG=0, tF=0, tN=0;
+    var spans=false, tG=0, tF=0, tN=0, anyReview=false;
     h+='<table class="d" style="font-size:11px"><tr><th>Guest</th><th>Stay</th><th class="c">N</th><th>Channel</th><th class="r">Gross</th><th class="r">Fees</th><th class="r">Net</th></tr>';
     st.forEach(function(s){
       var nm=nightsOf(s,MONTH); if(nm!==(s.nights||nm)) spans=true;
       var p=stayParts(s,MONTH); tG+=p.gross; tF+=p.fees; tN+=p.net;
-      h+='<tr><td>'+esc(s.guest||'—')+'</td><td style="white-space:nowrap">'+dayLabel(s.checkIn)+' → '+dayLabel(s.checkOut)+'</td>'+
+      var rv=s.review||'';
+      if(rv) anyReview=true;
+      var tag=rv==='owh'?'<br><span class="pill pa">review booking · OWH-funded · no revenue</span>'
+             :(rv==='owner'?'<br><span class="pill pa">review booking · you paid · '+(s.reviewGross>0?sym()+fmt(conv(s.reviewGross,'USD',r))+' returned to you':'returned to you')+'</span>':'');
+      h+='<tr><td>'+esc(s.guest||'—')+tag+'</td><td style="white-space:nowrap">'+dayLabel(s.checkIn)+' → '+dayLabel(s.checkOut)+'</td>'+
          '<td class="c">'+nm+'</td><td style="white-space:nowrap"><span class="dot '+dotFor(s.portal)+'"></span>'+esc(s.portal||'Direct')+'</td>'+
-         '<td class="r">'+fmt(conv(p.gross,'USD',r))+'</td><td class="r">'+(p.fees>0.005?fmt(-conv(p.fees,'USD',r)):'—')+'</td><td class="r">'+fmt(conv(p.net,'USD',r))+'</td></tr>';
+         (rv?'<td class="r">—</td><td class="r">—</td><td class="r">—</td></tr>'
+            :'<td class="r">'+fmt(conv(p.gross,'USD',r))+'</td><td class="r">'+(p.fees>0.005?fmt(-conv(p.fees,'USD',r)):'—')+'</td><td class="r">'+fmt(conv(p.net,'USD',r))+'</td></tr>');
     });
     h+='<tr class="tot"><td colspan="4">Total</td><td class="r">'+fmt(conv(tG,'USD',r))+'</td><td class="r">'+(tF>0.005?fmt(-conv(tF,'USD',r)):'—')+'</td><td class="r">'+fmt(conv(tN,'USD',r))+'</td></tr>';
     h+='</table>';
     h+='<p class="note" style="margin-top:5px">Gross = what the guest paid; Fees = platform commission, card/processing charges and taxes on them; Net = gross − fees.'+
-       (spans?' A stay crossing into another month is counted here only for the nights inside '+monLabel(MONTH)+'.':'')+' The Net column is the earnings line of the statement below.</p>';
+       (spans?' A stay crossing into another month is counted here only for the nights inside '+monLabel(MONTH)+'.':'')+' The Net column is the earnings line of the statement below.'+(anyReview?' A <b>review booking</b> is a booking made to earn a review: it is outside revenue, so it carries no fee and no money in the columns; its nights still count for occupancy but not for the average nightly rate. If you paid for it, what you paid is returned to you on the statement.':'')+'</p>';
   }
   h+='</div>';
 
