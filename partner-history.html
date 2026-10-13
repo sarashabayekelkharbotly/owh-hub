@@ -43,6 +43,13 @@ table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
 .g{color:var(--g)}.neg{color:var(--red)}
 .btn{border:1px solid var(--line);background:var(--white);color:var(--ink);font-family:inherit;font-weight:700;font-size:12px;border-radius:9px;padding:6px 13px;cursor:pointer}
 .btn:hover{background:var(--grey)}
+.kg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+@media(max-width:560px){.kg{grid-template-columns:1fr 1fr}}
+.kt{background:var(--white);border:1px solid var(--line);border-radius:11px;padding:8px 10px}
+.kpi-l{font-size:10px;color:var(--soft)}.kpi-v{font-size:19px;font-weight:700;line-height:1.1;margin:1px 0}.kpi-s{font-size:10px;color:var(--soft)}
+.dl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.dl label{font-size:11px;color:var(--soft);display:flex;gap:5px;align-items:center}
+.dl input[type=month]{font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:9px;padding:5px 8px;background:var(--white)}
 .legend{font-size:10.5px;color:var(--soft);margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
 .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .note{font-size:10px;color:var(--soft);line-height:1.55;margin:8px 0 0}
@@ -73,7 +80,7 @@ table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
 </div>
 
 <script src="auth.js"></script>
-<script src="partner-core.js?v=3"></script>
+<script src="partner-core.js?v=4"></script>
 <script>
 /* SCREEN 7 — Partner, history & statistics.
    Each card carries its own time range, the same 3M/6M/YTD/12M/all control the Statistics screen uses,
@@ -82,7 +89,8 @@ table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
 AUTH_ROLE = 'partner';
 
 var DATA=null, CUR='USD', OPEN={cost:true}, CHAN='revenue';      // the cost categories are open by default, like the statement
-var R={hist:'12M', occ:'12M', chan:'12M'};
+var R={sum:'12M', dl:'12M', occ:'12M', chan:'12M'};
+var DL={from:'', to:''};           // a custom From–To for the download; empty = use the quick range above it
 try{ CUR=localStorage.getItem('owh_cur')||'USD'; }catch(e){}
 
 var $=function(s){return document.querySelector(s);};
@@ -166,7 +174,16 @@ function seg(opts,cur,fn){ return '<div class="seg">'+opts.map(function(o){
   var v=Array.isArray(o)?o[0]:o, lbl=Array.isArray(o)?o[1]:o;
   return '<button class="'+(cur===v?'on':'')+'" onclick="'+fn+'(\''+v+'\')">'+lbl+'</button>'; }).join('')+'</div>'; }
 function timeSeg(k){ return seg(['3M','6M','YTD','12M','all'], R[k], 'setR_'+k); }
-function setR_hist(v){ R.hist=v; render(); }
+function setR_sum(v){ R.sum=v; render(); }
+function setR_dl(v){ R.dl=v; DL.from=''; DL.to=''; render(); }
+function setDl(){ var a=document.getElementById('dlFrom'), b=document.getElementById('dlTo'); DL.from=a?a.value:''; DL.to=b?b.value:''; render(); }
+/* the months the download covers: a custom From–To when set, else the quick range */
+function dlMonths(){
+  var all=allMonths(), lim=(DATA.meta&&DATA.meta.currentMonth)?chipLimit():'9999';
+  if(DL.from||DL.to){ var a=DL.from||'0000-00', b=DL.to||'9999-99'; return all.filter(function(m){ return m>=a&&m<=b; }); }
+  return inRange(R.dl).filter(function(m){ return m<=lim; });
+}
+function chipLimit(){ var c=(DATA&&DATA.meta&&DATA.meta.currentMonth)||''; if(!c) return '9999'; var y=+c.slice(0,4), mo=+c.slice(5,7)+1; if(mo>12){ y++; mo=1; } return y+'-'+('0'+mo).slice(-2); }
 function setR_occ(v){ R.occ=v; render(); }
 function setR_chan(v){ R.chan=v; render(); }
 function setChan(v){ CHAN=v; render(); }
@@ -213,8 +230,19 @@ function rowFor(m){
 function modelsIn(ms){ return ms.map(function(m){ return PC.model(DATA,myFlat(),m); }).filter(Boolean); }
 function cellTxt(d,m){ var v=d.get(m); if(v==null||!isFinite(v)) return '—';
   if(d.t==='n') return fmtN(v); if(d.t==='p') return Math.round(v*100)+'%'; return fmt(CUR==='USD'?v:v*m.rate); }
+function summaryFor(ms){
+  var models=modelsIn(ms), S={n:models.length,open:0,T:0,fee:0,costs:0,res:0,ret:0,E:0,nights:0,nAdr:0,days:0,stays:0,turn:0,turnAny:false};
+  var c=function(x,m){ return CUR==='USD'?x:x*m.rate; };
+  models.forEach(function(m){
+    if(m.status!=='final') S.open++;
+    S.T+=c(m.v.T,m); S.fee+=c(m.v.fee,m); S.costs+=c(m.v.costs,m); S.res+=c(m.v.res,m); S.ret+=c(m.v.ret,m); S.E+=c(m.v.E,m);
+    S.nights+=m.k.nights; S.nAdr+=m.k.nightsAdr||0; S.days+=PC.daysIn(m.ym); S.stays+=m.k.stays;
+    if(m.k.turn!=null){ S.turn+=m.k.turn; S.turnAny=true; }
+  });
+  return S;
+}
 function csv(){
-  var ms=inRange(R.hist), models=modelsIn(ms), defs=PC.rowDefs(models);
+  var ms=dlMonths(), models=modelsIn(ms), defs=PC.rowDefs(models);
   var q=function(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
   var cellCsv=function(d,m){ var v=d.get(m); if(v==null||!isFinite(v)) return ''; if(d.t==='n') return String(Math.round(v)); if(d.t==='p') return (v*100).toFixed(1)+'%'; return (CUR==='USD'?v:v*m.rate).toFixed(2); };
   var out=[['Line'].concat(models.map(function(m){ return monLabel(m.ym)+' ('+CUR+')'; }))];
@@ -239,6 +267,69 @@ function csv(){
   a.href=URL.createObjectURL(blob);
   a.download=flatName().replace(/\s+/g,'-')+'-statistics-'+(ms[0]||'')+'-to-'+(ms[ms.length-1]||'')+'.csv';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+/* ---- the Excel download: the statement's own rows, one column per month, for the chosen time frame; plus every cost entry and every booking.
+   SheetJS is fetched only when the button is pressed; if it cannot load, the same data downloads as CSV instead. ---- */
+function loadXlsx(cb){
+  if(window.XLSX) return cb(true);
+  var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  sc.onload=function(){ cb(!!window.XLSX); }; sc.onerror=function(){ cb(false); };
+  document.head.appendChild(sc);
+}
+function dlMsg(t){ var e=document.getElementById('dlmsg'); if(e) e.textContent=t; }
+function buildWorkbook(X,ms){
+  var models=modelsIn(ms), defs=PC.rowDefs(models), f=myFlat();
+  var money=CUR==='USD'?'#,##0.00':'#,##0';
+  /* sheet 1 — the statement, month by month */
+  var aoa=[['Line'].concat(models.map(function(m){ return monLabel(m.ym)+' ('+CUR+')'; }))], kinds=[[]];
+  defs.forEach(function(d){
+    if(d.sec){ aoa.push([]); kinds.push([]); aoa.push([d.sec.toUpperCase()]); kinds.push([]); return; }
+    if(d.sub){ aoa.push([d.sub]); kinds.push([]); return; }
+    aoa.push([(d.cat?'   ':'')+d.label].concat(models.map(function(m){ var v=d.get(m); if(v==null||!isFinite(v)) return null;
+      if(d.t==='n') return Math.round(v); if(d.t==='p') return Math.round(v*1000)/1000; return Math.round((CUR==='USD'?v:v*m.rate)*100)/100; })));
+    kinds.push([d.t]);
+  });
+  aoa.push([]); kinds.push([]);
+  aoa.push(['Status'].concat(models.map(function(m){ return m.status==='final'?'final':'in progress'; }))); kinds.push([]);
+  aoa.push(['EGP per USD'].concat(models.map(function(m){ return Math.round(m.rate*100)/100; }))); kinds.push(['r']);
+  var ws=X.utils.aoa_to_sheet(aoa);
+  kinds.forEach(function(k,r){ if(!k.length) return; for(var c=1;c<=models.length;c++){ var cell=ws[X.utils.encode_cell({r:r,c:c})]; if(!cell||cell.v==null||typeof cell.v!=='number') continue;
+    cell.z=k[0]==='n'?'#,##0':(k[0]==='p'?'0.0%':(k[0]==='r'?'0.00':money)); } });
+  ws['!cols']=[{wch:50}].concat(models.map(function(){ return {wch:14}; }));
+  var wb=X.utils.book_new(); X.utils.book_append_sheet(wb,ws,'Statement by month');
+  /* sheet 2 — every cost entry behind the categories */
+  var inR={}; ms.forEach(function(m){ inR[m]=1; });
+  var catKey={}; Object.keys(PC.CATMAP).forEach(function(k){ catKey[PC.CATMAP[k]]=k; });
+  var rows=[['Month','Category','Date','Description','Amount','Currency',"USD at that month's rate"]];
+  (DATA.tx||[]).filter(function(t){ return t.flat===f&&inR[t.ym]; }).sort(function(a,b){ return (a.ym+a.date)<(b.ym+b.date)?-1:1; }).forEach(function(t){
+    var m=models.filter(function(x){ return x.ym===t.ym; })[0], usd=(t.currency==='USD')?t.amount:(m?t.amount/m.rate:null), k=catKey[t.cat];
+    rows.push([monLabel(t.ym),(k&&LABEL[k])||t.cat,t.date||'',t.desc||'',t.amount==null?null:Math.round(t.amount*100)/100,t.currency||'',usd==null?null:Math.round(usd*100)/100]); });
+  var ws2=X.utils.aoa_to_sheet(rows); ws2['!cols']=[{wch:11},{wch:18},{wch:11},{wch:46},{wch:12},{wch:9},{wch:16}];
+  X.utils.book_append_sheet(wb,ws2,'Cost entries');
+  /* sheet 3 — every booking that touches the period */
+  var lo=ms[0], hi=ms[ms.length-1];
+  var br=[['Guest','Channel','Status','Booked','Check-in','Check-out','Nights','Gross guest payment (USD)','Platform and card fees (USD)','Net (USD)','Other revenue (USD)','Review booking','Returned to you (USD)']];
+  (DATA.stays||[]).filter(function(s){ return s.flat===f&&s.portal!=='Blocked'&&s.checkIn&&s.checkOut&&s.checkIn.slice(0,7)<=hi&&s.checkOut.slice(0,7)>=lo; })
+    .sort(function(a,b){ return a.checkIn<b.checkIn?-1:1; }).forEach(function(s){
+      var w=(s.allIn||0)-(s.other||0), g=(s.gross>0&&s.gross>=w)?s.gross:w, r2=function(x){ return Math.round(x*100)/100; };
+      br.push([s.guest||'',s.portal||'Direct',s.status||'',s.booked||'',s.checkIn,s.checkOut,s.nights||null,r2(g),r2(g-w),r2(w),r2(s.other||0),
+        s.review==='owh'?'OWH-funded (outside revenue)':(s.review==='owner'?'owner-funded (outside revenue)':''),s.review==='owner'?r2(s.reviewGross||0):null]); });
+  var ws3=X.utils.aoa_to_sheet(br); ws3['!cols']=[{wch:22},{wch:13},{wch:12},{wch:11},{wch:11},{wch:11},{wch:7},{wch:14},{wch:14},{wch:11},{wch:11},{wch:28},{wch:14}];
+  X.utils.book_append_sheet(wb,ws3,'Bookings');
+  return wb;
+}
+function xlsxDownload(){
+  var ms=dlMonths(); if(!ms.length){ dlMsg('Choose at least one month.'); return; }
+  dlMsg('Preparing…');
+  loadXlsx(function(ok){
+    if(!ok){ dlMsg('Excel could not be prepared here — downloading a CSV instead.'); csv(); return; }
+    try{
+      var wb=buildWorkbook(window.XLSX,ms);
+      window.XLSX.writeFile(wb, flatName().replace(/\s+/g,'-')+'-statement-'+ms[0]+'-to-'+ms[ms.length-1]+'.xlsx');
+      dlMsg('Downloaded ✓');
+    }catch(e){ dlMsg('Excel could not be prepared — downloading a CSV instead.'); csv(); }
+  });
 }
 
 /* ---- occupancy bars + ADR line ---- */
@@ -354,33 +445,24 @@ function render(){
   $('#rib').innerHTML=authWho()+' · '+esc(f);
   if(!allMonths().length){ $('#app').innerHTML='<div class="card"><span class="muted">No history yet.</span></div>'; return; }
 
-  var ms=inRange(R.hist), models=modelsIn(ms), defs=PC.rowDefs(models);
-  var anyOpen=models.some(function(m){ return m.status!=='final'; });
-  var ncol=models.length+1;
-
   var h='';
   if(DATA.meta.demo&&DATA.meta.demo.active) h+='<div class="demo"><b>Sample.</b> Real figures from a running apartment, on the terms we are discussing.</div>';
   h+='<p class="h1">'+esc(f)+' <span class="sub">· statistics</span></p>';
 
-  /* ---- the statement, month by month — the SAME rows as «This month» ---- */
-  h+='<div class="card"><div class="chead"><h3>Your history — all months</h3>'+
-     '<div class="rowbtns">'+timeSeg('hist')+
-     seg([['USD','USD'],['EGP','EGP']],CUR,'setCur')+'</div></div>';
-  h+='<div class="wrap"><table class="d"><thead><tr><th>Line</th>'+
-     models.map(function(m){ return '<th>'+monShort(m.ym)+(m.status!=='final'?'*':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
-  defs.forEach(function(d){
-    if(d.sec){ h+='<tr class="head"><td colspan="'+ncol+'" style="background:#f6f2f2;font-weight:700;text-transform:uppercase;font-size:10px;letter-spacing:.04em">'+d.sec+'</td></tr>'; return; }
-    if(d.sub){ h+='<tr class="sub"><td colspan="'+ncol+'" style="font-weight:700">'+d.sub+'</td></tr>'; return; }
-    if(d.cat && !OPEN.cost) return;
-    var cls=(d.cls==='cat'?'sub':(d.cls||'')), click='', lab=d.label;
-    if(d.id==='costs'){ cls=(cls+' head drillable').trim(); click=' onclick="toggle(\'cost\')"'; lab+=' '+(OPEN.cost?'▾':'▸'); }
-    h+='<tr class="'+cls+'"'+click+'><td>'+lab+'</td>'+models.map(function(m){ var v=d.get(m); return '<td class="'+(v!=null&&v<0?'neg':'')+'">'+cellTxt(d,m)+'</td>'; }).join('')+'</tr>';
-  });
-  h+='</tbody></table></div>';
-  h+='<div class="rowbtns" style="margin-top:9px"><button class="btn" onclick="csv()">Export CSV</button></div>';
-  h+='<p class="note">These are the same lines as the statement on <b>This month</b>, one column per month. All figures '+CUR+', each month converted at that month\'s own rate'+
-     (anyOpen?' · <b>*</b> still open, may change until the month is closed':'')+
-     '. Tap <b>Costs paid on your behalf</b> to fold the categories away. The CSV has the same lines plus every cost entry behind them.</p></div>';
+  /* ---- the summary: totals and averages for a time frame (the month-by-month detail is the Excel download below) ---- */
+  var sms=inRange(R.sum), S=summaryFor(sms), mm=function(x){ return sym()+fmt(x); };
+  var tile=function(l,v,s){ return '<div class="kt"><div class="kpi-l">'+l+'</div><div class="kpi-v">'+v+'</div><div class="kpi-s">'+(s||'&nbsp;')+'</div></div>'; };
+  h+='<div class="card"><div class="chead"><h3>Summary</h3><div class="rowbtns">'+timeSeg('sum')+seg([['USD','USD'],['EGP','EGP']],CUR,'setCur')+'</div></div>'+
+     '<div class="kg">'+
+       tile('Net revenue',mm(S.T),S.n+' month'+(S.n===1?'':'s')+(S.open?' · '+S.open+' still open':''))+
+       tile('Management fee',mm(S.fee),'')+
+       tile('Costs paid on your behalf',mm(S.costs),'')+
+       tile('Month results, total',mm(S.res),Math.abs(S.ret)>0.005?'incl. '+mm(S.ret)+' returned review bookings':'your share less costs')+
+       tile('Occupancy',S.days?Math.round(100*S.nights/S.days)+'%':'—',fmtN(S.nights)+' nights')+
+       tile('Average nightly rate',S.nAdr?mm(S.E/S.nAdr):'—','earnings ÷ nights')+
+       tile('Stays completed',fmtN(S.stays),'')+
+       tile('Turnovers',S.turnAny?fmtN(S.turn):'—','cleanings that took place')+
+       '</div><p class="note">Totals for the time frame, '+CUR+', each month converted at that month\'s own rate. The month-by-month figures are in the Excel download at the bottom of this page.</p></div>';
 
   /* ---- occupancy & ADR ---- */
   h+='<div class="card"><div class="chead"><h3>Your flat — occupancy &amp; ADR</h3>'+timeSeg('occ')+'</div>'+
@@ -396,6 +478,16 @@ function render(){
         ? 'the result after costs and the management share — negative while costs are still being recovered; a month total, not something any one channel earns'
         : 'split by the channel each booking came through')+'</div>'+
      chanChart()+'</div>';
+
+  /* ---- the Excel download: month by month, for the time frame chosen ---- */
+  var dms=dlMonths();
+  h+='<div class="card"><h3>Download — month by month</h3>'+
+     '<p class="note" style="margin:2px 0 6px">Pick a time frame. You get an Excel file with one column per month — the same lines as your statement, every cost category — plus a sheet with every cost entry and one with every booking.</p>'+
+     '<div class="rowbtns">'+seg(['3M','6M','YTD','12M','all'], (DL.from||DL.to)?'':R.dl, 'setR_dl')+'</div>'+
+     '<div class="dl"><label>From <input type="month" id="dlFrom" value="'+esc(DL.from)+'" min="'+(allMonths()[0]||'')+'" max="'+chipLimit()+'" onchange="setDl()"></label>'+
+     '<label>To <input type="month" id="dlTo" value="'+esc(DL.to)+'" min="'+(allMonths()[0]||'')+'" max="'+chipLimit()+'" onchange="setDl()"></label></div>'+
+     '<div class="muted">'+(dms.length?monLabel(dms[0])+(dms.length>1?' → '+monLabel(dms[dms.length-1]):'')+' · '+dms.length+' month'+(dms.length===1?'':'s'):'No months in this time frame')+'</div>'+
+     '<div class="rowbtns" style="margin-top:8px"><button class="btn" onclick="xlsxDownload()">Download Excel</button><span class="muted" id="dlmsg"></span></div></div>';
 
   $('#app').innerHTML=h;
 }

@@ -89,7 +89,7 @@ var PC = (function () {
               floatAfter: pl.floatAfter, target: pl.floatTarget, paid: pl.paidToDate || 0, still: pl.outstanding || 0 };
     }
     return { ym: ym, r: r, rate: rate, status: r.status, closedAt: r.closedAt || null, pct: pv.managementFeePct || 0,
-             k: { stays: done, turn: turnoversOf(D, f, ym), nights: nights, occ: nights / daysIn(ym), adr: nightsAdr ? E / nightsAdr : null },
+             k: { stays: done, turn: turnoversOf(D, f, ym), nights: nights, nightsAdr: nightsAdr, occ: nights / daysIn(ym), adr: nightsAdr ? E / nightsAdr : null },
              v: { G: G, F: G - N, adj: E - N, E: E, O: O, T: T, fee: fee, share: T - fee, ret: ret, res: res, costs: (T - fee) + ret - res },
              cost: cost, costNative: costNative, led: led };
   }
