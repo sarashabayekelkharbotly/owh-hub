@@ -60,6 +60,8 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
 .seg button.on{background:var(--red);color:#fff}
 .tabbar{display:flex;background:var(--white);border-top:1px solid var(--line)}
 .tabbar .tab{min-width:0;white-space:nowrap}
+.mp{display:flex;gap:8px}
+.mp select{font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:7px 10px;background:var(--white);cursor:pointer}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px;margin:0 0 6px;-webkit-overflow-scrolling:touch}
 .chips button{font-family:inherit;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--white);color:var(--soft);border-radius:16px;padding:4px 12px;white-space:nowrap;cursor:pointer;flex:none}
 .chips button.on{background:var(--red);color:#fff;border-color:var(--red)}
@@ -111,6 +113,14 @@ function setTab(t){ TAB=t; try{ history.replaceState(null,'','#'+t+(t==='stateme
 function setSub(x){ SUB=x; try{ history.replaceState(null,'','#statement'+(x==='stmt'?'':'/'+(x==='settle'?'settlement':'months'))); }catch(e){} render(); }
 /* the month chips stop at next month — the sheet carries empty rows far into the future that would only be noise */
 function chipLimit(){ var c=(DATA&&DATA.meta&&DATA.meta.currentMonth)||''; if(!c) return '9999'; var y=+c.slice(0,4), mo=+c.slice(5,7)+1; if(mo>12){ y++; mo=1; } return y+'-'+('0'+mo).slice(-2); }
+var MON_FULL=['January','February','March','April','May','June','July','August','September','October','November','December'];
+/* a new year keeps the same month when that year has it, otherwise lands on that year's latest month */
+function pickYear(y){
+  var list=monthsAvailable().filter(function(m){ return m<=chipLimit()||m===MONTH; }).filter(function(m){ return m.slice(0,4)===y; });
+  if(!list.length) return;
+  var same=y+'-'+(MONTH||'').slice(5,7);
+  setMonth(list.indexOf(same)>-1?same:list[list.length-1]);
+}
 function setMonth(m){ MONTH=m; OPEN={}; render(); }
 function openMonth(m){ MONTH=m; OPEN={}; TAB='statement'; SUB='stmt'; try{ history.replaceState(null,'','#statement'); }catch(e){} render(); try{ window.scrollTo(0,0); }catch(e){} }
 var OBJS=null, OBJ_DRAFT='', OBJ_TYPE='question', OBJ_MSG='', OBJ_BUSY=false;     // her questions & objections: the log, the unsent draft, the last result
@@ -465,9 +475,13 @@ function render(){
   if(!isDemoView()) h+='<p class="note" style="margin:-4px 0 8px;font-size:11px">'+(commenceOf()?'Commencement date: <b>'+longDay(new Date(commenceOf()+'T12:00:00'))+'</b>':'<b>Pre-launch</b> — your commencement date has not been announced yet; the costs below are set-up costs being recorded.')+'</p>';
 
   /* ---- the month and the currency stay in view on every tab ---- */
-  h+='<div class="ctl" style="margin-top:0"><div class="chips" id="chips" style="flex:1;margin:0">'+ms.filter(function(m){ return m<=chipLimit()||m===MONTH; }).map(function(m){
-       var yr=m.slice(0,4)!==(MONTH||'').slice(0,4)?' '+m.slice(2,4):'';
-       return '<button class="'+(m===MONTH?'on':'')+(preLaunch(m)&&m<=((DATA.meta&&DATA.meta.currentMonth)||'9999')?' pre':'')+'" onclick="setMonth(\''+m+'\')">'+monShort(m)+yr+'</button>'; }).join('')+'</div>'+
+  var avail=ms.filter(function(m){ return m<=chipLimit()||m===MONTH; });
+  var yrs=[]; avail.forEach(function(m){ var y=m.slice(0,4); if(yrs.indexOf(y)<0) yrs.push(y); }); yrs.sort().reverse();
+  var thisYr=(MONTH||'').slice(0,4), cmCur=(DATA.meta&&DATA.meta.currentMonth)||'9999';
+  h+='<div class="ctl" style="margin-top:0"><div class="mp" style="flex:1">'+
+     '<select aria-label="Month" onchange="setMonth(this.value)">'+avail.filter(function(m){ return m.slice(0,4)===thisYr; }).map(function(m){
+        return '<option value="'+m+'"'+(m===MONTH?' selected':'')+'>'+MON_FULL[(+m.slice(5,7))-1]+(preLaunch(m)&&m<=cmCur?' · pre-launch':'')+'</option>'; }).join('')+'</select>'+
+     '<select aria-label="Year" onchange="pickYear(this.value)">'+yrs.map(function(y){ return '<option value="'+y+'"'+(y===thisYr?' selected':'')+'>'+y+'</option>'; }).join('')+'</select></div>'+
      '<span class="seg"><button class="'+(CUR==='USD'?'on':'')+'" onclick="setCur(\'USD\')">USD</button><button class="'+(CUR==='EGP'?'on':'')+'" onclick="setCur(\'EGP\')">EGP</button></span></div>';
 
   var mv=function(x,m){ m=m||cm; x=(CUR==='USD'?x:x*m.rate); return (x<-0.005?'− ':'')+sym()+fmt(Math.abs(x)); };
@@ -642,7 +656,6 @@ function render(){
   }
 
   $('#app').innerHTML=h+vb;
-  try{ var on=document.querySelector('#chips button.on'); if(on&&on.scrollIntoView) on.scrollIntoView({inline:'center',block:'nearest'}); }catch(e){}
 }
 
 AUTH_ON_LOGIN = boot; if (authGuard()) boot();
