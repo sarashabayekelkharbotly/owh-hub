@@ -103,9 +103,23 @@ var PC = (function () {
     return keys;
   }
 
-  /* THE ROWS. t: 'n' count · 'p' percent · 'm' money (USD, signed — minus = a deduction, or owed to OWH). cls drives the layout.
+  /* THE ROWS. t: 'n' count · 'p' percent · 'r' an exchange rate (never converted) · 'm' money (USD, signed — minus = a deduction, or owed to OWH). cls drives the layout.
      sec rows are headings. `id` is stable: pages hang drill-downs on 'costs', 'cost:<key>' and 'bal'. */
-  function rowDefs(models) {
+  /* The rows kept in the BRIEF table (Statistics): the operational KPIs, the statement without its breakdowns, and the settlement's end results. */
+  var BRIEF = { stays: 1, turn: 1, nights: 1, occ: 1, adr: 1, fx: 1, net: 1, fee: 1, share: 1, ret: 1, costs: 1, res: 1, bal: 1, f_after: 1, p_pay: 1, p_paid: 1, p_still: 1 };
+  function rowDefs(models, opts) {
+    var rows = rowDefsFull(models);
+    if (!(opts && opts.brief)) return rows;
+    var out = [], pendingSec = null;
+    rows.forEach(function (d) {
+      if (d.sec) { pendingSec = /^Settlement/.test(d.sec) ? { sec: 'Settlement' } : d; return; }
+      if (d.sub || !BRIEF[d.id]) return;
+      if (pendingSec) { out.push(pendingSec); pendingSec = null; }
+      out.push(d);
+    });
+    return out;
+  }
+  function rowDefsFull(models) {
     var ms = models.filter(Boolean), pct = ms.length ? ms[ms.length - 1].pct : 0;
     var any = function (fn) { return ms.some(fn); };
     var L = function (fn) { return function (m) { return m.led ? fn(m.led) : null; }; };
@@ -117,6 +131,7 @@ var PC = (function () {
     rows.push({ id: 'occ', label: 'Occupancy', t: 'p', get: function (m) { return m.k.occ; } });
     rows.push({ id: 'adr', label: 'Average nightly rate (ADR)', t: 'm', get: function (m) { return m.k.adr; } });
     rows.push({ sec: 'Statement' });
+    rows.push({ id: 'fx', label: 'EGP per USD — the rate used for the month', t: 'r', get: function (m) { return m.rate; } });
     rows.push({ id: 'gross', label: 'Gross guest payments', t: 'm', get: function (m) { return m.v.G; } });
     rows.push({ id: 'fees', label: 'platform & card fees', cls: 'sub', t: 'm', get: function (m) { return -m.v.F; } });
     if (any(function (m) { return Math.abs(m.v.adj) > 0.02; }))

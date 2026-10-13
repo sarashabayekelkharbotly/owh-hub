@@ -80,7 +80,7 @@ table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
 </div>
 
 <script src="auth.js"></script>
-<script src="partner-core.js?v=4"></script>
+<script src="partner-core.js?v=5"></script>
 <script>
 /* SCREEN 7 — Partner, history & statistics.
    Each card carries its own time range, the same 3M/6M/YTD/12M/all control the Statistics screen uses,
@@ -229,22 +229,11 @@ function rowFor(m){
    can never show a different set of lines than «This month» (Sarah 2026-10-13). */
 function modelsIn(ms){ return ms.map(function(m){ return PC.model(DATA,myFlat(),m); }).filter(Boolean); }
 function cellTxt(d,m){ var v=d.get(m); if(v==null||!isFinite(v)) return '—';
-  if(d.t==='n') return fmtN(v); if(d.t==='p') return Math.round(v*100)+'%'; return fmt(CUR==='USD'?v:v*m.rate); }
-function summaryFor(ms){
-  var models=modelsIn(ms), S={n:models.length,open:0,T:0,fee:0,costs:0,res:0,ret:0,E:0,nights:0,nAdr:0,days:0,stays:0,turn:0,turnAny:false};
-  var c=function(x,m){ return CUR==='USD'?x:x*m.rate; };
-  models.forEach(function(m){
-    if(m.status!=='final') S.open++;
-    S.T+=c(m.v.T,m); S.fee+=c(m.v.fee,m); S.costs+=c(m.v.costs,m); S.res+=c(m.v.res,m); S.ret+=c(m.v.ret,m); S.E+=c(m.v.E,m);
-    S.nights+=m.k.nights; S.nAdr+=m.k.nightsAdr||0; S.days+=PC.daysIn(m.ym); S.stays+=m.k.stays;
-    if(m.k.turn!=null){ S.turn+=m.k.turn; S.turnAny=true; }
-  });
-  return S;
-}
+  if(d.t==='n') return fmtN(v); if(d.t==='p') return Math.round(v*100)+'%'; if(d.t==='r') return v.toFixed(2); return fmt(CUR==='USD'?v:v*m.rate); }
 function csv(){
   var ms=dlMonths(), models=modelsIn(ms), defs=PC.rowDefs(models);
   var q=function(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
-  var cellCsv=function(d,m){ var v=d.get(m); if(v==null||!isFinite(v)) return ''; if(d.t==='n') return String(Math.round(v)); if(d.t==='p') return (v*100).toFixed(1)+'%'; return (CUR==='USD'?v:v*m.rate).toFixed(2); };
+  var cellCsv=function(d,m){ var v=d.get(m); if(v==null||!isFinite(v)) return ''; if(d.t==='n') return String(Math.round(v)); if(d.t==='p') return (v*100).toFixed(1)+'%'; if(d.t==='r') return v.toFixed(2); return (CUR==='USD'?v:v*m.rate).toFixed(2); };
   var out=[['Line'].concat(models.map(function(m){ return monLabel(m.ym)+' ('+CUR+')'; }))];
   defs.forEach(function(d){
     if(d.sec){ out.push([]); out.push([d.sec.toUpperCase()]); return; }
@@ -252,7 +241,6 @@ function csv(){
     out.push([(d.cat?'   ':'')+d.label].concat(models.map(function(m){ return cellCsv(d,m); })));
   });
   out.push([]); out.push(['Status'].concat(models.map(function(m){ return m.status==='final'?'final':'in progress'; })));
-  out.push(['EGP per USD'].concat(models.map(function(m){ return m.rate.toFixed(2); })));
   /* the entries behind every cost category, for the months in range */
   out.push([]); out.push(['COST ENTRIES — the detail behind every category above']);
   out.push(['Month','Category','Date','Description','Amount','Currency',"USD at that month's rate"]);
@@ -287,12 +275,11 @@ function buildWorkbook(X,ms){
     if(d.sec){ aoa.push([]); kinds.push([]); aoa.push([d.sec.toUpperCase()]); kinds.push([]); return; }
     if(d.sub){ aoa.push([d.sub]); kinds.push([]); return; }
     aoa.push([(d.cat?'   ':'')+d.label].concat(models.map(function(m){ var v=d.get(m); if(v==null||!isFinite(v)) return null;
-      if(d.t==='n') return Math.round(v); if(d.t==='p') return Math.round(v*1000)/1000; return Math.round((CUR==='USD'?v:v*m.rate)*100)/100; })));
+      if(d.t==='n') return Math.round(v); if(d.t==='p') return Math.round(v*1000)/1000; if(d.t==='r') return Math.round(v*100)/100; return Math.round((CUR==='USD'?v:v*m.rate)*100)/100; })));
     kinds.push([d.t]);
   });
   aoa.push([]); kinds.push([]);
   aoa.push(['Status'].concat(models.map(function(m){ return m.status==='final'?'final':'in progress'; }))); kinds.push([]);
-  aoa.push(['EGP per USD'].concat(models.map(function(m){ return Math.round(m.rate*100)/100; }))); kinds.push(['r']);
   var ws=X.utils.aoa_to_sheet(aoa);
   kinds.forEach(function(k,r){ if(!k.length) return; for(var c=1;c<=models.length;c++){ var cell=ws[X.utils.encode_cell({r:r,c:c})]; if(!cell||cell.v==null||typeof cell.v!=='number') continue;
     cell.z=k[0]==='n'?'#,##0':(k[0]==='p'?'0.0%':(k[0]==='r'?'0.00':money)); } });
@@ -449,20 +436,32 @@ function render(){
   if(DATA.meta.demo&&DATA.meta.demo.active) h+='<div class="demo"><b>Sample.</b> Real figures from a running apartment, on the terms we are discussing.</div>';
   h+='<p class="h1">'+esc(f)+' <span class="sub">· statistics</span></p>';
 
-  /* ---- the summary: totals and averages for a time frame (the month-by-month detail is the Excel download below) ---- */
-  var sms=inRange(R.sum), S=summaryFor(sms), mm=function(x){ return (x<-0.005?'− ':'')+sym()+fmt(Math.abs(x)); };
-  var tile=function(l,v,s){ return '<div class="kt"><div class="kpi-l">'+l+'</div><div class="kpi-v">'+v+'</div><div class="kpi-s">'+(s||'&nbsp;')+'</div></div>'; };
-  h+='<div class="card"><div class="chead"><h3>Summary</h3><div class="rowbtns">'+timeSeg('sum')+seg([['USD','USD'],['EGP','EGP']],CUR,'setCur')+'</div></div>'+
-     '<div class="kg">'+
-       tile('Net revenue',mm(S.T),S.n+' month'+(S.n===1?'':'s')+(S.open?' · '+S.open+' still open':''))+
-       tile('Management fee',mm(S.fee),'')+
-       tile('Costs paid on your behalf',mm(S.costs),'')+
-       tile('Month results, total',mm(S.res),Math.abs(S.ret)>0.005?'incl. '+mm(S.ret)+' returned review bookings':'your share less costs')+
-       tile('Occupancy',S.days?Math.round(100*S.nights/S.days)+'%':'—',fmtN(S.nights)+' nights')+
-       tile('Average nightly rate',S.nAdr?mm(S.E/S.nAdr):'—','earnings ÷ nights')+
-       tile('Stays completed',fmtN(S.stays),'')+
-       tile('Turnovers',S.turnAny?fmtN(S.turn):'—','cleanings that took place')+
-       '</div><p class="note">Totals for the time frame, '+CUR+', each month converted at that month\'s own rate. The month-by-month figures are in the Excel download at the bottom of this page.</p></div>';
+  /* ---- the SHORT table (Sarah 2026-10-13: "the statement without breakdowns and the settlement without breakdowns, so the table is just shorter"):
+     the operational KPIs, the statement's main lines and the settlement's end results — the SAME rows as «Statement», one column per month.
+     Every breakdown (cost categories, settlement steps, cost entries, bookings) is in the Excel download below. ---- */
+  var sms=inRange(R.sum), smodels=modelsIn(sms), bdefs=PC.rowDefs(smodels,{brief:true}), sncol=smodels.length+1;
+  var anyOpen=smodels.some(function(m){ return m.status!=='final'; });
+  h+='<div class="card"><div class="chead"><h3>Your statement, month by month</h3><div class="rowbtns">'+timeSeg('sum')+seg([['USD','USD'],['EGP','EGP']],CUR,'setCur')+'</div></div>'+
+     '<div class="wrap"><table class="d"><thead><tr><th>Line</th>'+smodels.map(function(m){ return '<th>'+monShort(m.ym)+(m.ym.slice(0,4)!==(smodels[smodels.length-1]||{ym:''}).ym.slice(0,4)?' '+m.ym.slice(2,4):'')+(m.status!=='final'?'*':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
+  bdefs.forEach(function(d){
+    if(d.sec){ h+='<tr class="head"><td colspan="'+sncol+'" style="background:#f6f2f2;font-weight:700;text-transform:uppercase;font-size:10px;letter-spacing:.04em">'+d.sec+'</td></tr>'; return; }
+    var cls=(d.cls==='cat'?'sub':(d.cls||''));
+    h+='<tr class="'+cls+'"><td>'+d.label+'</td>'+smodels.map(function(m){ var v=d.get(m); return '<td class="'+(v!=null&&d.t==='m'&&v<0?'neg':'')+'">'+cellTxt(d,m)+'</td>'; }).join('')+'</tr>';
+  });
+  h+='</tbody></table></div>'+
+     '<p class="note">Minus on the balance means owed to OWH. All figures '+CUR+', each month converted at the rate shown above (the rate for that month)'+(anyOpen?' · <b>*</b> still open, may change until the month is closed':'')+
+     '. This is the short version: every cost category, the settlement steps, every cost entry and every booking are in the Excel download below.</p></div>';
+
+  /* ---- the Excel download: month by month, for the time frame chosen ---- */
+  var dms=dlMonths();
+  h+='<div class="card"><h3>Download — month by month</h3>'+
+     '<p class="note" style="margin:2px 0 6px">Pick a time frame. You get an Excel file with one column per month — the same lines as your statement, every cost category — plus a sheet with every cost entry and one with every booking.</p>'+
+     '<div class="rowbtns">'+seg(['3M','6M','YTD','12M','all'], (DL.from||DL.to)?'':R.dl, 'setR_dl')+'</div>'+
+     '<div class="dl"><label>From <input type="month" id="dlFrom" value="'+esc(DL.from)+'" min="'+(allMonths()[0]||'')+'" max="'+chipLimit()+'" onchange="setDl()"></label>'+
+     '<label>To <input type="month" id="dlTo" value="'+esc(DL.to)+'" min="'+(allMonths()[0]||'')+'" max="'+chipLimit()+'" onchange="setDl()"></label></div>'+
+     '<div class="muted">'+(dms.length?monLabel(dms[0])+(dms.length>1?' → '+monLabel(dms[dms.length-1]):'')+' · '+dms.length+' month'+(dms.length===1?'':'s'):'No months in this time frame')+'</div>'+
+     '<div class="rowbtns" style="margin-top:8px"><button class="btn" onclick="xlsxDownload()">Download Excel</button><span class="muted" id="dlmsg"></span></div></div>';
+
 
   /* ---- occupancy & ADR ---- */
   h+='<div class="card"><div class="chead"><h3>Your flat — occupancy &amp; ADR</h3>'+timeSeg('occ')+'</div>'+
@@ -478,16 +477,6 @@ function render(){
         ? 'the result after costs and the management share — negative while costs are still being recovered; a month total, not something any one channel earns'
         : 'split by the channel each booking came through')+'</div>'+
      chanChart()+'</div>';
-
-  /* ---- the Excel download: month by month, for the time frame chosen ---- */
-  var dms=dlMonths();
-  h+='<div class="card"><h3>Download — month by month</h3>'+
-     '<p class="note" style="margin:2px 0 6px">Pick a time frame. You get an Excel file with one column per month — the same lines as your statement, every cost category — plus a sheet with every cost entry and one with every booking.</p>'+
-     '<div class="rowbtns">'+seg(['3M','6M','YTD','12M','all'], (DL.from||DL.to)?'':R.dl, 'setR_dl')+'</div>'+
-     '<div class="dl"><label>From <input type="month" id="dlFrom" value="'+esc(DL.from)+'" min="'+(allMonths()[0]||'')+'" max="'+chipLimit()+'" onchange="setDl()"></label>'+
-     '<label>To <input type="month" id="dlTo" value="'+esc(DL.to)+'" min="'+(allMonths()[0]||'')+'" max="'+chipLimit()+'" onchange="setDl()"></label></div>'+
-     '<div class="muted">'+(dms.length?monLabel(dms[0])+(dms.length>1?' → '+monLabel(dms[dms.length-1]):'')+' · '+dms.length+' month'+(dms.length===1?'':'s'):'No months in this time frame')+'</div>'+
-     '<div class="rowbtns" style="margin-top:8px"><button class="btn" onclick="xlsxDownload()">Download Excel</button><span class="muted" id="dlmsg"></span></div></div>';
 
   $('#app').innerHTML=h;
 }
