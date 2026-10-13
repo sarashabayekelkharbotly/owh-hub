@@ -447,9 +447,9 @@ function vrboRow(s){
   var id=esc(s.id), inp='style="width:78px;font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"';
   return '<div class="need n-warn" id="vr_'+id+'"><span class="nb">📩</span><span>'+
     '<b>VRBO request</b> — '+esc(s.flat)+' · '+esc(s.guest||'')+' · '+dmon(s.checkIn)+' → '+dmon(s.checkOut)+
-    '<div class="paymsg">Accept or decline it in VRBO first. Once accepted, copy two numbers from VRBO → the booking → «View full payment details».</div>'+
-    '<div class="payctl"><label class="paymsg">nightly total $ <input type="number" step="0.01" id="vn_'+id+'" '+inp+'></label>'+
-    '<label class="paymsg">your payout $ <input type="number" step="0.01" id="vp_'+id+'" '+inp+'></label>'+
+    '<div class="paymsg">Accept or decline it in VRBO first. Once accepted, copy two numbers from VRBO → the booking → «View full payment details»: the <b>Booking amount</b> and the <b>Estimated payout</b>. The Hub takes off an estimated 3% processing fee until the real payout lands.</div>'+
+    '<div class="payctl"><label class="paymsg">booking amount $ <input type="number" step="0.01" id="vn_'+id+'" '+inp+'></label>'+
+    '<label class="paymsg">estimated payout $ <input type="number" step="0.01" id="vp_'+id+'" '+inp+'></label>'+
     '<button class="paybtn" onclick="saveVrbo(\''+id+'\')">Confirm</button><span class="paymsg" id="vmsg_'+id+'"></span></div></span></div>';
 }
 function saveVrbo(id){
@@ -458,7 +458,25 @@ function saveVrbo(id){
   msg.textContent='saving…';
   api('props_vrbo_payout',{id:id,nightly:n,payout:p}).then(function(j){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
-    msg.textContent='confirmed · VRBO kept $'+Number(j.result.commission).toFixed(2)+' · you earn $'+Number(j.result.net).toFixed(2)+' (Mercury)';
+    msg.textContent='confirmed · commission $'+Number(j.result.commission).toFixed(2)+' · processing ~$'+Number(j.result.processing).toFixed(2)+' (est.) · you earn ~$'+Number(j.result.net).toFixed(2)+' until the real payout lands';
+    setTimeout(boot,2200);
+  }).catch(function(e){ msg.textContent='failed: '+(e.message||e); });
+}
+/* 🏦 the VRBO payout that really landed (v235) — asked from two days after check-in; replaces the 3% estimate */
+function vrboActualRow(a){
+  var id=esc(a.id), inp='style="width:84px;font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"';
+  return '<div class="need n-warn" id="va_'+id+'"><span class="nb">🏦</span><span>'+
+    '<b>VRBO payout</b> — '+esc(a.flat)+' · '+esc(a.guest||'')+' · in '+dmon(a.checkIn)+' — booked as an estimate ($'+fmt(a.estimate)+'). What actually landed in Mercury?'+
+    '<div class="payctl"><label class="paymsg">received $ <input type="number" step="0.01" id="vr_'+id+'" '+inp+'></label>'+
+    '<button class="paybtn" onclick="saveVrboActual(\''+id+'\')">Save</button><span class="paymsg" id="vrm_'+id+'"></span></div></span></div>';
+}
+function saveVrboActual(id){
+  var v=parseFloat(document.getElementById('vr_'+id).value), msg=document.getElementById('vrm_'+id);
+  if(!(v>0)){ msg.textContent='enter the amount'; return; }
+  msg.textContent='saving…';
+  api('props_vrbo_actual',{id:id,received:v}).then(function(j){
+    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+    msg.textContent='saved · VRBO processing was $'+Number(j.result.processing).toFixed(2)+' · net $'+Number(j.result.net).toFixed(2);
     setTimeout(boot,2200);
   }).catch(function(e){ msg.textContent='failed: '+(e.message||e); });
 }
@@ -630,10 +648,11 @@ function needs(cm,pmY){
      months before they close, so new mismatches cannot form. Sheet menu → "Electricity — sync 8A
      recharges" keeps the historical report. */
   var RA=(ALERTS&&ALERTS.revAlerts)||{}, cancs=RA.cancellations||[], extras=RA.extras||[];
-  var vrbos=vrboPending();
-  if(!items.length&&!pays.length&&!vrbos.length&&!cancs.length&&!extras.length) items.push({t:'ok',txt:'Nothing needs you right now.'});
+  var vrbos=vrboPending(), vrboAsk=(((ALERTS&&ALERTS.revAlerts)||{}).vrboAwaiting||[]).filter(function(a){ return a.ask; });
+  if(!items.length&&!pays.length&&!vrbos.length&&!vrboAsk.length&&!cancs.length&&!extras.length) items.push({t:'ok',txt:'Nothing needs you right now.'});
   var h='<div class="card"><h3>Needs you<button id="syncAllBtn" onclick="syncAll()" style="float:right;font:inherit;font-size:11px;font-weight:700;border:1px solid var(--line,#ecdede);background:#fff;color:var(--red,#cc5f5f);border-radius:8px;padding:3px 9px;cursor:pointer">🔄 Sync all</button></h3>';
   vrbos.forEach(function(s){ h+=vrboRow(s); });   // 📩 VRBO requests waiting for their payout (v234)
+  vrboAsk.forEach(function(a){ h+=vrboActualRow(a); });   // 🏦 VRBO payouts still an estimate after check-in (v235)
   pays.forEach(function(s){ h+=payRow(s); });
   /* 💳 bookings flagged Stripe whose payment could not be matched — one notification each, answered here */
   ((ALERTS&&ALERTS.stripeAwaiting)||[]).forEach(function(a){ h+=stripeRow(a); });
