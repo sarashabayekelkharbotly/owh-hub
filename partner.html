@@ -109,6 +109,8 @@ var TAB='overview', SUB='stmt';          // which of the five tabs is open, and 
 (function(){ try{ var hh=(location.hash||'').replace('#','').split('/'); if(['overview','bookings','statement','ask'].indexOf(hh[0])>-1){ TAB=hh[0]; if(hh[1]==='settlement') SUB='settle'; else if(hh[1]==='months') SUB='months'; } }catch(e){} })();
 function setTab(t){ TAB=t; try{ history.replaceState(null,'','#'+t+(t==='statement'&&SUB!=='stmt'?'/'+(SUB==='settle'?'settlement':'months'):'')); }catch(e){} render(); try{ window.scrollTo(0,0); }catch(e){} }
 function setSub(x){ SUB=x; try{ history.replaceState(null,'','#statement'+(x==='stmt'?'':'/'+(x==='settle'?'settlement':'months'))); }catch(e){} render(); }
+/* the month chips stop at next month — the sheet carries empty rows far into the future that would only be noise */
+function chipLimit(){ var c=(DATA&&DATA.meta&&DATA.meta.currentMonth)||''; if(!c) return '9999'; var y=+c.slice(0,4), mo=+c.slice(5,7)+1; if(mo>12){ y++; mo=1; } return y+'-'+('0'+mo).slice(-2); }
 function setMonth(m){ MONTH=m; OPEN={}; render(); }
 function openMonth(m){ MONTH=m; OPEN={}; TAB='statement'; SUB='stmt'; try{ history.replaceState(null,'','#statement'); }catch(e){} render(); try{ window.scrollTo(0,0); }catch(e){} }
 var OBJS=null, OBJ_DRAFT='', OBJ_TYPE='question', OBJ_MSG='', OBJ_BUSY=false;     // her questions & objections: the log, the unsent draft, the last result
@@ -463,7 +465,7 @@ function render(){
   if(!isDemoView()) h+='<p class="note" style="margin:-4px 0 8px;font-size:11px">'+(commenceOf()?'Commencement date: <b>'+longDay(new Date(commenceOf()+'T12:00:00'))+'</b>':'<b>Pre-launch</b> — your commencement date has not been announced yet; the costs below are set-up costs being recorded.')+'</p>';
 
   /* ---- the month and the currency stay in view on every tab ---- */
-  h+='<div class="ctl" style="margin-top:0"><div class="chips" id="chips" style="flex:1;margin:0">'+ms.map(function(m){
+  h+='<div class="ctl" style="margin-top:0"><div class="chips" id="chips" style="flex:1;margin:0">'+ms.filter(function(m){ return m<=chipLimit()||m===MONTH; }).map(function(m){
        var yr=m.slice(0,4)!==(MONTH||'').slice(0,4)?' '+m.slice(2,4):'';
        return '<button class="'+(m===MONTH?'on':'')+(preLaunch(m)&&m<=((DATA.meta&&DATA.meta.currentMonth)||'9999')?' pre':'')+'" onclick="setMonth(\''+m+'\')">'+monShort(m)+yr+'</button>'; }).join('')+'</div>'+
      '<span class="seg"><button class="'+(CUR==='USD'?'on':'')+'" onclick="setCur(\'USD\')">USD</button><button class="'+(CUR==='EGP'?'on':'')+'" onclick="setCur(\'EGP\')">EGP</button></span></div>';
