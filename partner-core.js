@@ -56,10 +56,11 @@ var PC = (function () {
     var net = w * k, gross = (s.gross > 0 && s.gross >= w) ? s.gross * k : net;
     return { gross: gross, fees: gross - net, net: net };
   }
-  function turnoversOf(D, f, ym, completed) {
-    var n = 0;
-    (D.cleans || []).forEach(function (c) { if (c.flat === f && (c.date || '').slice(0, 7) === ym && /^(checkout|midstay|weekly)$/.test(c.type || '')) n++; });
-    return Math.max(n, completed);
+  /* A turnover is a cleaning that actually took place = a cleaning (laundry) submission — the record Annex C's cleaning formula and
+     clause 6.5.1's ceiling are built on. NOT the schedule, NOT the number of stays. null = the server did not send them. */
+  function turnoversOf(D, f, ym) {
+    var t = D.turnovers && D.turnovers[f];
+    return t ? (t[ym] || 0) : null;
   }
 
   function model(D, f, ym) {
@@ -88,7 +89,7 @@ var PC = (function () {
               floatAfter: pl.floatAfter, target: pl.floatTarget, paid: pl.paidToDate || 0, still: pl.outstanding || 0 };
     }
     return { ym: ym, r: r, rate: rate, status: r.status, closedAt: r.closedAt || null, pct: pv.managementFeePct || 0,
-             k: { stays: done, turn: turnoversOf(D, f, ym, done), nights: nights, occ: nights / daysIn(ym), adr: nightsAdr ? E / nightsAdr : null },
+             k: { stays: done, turn: turnoversOf(D, f, ym), nights: nights, occ: nights / daysIn(ym), adr: nightsAdr ? E / nightsAdr : null },
              v: { G: G, F: G - N, adj: E - N, E: E, O: O, T: T, fee: fee, share: T - fee, ret: ret, res: res, costs: (T - fee) + ret - res },
              cost: cost, costNative: costNative, led: led };
   }

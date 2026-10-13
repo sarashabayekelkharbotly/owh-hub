@@ -78,7 +78,7 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
 </div>
 
 <script src="auth.js"></script>
-<script src="partner-core.js?v=2"></script>
+<script src="partner-core.js?v=3"></script>
 <script>
 /* SCREEN 6 — Partner, this month. Built to the mock-up (OWH_final_2.html §6):
    4 KPIs · the month's stays · statement with this month beside last month · drill-down per cost line.
@@ -205,10 +205,9 @@ function stayParts(s,ym){ return PC.parts(s,ym); }
 function fmtN(n){ if(n==null||!isFinite(n)) return '—'; return Math.round(n).toLocaleString('en-US'); }
 
 /* ---- the Operating Costs Budget (clause 6.5.1): US$45 × turnovers in the month + US$60, a CEILING not a charge.
-   A turnover = an occasion the home is cleaned and its linen changed: checkout / mid-stay / weekly cleans on the
-   confirmed schedule, or — where the schedule no longer holds that month — the stays that ended in it, whichever is
-   more. Furniture is the purchase of items (5.2/5.3), not an operating cost (6.4), so it never counts against the ceiling. ---- */
-function turnoversIn(ym){ var m=PC.model(DATA,myFlat(),ym); return m?m.k.turn:0; }
+   A turnover = a cleaning that actually took place, i.e. a cleaning (laundry) SUBMISSION for the home that month — the record Annex C
+   divides the cleaning cost by (Sarah 2026-10-13). Not the schedule and not the number of stays. Furniture is the purchase of items (5.2/5.3), not an operating cost (6.4), so it never counts against the ceiling. ---- */
+function turnoversIn(ym){ var m=PC.model(DATA,myFlat(),ym); return m&&m.k.turn!=null?m.k.turn:0; }
 function budgetFor(ym){
   var r=recFor(ym); if(!r) return null;
   var tn=turnoversIn(ym), ceil=45*tn+60, spent=0;
