@@ -328,6 +328,7 @@ function render(){
   h+=reviewCard();
   h+=ownerCard();
   h+=stripeCard();
+  h+=adjustCard();   // 🛠 real dates + VRBO numbers (v244)
 
   /* 🔍 guest lookup (Sarah 2026-08-31: "i have a phone number and a first name") — searches every
      stay in the payload, cancelled included. Phone matching is FORMAT-BLIND: both sides reduce to
@@ -735,6 +736,46 @@ function savePay(id){
 /* 💳 "Paid ✓" — one line per booking flagged Stripe that matters now (still awaiting, or checking out
    within the last 3 days / later). It only REPORTS what the Stripe lookup already wrote down; the
    notification above (stripeRow) is where a missing payment is answered. */
+/* 🛠 BOOKING ADJUSTMENTS (v244, Sarah 2026-10-14 — Christina: VRBO could not move her check-in, so VRBO says 9→16 while
+   she really stays 10→17). Pick an upcoming booking: set its REAL dates (the schedule, Dani's ladder, door codes and the
+   revenue follow them; Smoobu never overwrites them), and for a VRBO booking re-enter VRBO's numbers after a change. */
+var ADJ_SEL='';
+function adjustCard(){
+  var asOf=D.meta.asOf, list=rawStays().filter(function(s){ var st=String(s.status||'').toLowerCase();
+    return st.indexOf('cancel')<0&&st.indexOf('block')<0&&s.checkOut&&s.checkOut>=asOf; })
+    .sort(function(a,b){ return a.checkIn<b.checkIn?-1:1; });
+  if(!list.length) return '';
+  var h='<div class="card"><h3>🛠 Booking adjustments</h3><select id="adjSel" onchange="ADJ_SEL=this.value;render()" style="width:100%;font:inherit;font-size:12.5px;padding:5px;border:1px solid var(--line);border-radius:8px">'+
+    '<option value="">— pick a booking —</option>'+list.map(function(s){ return '<option value="'+esc(s.id)+'"'+(s.id===ADJ_SEL?' selected':'')+'>'+esc(s.flat)+' · '+esc(s.guest||'')+' · '+dmon(s.checkIn)+' → '+dmon(s.checkOut)+' · '+esc(s.portal)+(s.realDates?' · 📅 real dates':'')+'</option>'; }).join('')+'</select>';
+  var s=list.filter(function(x){ return x.id===ADJ_SEL; })[0];
+  if(s){ var id=esc(s.id), inp='style="font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"';
+    h+='<div style="margin-top:10px"><b>📅 Real dates</b> <span class="paymsg">— when the guest really arrives/leaves on other days than the channel says. Schedule, Dani\'s ladder, codes and revenue follow these; Smoobu never overwrites them.</span>'+
+      (s.realDates?'<div class="paymsg" style="margin-top:3px">now: '+esc(s.realDates)+'</div>':'')+
+      '<div class="payctl"><label class="paymsg">in <input type="date" id="rdi_'+id+'" value="'+esc(s.checkIn)+'" '+inp+'></label>'+
+      '<label class="paymsg">out <input type="date" id="rdo_'+id+'" value="'+esc(s.checkOut)+'" '+inp+'></label>'+
+      '<label class="paymsg">why <input id="rdw_'+id+'" placeholder="e.g. VRBO could not move the check-in" style="width:190px;font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"></label>'+
+      '<button class="paybtn" onclick="saveRealDates(\''+id+'\')">Save</button>'+(s.realDates?'<button class="paybtn" style="background:#fff;color:var(--red);border:1px solid var(--line)" onclick="saveRealDates(\''+id+'\',true)">Back to channel dates</button>':'')+
+      '<span class="paymsg" id="rdm_'+id+'"></span></div></div>';
+    if(s.portal==='Vrbo') h+='<div style="margin-top:10px"><b>💲 VRBO numbers</b> <span class="paymsg">— after a change on VRBO, copy the new figures from «View full payment details».</span>'+
+      '<div class="payctl"><label class="paymsg">total traveler payment $ <input type="number" step="0.01" id="vt_'+id+'" '+inp+'></label>'+
+      '<label class="paymsg">booking amount $ <input type="number" step="0.01" id="vn_'+id+'" '+inp+'></label>'+
+      '<label class="paymsg">estimated payout $ <input type="number" step="0.01" id="vp_'+id+'" '+inp+'></label>'+
+      '<label class="paymsg">adults <input type="number" min="1" step="1" id="va_'+id+'" value="'+(s.guests||'')+'" style="width:46px;font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"></label>'+
+      '<label class="paymsg">children <input type="number" min="0" step="1" value="0" id="vc_'+id+'" style="width:46px;font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"></label>'+
+      '<button class="paybtn" onclick="saveVrbo(\''+id+'\')">Save</button><span class="paymsg" id="vmsg_'+id+'"></span></div></div>';
+  }
+  return h+'</div>';
+}
+function saveRealDates(id,clear){
+  var msg=document.getElementById('rdm_'+id), ci=document.getElementById('rdi_'+id).value, co=document.getElementById('rdo_'+id).value, why=document.getElementById('rdw_'+id).value;
+  if(!clear&&!(ci&&co&&co>ci)){ msg.textContent='check-out must be after check-in'; return; }
+  msg.textContent='saving…';
+  api('props_set_real_dates',clear?{id:id,clear:1}:{id:id,ci:ci,co:co,reason:why}).then(function(j){
+    if(!j||!j.ok)throw new Error(j&&j.error||'bad');
+    msg.textContent=clear?'back to the channel\'s dates (restored on the next sync)':'saved · real stay '+dmon(j.result.ci)+' → '+dmon(j.result.co)+' — الكنترول follows within ~10 min';
+    setTimeout(boot,2200);
+  }).catch(function(e){ msg.textContent='failed: '+(e.message||e); });
+}
 function stripeCard(){
   var rows=(ALERTS&&ALERTS.stripeStatus)||[]; if(!rows.length) return '';
   var ok=rows.filter(function(r){ return r.state==='paid'||r.state==='nofee'; }).length;
