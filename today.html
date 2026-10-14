@@ -531,7 +531,7 @@ function payRow(s){
     '<b>Confirm payment</b> — '+esc(s.flat)+' · '+esc(s.guest||'')+' · direct booking '+dmon(s.checkIn)+' ($'+fmt(s.allIn)+')'+
     '<div class="payctl">'+
       /* the currency only matters for CASH: Instapay is always EGP, Stripe always USD (2026-10-10) */
-      '<select id="pm_'+id+'" onchange="payMethod(\''+id+'\')"><option>Stripe</option><option>Cash</option><option>Instapay</option></select>'+
+      '<select id="pm_'+id+'" onchange="payMethod(\''+id+'\')"><option>Stripe</option><option>Cash</option><option>Instapay</option><option>No charge</option></select>'+
       '<select id="pc_'+id+'" disabled title="fixed by the method — only Cash can be either"><option>USD</option><option>EGP</option></select>'+
       /* "paid on" (2026-10-09): Stripe's fee depends on the PAYMENT date (it applies from 15 Jun 2026),
          not on booking or check-in — defaults to the booked date, change it if the guest paid earlier/later */
@@ -712,6 +712,7 @@ function payMethod(id){
   var m=document.getElementById('pm_'+id).value, c=document.getElementById('pc_'+id);
   if(m==='Instapay'){ c.value='EGP'; c.disabled=true; }
   else if(m==='Stripe'){ c.value='USD'; c.disabled=true; }
+  else if(m==='No charge'){ c.value='USD'; c.disabled=true; }   // a free night (Christina 16 Dec, 2026-10-15) — no money, no currency
   else c.disabled=false;                           // Cash: either currency
 }
 function savePay(id){
