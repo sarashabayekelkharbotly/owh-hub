@@ -231,6 +231,8 @@ function monAxis(ms,i,cx,y){
   return '<text x="'+cx+'" y="'+y+'" font-size="12" text-anchor="middle" fill="#6b6b6b">'+monShort(ms[i])+'</text>'+
          (newYr?'<text x="'+cx+'" y="'+(y+13)+'" font-size="10" text-anchor="middle" fill="#9a8a8a">'+ms[i].slice(0,4)+'</text>':'');
 }
+/* a value label is centred on its bar but never allowed past the chart's edge */
+function lx(cx,t,fs,W){ var hw=String(t).length*fs*0.58/2+2; return Math.max(hw,Math.min(W-hw,cx)); }
 function svgWrap(W,H,inner){ return '<div style="overflow-x:auto"><svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="display:block;max-width:none">'+inner+'</svg></div>'; }
 
 /* occupancy: one bar per month, the percentage written on it */
@@ -242,7 +244,7 @@ function occChart(){
   ms.forEach(function(m,i){
     var md=PC.model(DATA,myFlat(),m), occ=md?md.k.occ:0, nn=md?md.k.nights:0, bw=Math.min(iw*0.62,44), x=pl+i*iw+(iw-bw)/2, bh=ph*Math.min(occ,1), y=pt+ph-bh;
     b+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="3" fill="var(--occ)" opacity=".85"><title>'+monLabel(m)+' · '+Math.round(occ*100)+'% · '+nn+' nights</title></rect>'+
-       '<text x="'+(x+bw/2)+'" y="'+(y-5)+'" font-size="12" font-weight="700" text-anchor="middle" fill="#4c4040">'+Math.round(occ*100)+'%</text>'+monAxis(ms,i,x+bw/2,H-pb+16);
+       '<text x="'+lx(x+bw/2,Math.round(occ*100)+'%',12,W)+'" y="'+(y-5)+'" font-size="12" font-weight="700" text-anchor="middle" fill="#4c4040">'+Math.round(occ*100)+'%</text>'+monAxis(ms,i,x+bw/2,H-pb+16);
   });
   return svgWrap(W,H,g+b);
 }
@@ -258,7 +260,7 @@ function adrChart(){
     if(v==null) b+='<text x="'+cx+'" y="'+(pt+ph-6)+'" font-size="12" text-anchor="middle" fill="#9a8a8a">—</text>';
     else { var bh=ph*(v/max), y=pt+ph-bh;
       b+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="3" fill="var(--adr)" opacity=".85"><title>'+monLabel(m)+' · '+sym()+fmt2(v)+' a night</title></rect>'+
-         '<text x="'+cx+'" y="'+(y-5)+'" font-size="12" font-weight="700" text-anchor="middle" fill="#4c4040">'+sym()+fmt(v)+'</text>'; }
+         '<text x="'+lx(cx,sym()+fmt(v),12,W)+'" y="'+(y-5)+'" font-size="12" font-weight="700" text-anchor="middle" fill="#4c4040">'+sym()+fmt(v)+'</text>'; }
     b+=monAxis(ms,i,cx,H-pb+16);
   });
   return svgWrap(W,H,g+b);
@@ -284,10 +286,12 @@ function chanChart(){
   var ms=inRange(R.chan); if(!ms.length) return '<div class="muted">No data in range.</div>';
   var data=chanData(ms), isRes=(CHAN==='result'), series=isRes?[['Result','var(--g)']]:CH;
   var money=(CHAN==='revenue'||isRes), val=function(v){ return money ? (v<0?'− ':'')+sym()+fmt(Math.abs(v)) : fmtN(v); };
-  var n=ms.length, W=chartW(n), H=230, pl=10, pr=10, pt=24, pb=40, iw=(W-pl-pr)/n, ph=H-pt-pb;
+  var n=ms.length, W=chartW(n), H=236, pl=10, pr=10, pt=24, pb=40, iw=(W-pl-pr)/n;
   var maxPos=1, maxNeg=0;
   ms.forEach(function(m){ var pos=0, neg=0; series.forEach(function(c){ var v=data[m][c[0]]||0; if(v>0) pos+=v; else neg+=v; }); if(pos>maxPos) maxPos=pos; if(neg<maxNeg) maxNeg=neg; });
-  var span=maxPos+Math.abs(maxNeg), zeroY=pt+ph*(maxPos/span), unit=ph/span, out='';
+  /* a clear band is kept for the value labels at BOTH ends of the bars — above the tallest bar and, when a month is negative, below the deepest — so a label can never sit on the month names under the chart (Sarah 2026-10-14) */
+  var LAB=20, barsTop=pt+LAB, barsBottom=H-pb-(maxNeg<0?LAB:0);
+  var span=maxPos+Math.abs(maxNeg), unit=(barsBottom-barsTop)/span, zeroY=barsTop+maxPos*unit, out='';
   out+='<line x1="'+pl+'" y1="'+zeroY+'" x2="'+(W-pr)+'" y2="'+zeroY+'" stroke="#cdbcbc"></line>';
   ms.forEach(function(m,i){
     var bw=Math.min(iw*0.62,46), x=pl+i*iw+(iw-bw)/2, cx=x+bw/2, up=zeroY, tot=0;
@@ -299,8 +303,8 @@ function chanChart(){
       if(!isRes && bh>=17) out+='<text x="'+cx+'" y="'+(y+bh/2+4)+'" font-size="11" font-weight="700" text-anchor="middle" fill="#fff">'+val(v)+'</text>';
     });
     if(isRes){ var vv=data[m].Result||0, ty=vv>=0?(zeroY-Math.abs(vv)*unit-5):(zeroY+Math.abs(vv)*unit+15);
-      out+='<text x="'+cx+'" y="'+(Math.abs(vv)<0.005?zeroY-5:ty)+'" font-size="12" font-weight="700" text-anchor="middle" fill="'+(vv<0?'#a33':'#2d6a3e')+'">'+val(vv)+'</text>'; }
-    else if(tot>0) out+='<text x="'+cx+'" y="'+(zeroY-tot*unit-5)+'" font-size="12" font-weight="700" text-anchor="middle" fill="#4c4040">'+val(tot)+'</text>';
+      out+='<text x="'+lx(cx,val(vv),12,W)+'" y="'+(Math.abs(vv)<0.005?zeroY-5:ty)+'" font-size="12" font-weight="700" text-anchor="middle" fill="'+(vv<0?'#a33':'#2d6a3e')+'">'+val(vv)+'</text>'; }
+    else if(tot>0) out+='<text x="'+lx(cx,val(tot),12,W)+'" y="'+(zeroY-tot*unit-5)+'" font-size="12" font-weight="700" text-anchor="middle" fill="#4c4040">'+val(tot)+'</text>';
     out+=monAxis(ms,i,cx,H-pb+16);
   });
   return svgWrap(W,H,out)+
