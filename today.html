@@ -490,13 +490,17 @@ function vrboRow(s){
     '<div class="payctl"><label class="paymsg">total traveler payment $ <input type="number" step="0.01" id="vt_'+id+'" '+inp+'></label>'+
     '<label class="paymsg">booking amount $ <input type="number" step="0.01" id="vn_'+id+'" '+inp+'></label>'+
     '<label class="paymsg">estimated payout $ <input type="number" step="0.01" id="vp_'+id+'" '+inp+'></label>'+
+    '<label class="paymsg">adults <input type="number" min="1" step="1" id="va_'+id+'" style="width:46px;font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"></label>'+
+    '<label class="paymsg">children <input type="number" min="0" step="1" value="0" id="vc_'+id+'" style="width:46px;font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"></label>'+
     '<button class="paybtn" onclick="saveVrbo(\''+id+'\')">Confirm</button><span class="paymsg" id="vmsg_'+id+'"></span></div></span></div>';
 }
 function saveVrbo(id){
   var tr=parseFloat(document.getElementById('vt_'+id).value), n=parseFloat(document.getElementById('vn_'+id).value), p=parseFloat(document.getElementById('vp_'+id).value), msg=document.getElementById('vmsg_'+id);
+  var ad=parseInt(document.getElementById('va_'+id).value,10)||0, ch=parseInt(document.getElementById('vc_'+id).value,10)||0;
   if(!(p>0)||!(n>=p)||!(tr>=n)){ msg.textContent='enter all three — traveler payment ≥ booking amount ≥ payout'; return; }
+  if(!(ad>0)){ msg.textContent='enter the number of adults (VRBO never sends it)'; return; }
   msg.textContent='saving…';
-  api('props_vrbo_payout',{id:id,traveler:tr,nightly:n,payout:p}).then(function(j){
+  api('props_vrbo_payout',{id:id,traveler:tr,nightly:n,payout:p,adults:ad,children:ch}).then(function(j){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
     msg.textContent='confirmed · gross $'+Number(j.result.gross).toFixed(2)+' · VRBO keeps $'+Number(j.result.commission).toFixed(2)+' · processing ~$'+Number(j.result.processing).toFixed(2)+' (est.) · you earn ~$'+Number(j.result.net).toFixed(2)+' until the real payout lands';
     setTimeout(boot,2200);
