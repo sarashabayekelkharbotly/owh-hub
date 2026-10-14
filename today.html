@@ -481,7 +481,7 @@ function directNeedsPay(){
 }
 /* 📩 VRBO (v234, 2026-10-13). VRBO reaches Smoobu by iCal only — no price, no guests — and a REQUEST looks like a
    booking. It waits here as Pending: accept or decline it in VRBO, then type VRBO's two numbers from the booking's
-   «View full payment details»: the nightly total and «Your total payout». Saving confirms it (Mercury). */
+   «View full payment details»: the nightly total and «Your total payout». Saving confirms it (HSBC). */
 function vrboPending(){ return rawStays().filter(function(s){ return s.portal==='Vrbo' && String(s.status||'').toLowerCase()==='pending'; }); }
 function vrboRow(s){
   var id=esc(s.id), inp='style="width:78px;font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"';
@@ -511,7 +511,7 @@ function saveVrbo(id){
 function vrboActualRow(a){
   var id=esc(a.id), inp='style="width:84px;font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"';
   return '<div class="need n-warn" id="va_'+id+'"><span class="nb">🏦</span><span>'+
-    '<b>VRBO payout</b> — '+esc(a.flat)+' · '+esc(a.guest||'')+' · in '+dmon(a.checkIn)+' — booked as an estimate ($'+fmt(a.estimate)+'). What actually landed in Mercury?'+
+    '<b>VRBO payout</b> — '+esc(a.flat)+' · '+esc(a.guest||'')+' · in '+dmon(a.checkIn)+' — booked as an estimate ($'+fmt(a.estimate)+'). What actually landed in HSBC?'+
     '<div class="payctl"><label class="paymsg">received $ <input type="number" step="0.01" id="vr_'+id+'" '+inp+'></label>'+
     '<button class="paybtn" onclick="saveVrboActual(\''+id+'\')">Save</button><span class="paymsg" id="vrm_'+id+'"></span></div></span></div>';
 }
