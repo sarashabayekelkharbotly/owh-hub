@@ -1,0 +1,14 @@
+{
+  "name": "The Hub — your numbers",
+  "short_name": "The Hub",
+  "description": "Your home with Our Welcome Home: bookings, statement, settlement and statistics.",
+  "start_url": "partner.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f9f0f0",
+  "theme_color": "#f9f0f0",
+  "icons": [
+    { "src": "hub-logo.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "hub-logo.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
