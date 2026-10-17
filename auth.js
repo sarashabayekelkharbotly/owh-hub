@@ -54,6 +54,10 @@ var AUTH_ADMIN_HOME   = 'today.html';
    (authClear also clears sessionStorage). */
 var PGA_TTL = 90000;
 function pgaKey(body) { return 'owh_pga|' + body.fn + '|' + (body.scope || '') + (body.asPartner ? '|as:' + body.asPartner : ''); }   // v229: each partner preview is its own entry
+/* calls that only READ — they never invalidate anything, and the first few may be served by the fast copy */
+var HUB_READS = { props_get_all: 1, props_alerts: 1, validate: 1, props_review_list: 1, props_objections: 1, props_objections_mine: 1, props_guest_index: 1,
+                  props_stay_finder: 1, props_revenue_detail: 1, props_stripe_month: 1, props_other_rev: 1, props_recurring: 1, props_close_readiness: 1 };
+var HUB_FAST_FNS = { props_get_all: 1, props_alerts: 1, props_review_list: 1, props_objections: 1 };
 function api(fn, extra) {
   var body = { fn: fn };
   if (extra) for (var k in extra) body[k] = extra[k];
@@ -63,7 +67,7 @@ function api(fn, extra) {
       var c = JSON.parse(sessionStorage.getItem(pgaKey(body)) || 'null');
       if (c && Date.now() - c.t < PGA_TTL) return Promise.resolve(c.j);
     } catch (e) {}
-  } else if (fn !== 'props_alerts' && fn !== 'validate' && fn.indexOf('_draft') < 0 && fn.indexOf('phone_bill') < 0) {   // drafts + phone bills live outside the payload
+  } else if (!HUB_READS[fn] && fn.indexOf('_draft') < 0 && fn.indexOf('phone_bill') < 0) {   // drafts + phone bills live outside the payload
     // a write or a sync — what the screens show next must be rebuilt, not replayed
     try { sessionStorage.setItem('owh_fast_after', String(Date.now())); } catch (e) {}   // the fast copy must be newer than this save
     try { for (var i = sessionStorage.length - 1; i >= 0; i--) { var sk = sessionStorage.key(i); if (sk && sk.indexOf('owh_pga|') === 0) sessionStorage.removeItem(sk); } } catch (e) {}
@@ -82,7 +86,7 @@ function api(fn, extra) {
      whose first POST already LANDED server-side but came back as an HTML glitch page was being
      re-sent, writing a second row — the 8A internet double (two NETC cards a minute apart). A write
      is never auto-resent now; it returns "may already have saved — refresh". Reads still self-heal. */
-  var isRead = (fn === 'props_get_all' || fn === 'props_alerts' || fn === 'validate' || fn.indexOf('_draft') > -1 || fn.indexOf('phone_bill') > -1);
+  var isRead = (!!HUB_READS[fn] || fn.indexOf('_draft') > -1 || fn.indexOf('phone_bill') > -1);
   // the fast copy first (reads only); anything but a clean answer → the Hub, as before
   function fast_() {
     var after = 0; try { after = Number(sessionStorage.getItem('owh_fast_after') || 0); } catch (e) {}
@@ -95,7 +99,7 @@ function api(fn, extra) {
       .then(function (j) { if (to) clearTimeout(to); return (j && j.ok) ? j : null; })
       .catch(function () { if (to) clearTimeout(to); return null; });
   }
-  var first = (SID && (fn === 'props_get_all' || fn === 'props_alerts')) ? fast_().then(function (j) { return j || post_(); }) : post_();
+  var first = (SID && HUB_FAST_FNS[fn]) ? fast_().then(function (j) { return j || post_(); }) : post_();
   return first
     .then(function (j) { return (j && j.__html && isRead) ? post_() : j; })    // one silent retry — reads only
     .then(function (j) {
