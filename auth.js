@@ -57,7 +57,8 @@ function pgaKey(body) { return 'owh_pga|' + body.fn + '|' + (body.scope || '') +
 /* calls that only READ — they never invalidate anything, and the first few may be served by the fast copy */
 var HUB_READS = { props_get_all: 1, props_alerts: 1, validate: 1, props_review_list: 1, props_objections: 1, props_objections_mine: 1, props_guest_index: 1,
                   props_stay_finder: 1, props_revenue_detail: 1, props_stripe_month: 1, props_other_rev: 1, props_recurring: 1, props_close_readiness: 1 };
-var HUB_FAST_FNS = { props_get_all: 1, props_alerts: 1, props_review_list: 1, props_objections: 1 };
+var HUB_FAST_FNS = { props_get_all: 1, props_alerts: 1, props_review_list: 1, props_objections: 1, props_objections_mine: 1,
+                     props_close_readiness: 1, props_other_rev: 1, props_recurring: 1, props_stripe_month: 1 };
 function api(fn, extra) {
   var body = { fn: fn };
   if (extra) for (var k in extra) body[k] = extra[k];
@@ -91,7 +92,7 @@ function api(fn, extra) {
   function fast_() {
     var after = 0; try { after = Number(sessionStorage.getItem('owh_fast_after') || 0); } catch (e) {}
     if (after && Date.now() - after > 10 * 60 * 1000) after = 0;            // older saves are long since in the copy
-    var fb = { fn: fn, sid: body.sid, scope: body.scope, asPartner: body.asPartner, page: hubPage_(), after: after };
+    var fb = { fn: fn, sid: body.sid, scope: body.scope, asPartner: body.asPartner, month: body.month, flat: body.flat, page: hubPage_(), after: after };
     var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     var to = ctl ? setTimeout(function () { ctl.abort(); }, 4000) : null;
     return fetch(FAST_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(fb), signal: ctl ? ctl.signal : undefined })
