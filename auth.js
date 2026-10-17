@@ -57,6 +57,7 @@ function pgaKey(body) { return 'owh_pga|' + body.fn + '|' + (body.scope || '') +
 /* calls that only READ — they never invalidate anything, and the first few may be served by the fast copy */
 var HUB_READS = { props_get_all: 1, props_alerts: 1, validate: 1, props_review_list: 1, props_objections: 1, props_objections_mine: 1, props_guest_index: 1,
                   props_stay_finder: 1, props_revenue_detail: 1, props_stripe_month: 1, props_other_rev: 1, props_recurring: 1, props_close_readiness: 1 };
+var HUB_FAST_SAVES = { props_set_fx: 1, props_other_rev_save: 1 };   // Phase 4a (Close group) — see fastSave_
 var HUB_FAST_FNS = { props_get_all: 1, props_alerts: 1, props_review_list: 1, props_objections: 1, props_objections_mine: 1,
                      props_close_readiness: 1, props_other_rev: 1, props_recurring: 1, props_stripe_month: 1 };
 function api(fn, extra) {
@@ -100,7 +101,23 @@ function api(fn, extra) {
       .then(function (j) { if (to) clearTimeout(to); return (j && j.ok) ? j : null; })
       .catch(function () { if (to) clearTimeout(to); return null; });
   }
-  var first = (SID && HUB_FAST_FNS[fn]) ? fast_().then(function (j) { return j || post_(); }) : post_();
+  /* PHASE 4 SAVES (2026-10-17): a save whose tab group lives on Supabase is made there (≈0.3–1 s). Before the switch the
+     engine answers FAST_OFF / NO_FAST and the save goes to the Hub exactly as before. A write is NEVER sent twice: if the
+     engine can't be reached, the page says so instead of trying the Hub as well. */
+  function fastSave_() {
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var to = ctl ? setTimeout(function () { ctl.abort(); }, 20000) : null;
+    var fb = {}; for (var k2 in body) fb[k2] = body[k2]; fb.page = hubPage_();
+    return fetch(FAST_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(fb), signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (to) clearTimeout(to);
+        if (j && (j.code === 'FAST_OFF' || j.code === 'NO_FAST')) return post_();
+        return j; })
+      .catch(function () { if (to) clearTimeout(to);
+        return { ok: false, code: 'SAVE_UNSURE', error: 'No answer from the server — refresh before retrying, the entry may already have saved.' }; });
+  }
+  var first = (SID && HUB_FAST_SAVES[fn]) ? fastSave_()
+            : (SID && HUB_FAST_FNS[fn]) ? fast_().then(function (j) { return j || post_(); }) : post_();
   return first
     .then(function (j) { return (j && j.__html && isRead) ? post_() : j; })    // one silent retry — reads only
     .then(function (j) {
