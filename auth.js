@@ -60,7 +60,8 @@ var HUB_READS = { props_get_all: 1, props_alerts: 1, validate: 1, props_review_l
 var HUB_FAST_SAVES = { props_set_fx: 1, props_other_rev_save: 1,                                   // Phase 4a (Close group) — see fastSave_
                        props_set_pay: 1, props_set_guests: 1, props_set_real_dates: 1, props_vrbo_payout: 1, props_vrbo_actual: 1, props_review_set: 1,   // 4b (bookings)
                        props_stripe_check: 1, props_stripe_link: 1,   // 5m (2026-10-18): Stripe saves on Supabase (hub-jobs holds the Stripe engine)
-                       props_dismiss_elec: 1, props_review_phase: 1 };   // 5n (2026-10-18): settings saves → hub_settings
+                       props_dismiss_elec: 1, props_review_phase: 1,   // 5n (2026-10-18): settings saves → hub_settings
+                       props_set_recurring: 1 };   // 5o (2026-10-18): the Close panel's recurring box → hub-jobs recur_write
 var HUB_FAST_FNS = { props_get_all: 1, props_alerts: 1, props_review_list: 1, props_objections: 1, props_objections_mine: 1,
                      props_close_readiness: 1, props_other_rev: 1, props_recurring: 1, props_stripe_month: 1,
                      props_guest_index: 1, props_revenue_detail: 1, props_stay_finder: 1 };   // 5k-5 (2026-10-18): computed live on Supabase
