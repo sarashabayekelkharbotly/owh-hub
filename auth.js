@@ -22,6 +22,13 @@
 /* the ONE place the backend URL is written — every screen reads it from here */
 var ENDPOINT = "https://script.google.com/macros/s/AKfycbzhR3ESnz3HQyStXvg5OLp5qKZj3lghCuuJtXIkwuEag1cMWLi9JeDCdZhtqtJoZeTJ/exec";
 
+/* PHASE 1 FAST READS (Sarah 2026-10-17: the Hub → Supabase, for speed). The finished screen data is also kept on Supabase;
+   a screen that is switched on there (engine_config HUB_FAST_PAGES) opens from it in ~0.4 s instead of 3–6 s. Anything that
+   copy cannot serve — a partner, a preview, a screen not switched on, a copy older than this tab's last save, a network
+   hiccup — answers "not here" and the call goes to the Hub exactly as before. Only READS ever go there. */
+var FAST_ENDPOINT = "https://geszrsrdqxwtihrqzxiu.supabase.co/functions/v1/hub";
+function hubPage_() { var p = (location.pathname.split('/').pop() || '').replace(/\.html?$/, ''); return p || 'today'; }
+
 var SID = null, ME = null;
 try { SID = localStorage.getItem('owh_sid') || null; ME = JSON.parse(localStorage.getItem('owh_me') || 'null'); } catch (e) {}
 
@@ -58,6 +65,7 @@ function api(fn, extra) {
     } catch (e) {}
   } else if (fn !== 'props_alerts' && fn !== 'validate' && fn.indexOf('_draft') < 0 && fn.indexOf('phone_bill') < 0) {   // drafts + phone bills live outside the payload
     // a write or a sync — what the screens show next must be rebuilt, not replayed
+    try { sessionStorage.setItem('owh_fast_after', String(Date.now())); } catch (e) {}   // the fast copy must be newer than this save
     try { for (var i = sessionStorage.length - 1; i >= 0; i--) { var sk = sessionStorage.key(i); if (sk && sk.indexOf('owh_pga|') === 0) sessionStorage.removeItem(sk); } } catch (e) {}
   }
   /* GOOGLE SOMETIMES ANSWERS WITH A PAGE, NOT JSON (Sarah 2026-08-12: a save came back
@@ -75,7 +83,20 @@ function api(fn, extra) {
      re-sent, writing a second row — the 8A internet double (two NETC cards a minute apart). A write
      is never auto-resent now; it returns "may already have saved — refresh". Reads still self-heal. */
   var isRead = (fn === 'props_get_all' || fn === 'props_alerts' || fn === 'validate' || fn.indexOf('_draft') > -1 || fn.indexOf('phone_bill') > -1);
-  return post_()
+  // the fast copy first (reads only); anything but a clean answer → the Hub, as before
+  function fast_() {
+    var after = 0; try { after = Number(sessionStorage.getItem('owh_fast_after') || 0); } catch (e) {}
+    if (after && Date.now() - after > 10 * 60 * 1000) after = 0;            // older saves are long since in the copy
+    var fb = { fn: fn, sid: body.sid, scope: body.scope, asPartner: body.asPartner, page: hubPage_(), after: after };
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var to = ctl ? setTimeout(function () { ctl.abort(); }, 4000) : null;
+    return fetch(FAST_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(fb), signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (to) clearTimeout(to); return (j && j.ok) ? j : null; })
+      .catch(function () { if (to) clearTimeout(to); return null; });
+  }
+  var first = (SID && (fn === 'props_get_all' || fn === 'props_alerts')) ? fast_().then(function (j) { return j || post_(); }) : post_();
+  return first
     .then(function (j) { return (j && j.__html && isRead) ? post_() : j; })    // one silent retry — reads only
     .then(function (j) {
       if (j && j.__html) {
