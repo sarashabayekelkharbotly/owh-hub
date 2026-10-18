@@ -276,6 +276,54 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
   }
   return wb;
 }
-  return { buildWorkbook: buildWorkbook, xlDate: xlDate, ORDER: ORDER, LABEL: LABEL, CATMAP: CATMAP, model: model, rowDefs: rowDefs, costKeys: costKeys, monthsOf: monthsOf, recOf: recOf, rateOf: rateOf,
+  /* ---- THE OWNER'S INVESTMENT AND RETURN (Sarah 2026-10-18) — one set-up amount the owner paid herself (entered by OWH in Close, never
+     OWH's own pre-launch costs: those are repaid out of her month results under clause 5.3, so counting them here would count them twice),
+     against each month's result as the statement shows it. USD, the statement's basis; an EGP set-up converts at its month's rate.
+     Used by the owner's Overview and by OWH's Statistics, so the two always agree. ---- */
+  function investReturn(D, f) {
+    var su = D.meta && D.meta.partnerSetup && D.meta.partnerSetup[f]; if (!su || !(su.amount > 0)) return null;
+    var sm = String(su.date).slice(0, 7), fx = (D.meta && D.meta.fx) || {}, rate = (fx.byMonth && fx.byMonth[sm]) || fx.current || 1;
+    var setupUsd = su.currency === 'USD' ? su.amount : su.amount / rate, cm = (D.meta && D.meta.currentMonth) || '9999-99';
+    var ms = monthsOf(D, f).filter(function (m) { return m <= cm; });
+    var first = ms.length && ms[0] < sm ? ms[0] : sm, rows = [], acc = -setupUsd, back = null, flows = [];
+    var idx = function (m) { return (+m.slice(0, 4) - +first.slice(0, 4)) * 12 + (+m.slice(5, 7) - +first.slice(5, 7)); };
+    flows[idx(sm)] = -setupUsd;
+    ms.forEach(function (m) {
+      var md = model(D, f, m); if (!md) return; var res = r2(md.v.res || 0);
+      acc = r2(acc + res); flows[idx(m)] = (flows[idx(m)] || 0) + res;
+      rows.push({ m: m, res: res, acc: acc, final: md.status === 'final' });
+      if (back === null && acc >= 0) back = m;
+    });
+    for (var i = 0; i < flows.length; i++) if (flows[i] == null) flows[i] = 0;
+    var got = r2(acc + setupUsd), irr = null;
+    if (back) {                                   // a yearly rate only once the money is back — before that a «rate» says nothing useful
+      var npv = function (r) { var v = 0; for (var k = 0; k < flows.length; k++) v += flows[k] / Math.pow(1 + r, k); return v; };
+      var lo = -0.99, hi = 1; if (npv(lo) * npv(hi) < 0) { for (var it = 0; it < 200; it++) { var mid = (lo + hi) / 2; if (npv(lo) * npv(mid) <= 0) hi = mid; else lo = mid; } irr = Math.pow(1 + (lo + hi) / 2, 12) - 1; }
+    }
+    return { amount: su.amount, currency: su.currency, date: su.date, rate: su.currency === 'USD' ? null : rate, setupUsd: r2(setupUsd),
+             rows: rows, got: got, acc: acc, recovered: setupUsd ? got / setupUsd : 0, payback: back, irr: irr };
+  }
+  function investCard(x, opts) {
+    opts = opts || {}; var you = opts.you !== false, fm = function (v) { var n = Math.abs(v), s2 = n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return (v < -0.004 ? '−' : '') + '$' + s2; };
+    var esc2 = function (s) { return String(s == null ? '' : s).replace(/[<>&]/g, ''); };
+    if (!x) return '';
+    var lastRow = x.rows.length ? x.rows[x.rows.length - 1] : null, pct = Math.max(0, Math.min(1, x.recovered));
+    var h = '<div class="card"><h3>' + (you ? 'Your investment and return' : 'The owner\'s investment and return') + '</h3>' +
+      '<table class="d"><tr><td>Set-up ' + (you ? 'you paid' : 'the owner paid') + ' · ' + monLabelP(String(x.date).slice(0, 7)) + '</td><td class="r">' + fm(-x.setupUsd) + '</td></tr>' +
+      (x.currency === 'EGP' ? '<tr class="subrow"><td>EGP ' + Math.round(x.amount).toLocaleString('en-US') + ' at ' + x.rate + ' EGP per USD</td><td class="r"></td></tr>' : '') +
+      '<tr><td>Month results to date · ' + x.rows.length + ' month' + (x.rows.length === 1 ? '' : 's') + (lastRow && !lastRow.final ? ' (the last one in progress)' : '') + '</td><td class="r">' + fm(x.got) + '</td></tr>' +
+      '<tr class="net"><td>Where ' + (you ? 'you stand' : 'the owner stands') + '</td><td class="r">' + fm(x.acc) + '</td></tr></table>' +
+      '<div style="margin:9px 0 3px;height:9px;border-radius:5px;background:#f0e6e6;overflow:hidden"><div style="height:100%;width:' + Math.round(pct * 100) + '%;background:#3a7d4d"></div></div>' +
+      '<p class="note" style="margin:0">' + (x.payback ? '<b>Paid back in ' + monLabelP(x.payback) + '.</b>' + (x.irr != null ? ' Yearly return so far: <b>' + (x.irr * 100).toFixed(1) + '%</b> (from the set-up date to the latest month).' : '')
+                                                    : '<b>' + Math.round(pct * 100) + '% recovered</b> — ' + fm(-x.acc) + ' to go before the set-up is paid back. The yearly return shows once it is.') + '</p>';
+    if (x.rows.length) {
+      h += '<details style="margin-top:6px"><summary class="note" style="cursor:pointer">Month by month</summary><table class="d" style="font-size:11.5px"><tr><th>Month</th><th class="r">Month result</th><th class="r">Running total</th></tr>' +
+        x.rows.map(function (r) { return '<tr><td>' + monLabelP(r.m) + (r.final ? '' : ' <span class="muted">· in progress</span>') + '</td><td class="r">' + fm(r.res) + '</td><td class="r">' + fm(r.acc) + '</td></tr>'; }).join('') + '</table></details>';
+    }
+    h += '<p class="note" style="margin-top:6px">' + (you ? 'Your' : 'The owner\'s') + ' own set-up spend only, in USD (the statement\'s basis). Costs OWH paid before the start are repaid from the month results (clause 5.3), so they are already counted there.</p></div>';
+    return h;
+  }
+
+  return { investReturn: investReturn, investCard: investCard, buildWorkbook: buildWorkbook, xlDate: xlDate, ORDER: ORDER, LABEL: LABEL, CATMAP: CATMAP, model: model, rowDefs: rowDefs, costKeys: costKeys, monthsOf: monthsOf, recOf: recOf, rateOf: rateOf,
            nightsOf: nightsOf, staysIn: staysIn, liveStays: liveStays, parts: parts, daysIn: daysIn, turnoversOf: turnoversOf };
 })();

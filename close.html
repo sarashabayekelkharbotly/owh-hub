@@ -816,6 +816,13 @@ function renderRecurring(){
   if(r.partnerStartVW1!==undefined)
     rows+='<tr><td style="padding:3px 8px 3px 0">VW1 · commencement date</td><td><input id="rcpstart" value="'+esc(r.partnerStartVW1||'')+'" placeholder="yyyy-mm-dd" style="width:100px;font-family:inherit;font-size:12px;border:1px solid var(--line,#ddd);border-radius:7px;padding:3px 6px;text-align:center">'+
         ' <span class="muted">'+(r.partnerStartVW1?'started — Heba’s page shows it, the ops fee goes live that month, her operating-costs ceiling starts':'empty = pre-launch; set the day it officially starts and Save (also starts the ops fee that month)')+'</span></td></tr>';
+  if(r.partnerStartVW1!==undefined){                 // the OWNER's own set-up spend (Sarah 2026-10-18) — one amount; her page shows her return on it
+    var su=r.partnerSetupVW1||{}, ist='font-family:inherit;font-size:12px;border:1px solid var(--line,#ddd);border-radius:7px;padding:3px 6px';
+    rows+='<tr><td style="padding:3px 8px 3px 0">VW1 · set-up the owner paid</td><td><input id="rcsuamt" value="'+(su.amount!=null?su.amount:'')+'" placeholder="amount" style="width:90px;text-align:right;'+ist+'"> '+
+      '<select id="rcsucur" style="'+ist+'"><option'+(su.currency!=='USD'?' selected':'')+'>EGP</option><option'+(su.currency==='USD'?' selected':'')+'>USD</option></select> on '+
+      '<input id="rcsudate" value="'+esc(su.date||r.partnerStartVW1||'')+'" placeholder="yyyy-mm-dd" style="width:100px;text-align:center;'+ist+'">'+
+      ' <span class="muted">only what she paid herself — her Overview shows her return on it; empty = none</span></td></tr>';
+  }
   rows+='<tr><td style="padding:3px 8px 3px 0">Landline · per flat</td><td>'+inp('rcll',r.landline==null?'':Math.round(r.landline*100)/100)+' <span class="muted">EGP</span></td></tr>';
   var s=r.sub||{};
   rows+='<tr><td style="padding:3px 8px 3px 0">Smoobu · total &amp; EUR/USD</td><td>'+inp('rceur',s.eur,58)+' <span class="muted">EUR</span> × '+inp('rcrate',s.rate,52)+
@@ -842,7 +849,8 @@ function saveRecurring(){
   document.getElementById('rcmsg').textContent='saving…';
   api('props_set_recurring',{month:MONTH,user:(ME&&ME.user)||'',rent:JSON.stringify(rent),
       rent17b:g('rc17b'),ops:g('rcops'),landline:g('rcll'),subEur:g('rceur'),subRate:g('rcrate'),
-      chmEgp:g('rcchm'),amal:g('rcamal'),grdn:g('rcgrdn'),opsStart:g('rcopsstart'),partnerStart:(document.getElementById('rcpstart')?g('rcpstart'):undefined),dueDays:JSON.stringify(dd)})
+      chmEgp:g('rcchm'),amal:g('rcamal'),grdn:g('rcgrdn'),opsStart:g('rcopsstart'),partnerStart:(document.getElementById('rcpstart')?g('rcpstart'):undefined),
+      partnerSetup:(document.getElementById('rcsuamt')?(g('rcsuamt')===''?'':JSON.stringify({amount:Number(g('rcsuamt').replace(/,/g,'')),currency:g('rcsucur'),date:g('rcsudate')})):undefined),dueDays:JSON.stringify(dd)})
     .then(function(j){ if(!j||!j.ok)throw new Error(j&&j.error||'bad');
       RECUR=j.recurring; renderRecurring();
       document.getElementById('rcmsg').textContent='saved ✓ — refresh to see the P&L follow';

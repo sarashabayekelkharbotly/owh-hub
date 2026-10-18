@@ -58,6 +58,7 @@ table.t{width:100%;border-collapse:collapse;font-size:12px}
 .t thead th{font-size:9.5px;color:var(--soft)}
 .t td.neg{color:var(--rr)}
 .muted{color:var(--soft);font-size:11px}
+.inv table.d{width:100%;border-collapse:collapse;font-size:12px}.inv table.d td,.inv table.d th{padding:3px 6px;border-bottom:1px solid var(--line);text-align:left}.inv .r{text-align:right!important}.inv tr.net td{font-weight:700;border-top:2px solid var(--ink)}.inv tr.subrow td{color:var(--soft);font-size:11px;padding-left:14px}.inv h3{margin:0 0 6px}
 .err{background:#f6e3e3;border:1px solid #e6b9b9;border-radius:10px;padding:12px;font-size:13px}
 </style>
 </head>
@@ -75,6 +76,7 @@ table.t{width:100%;border-collapse:collapse;font-size:12px}
   </nav>
 </div>
 
+<script src="partner-core.js?v=7"></script>
 <script src="auth.js?v=ccb277f8"></script>
 <script>
 /* CONFIG (ENDPOINT + session) lives in auth.js */
@@ -506,8 +508,17 @@ function secReturn(){
 function render(){
   if(!allMonths().length){ document.getElementById('app').innerHTML='<div class="card muted">No months yet.</div>'; return; }
   var h='<div class="scope" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+scopeSeg()+curSeg()+'</div>';
-  h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs()+secReturn();
+  h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs()+secReturn()+'<div class="inv" id="invPartner"></div>';
   document.getElementById('app').innerHTML=h;
+  invPartnerFill();
+}
+/* the partner homes' owner investment (Sarah 2026-10-18): her own set-up spend against her month results — the very card on her Overview, from her page's data */
+var INV_CACHE={};
+function invPartnerFill(){
+  var su=(D.meta&&D.meta.partnerSetup)||{}, homes=Object.keys(su).filter(function(h){ return su[h]&&su[h].amount>0; }); if(!homes.length||typeof PC==='undefined') return;
+  var put=function(){ var el=document.getElementById('invPartner'); if(!el) return; el.innerHTML=homes.map(function(h){ var d=INV_CACHE[h]; return d?PC.investCard(PC.investReturn(d,h),{you:false}).replace('<h3>','<h3>'+esc(h)+' · '):''; }).join(''); };
+  put();
+  homes.forEach(function(h){ if(INV_CACHE[h]) return; api('props_get_all',{asPartner:h}).then(function(j){ if(j&&j.ok&&j.data){ INV_CACHE[h]=j.data; put(); } }); });
 }
 function sumEarn(field, rng){ var t=0; monthsInRange(rng).forEach(function(m){ var mv=0; scopeFlats().forEach(function(f){ var p=moneyP(f,m); if(!p)return;
   mv+= field==='earnings'?p.revenue.earnings:field==='other'?p.revenue.other:field==='total'?p.revenue.total:field==='net'?p.net:(p.revenue.total-p.net); }); t+=disp(mv,m); }); return t; }
