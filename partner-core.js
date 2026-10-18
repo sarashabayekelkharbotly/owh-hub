@@ -304,7 +304,7 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
              rows: rows, got: got, acc: acc, recovered: setupUsd ? got / setupUsd : 0, payback: back, irr: irr };
   }
   function investCard(x, opts) {
-    opts = opts || {}; var you = opts.you !== false, fm = function (v) { var n = Math.abs(v), s2 = n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return (v < -0.004 ? '−' : '') + '$' + s2; };
+    opts = opts || {}; var you = opts.you !== false, fm = function (v) { var n = Math.abs(v), s2 = n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return '<span style="white-space:nowrap">' + (v < -0.004 ? '−' : '') + '$' + s2 + '</span>'; };
     var esc2 = function (s) { return String(s == null ? '' : s).replace(/[<>&]/g, ''); };
     if (!x) return '';
     var lastRow = x.rows.length ? x.rows[x.rows.length - 1] : null, pct = Math.max(0, Math.min(1, x.recovered));
