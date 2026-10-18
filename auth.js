@@ -201,9 +201,14 @@ function authWrongScreen(target, role) {
   return false;
 }
 
+/* SIGN-IN ON SUPABASE (2026-10-18): sign in / out at the fast endpoint; until it is switched on it answers FAST_OFF and the Hub does it, as before */
+function authPost_(body) {
+  var post = function (url) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(function (r) { return r.json(); }); };
+  return post(FAST_ENDPOINT).then(function (j) { return (j && (j.code === 'FAST_OFF' || j.code === 'NO_FAST')) ? post(ENDPOINT) : j; }, function () { return post(ENDPOINT); });
+}
 function logout() {
   var old = SID;
-  if (old) fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'logout', sid: old }) }).catch(function () {});
+  if (old) authPost_({ fn: 'logout', sid: old }).catch(function () {});
   authClear();
   authShowForm('');
 }
@@ -266,8 +271,7 @@ function authLogin() {
       m  = document.getElementById('owhLoginMsg');
   if (!u || !pw) { m.textContent = 'Enter your username and password.'; return; }
   b.disabled = true; b.textContent = 'Signing in…'; m.textContent = '';
-  fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'login', user: u, pw: pw }) })
-    .then(function (r) { return r.json(); })
+  authPost_({ fn: 'login', user: u, pw: pw })
     .then(function (j) {
       b.disabled = false; b.textContent = 'Sign in';
       if (!j || !j.ok) { m.textContent = (j && j.error) || 'Sign-in failed.'; return; }
