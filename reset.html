@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Hub · Reset password</title>
+<link rel="icon" href="hub-logo.png">
+<!-- FORGOTTEN PASSWORD (2026-10-18): ask for a link (it goes to the Telegram linked to the account — the answer never says whether the
+     account exists), then open the link (#t=…) to choose a new password. Every old sign-in of that account ends. -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#dcd0d0;font-family:'Cairo',sans-serif;color:#1a1a1a;padding:20px;box-sizing:border-box}
+.lb{background:#fff;border:1px solid #ecdede;border-radius:18px;box-shadow:0 6px 28px rgba(0,0,0,.14);padding:22px 20px;width:100%;max-width:330px;text-align:center}
+img{width:72px;height:72px;border-radius:14px;margin:0 auto 9px;display:block}
+h2{margin:0 0 3px;font-size:18px}
+p{margin:0 0 14px;font-size:11.5px;color:#6b6b6b;line-height:1.5}
+label{display:block;text-align:left;font-size:10px;color:#6b6b6b;margin:0 0 3px}
+input{width:100%;box-sizing:border-box;font-family:inherit;font-size:15px;padding:9px 10px;border:1px solid #ecdede;border-radius:9px;margin-bottom:11px;background:#f6f2f2;color:#1a1a1a}
+button{width:100%;border:0;background:#cc5f5f;color:#fff;font-family:inherit;font-weight:700;font-size:14.5px;border-radius:10px;padding:10px;cursor:pointer}
+button:disabled{opacity:.55;cursor:default}
+#m{font-size:12px;min-height:15px;margin-top:10px;line-height:1.45}
+.ok{color:#3a7d4d}.bad{color:#cc5f5f}
+a{display:block;margin-top:12px;font-size:11.5px;color:#6b6b6b;text-decoration:none}
+</style>
+</head>
+<body>
+<form class="lb" id="f" onsubmit="go();return false">
+  <img src="hub-logo.png" alt="The Hub">
+  <h2 id="h">Forgot your password?</h2>
+  <p id="p">Type your username. A link to choose a new password is sent to the Telegram linked to your account.</p>
+  <div id="fields"><label for="u">Username</label><input id="u" autocomplete="username" autocapitalize="none" spellcheck="false"></div>
+  <button id="b" type="submit">Send me the link</button>
+  <div id="m"></div>
+  <a href="today.html">← Back to sign in</a>
+</form>
+<script>
+var FAST = 'https://geszrsrdqxwtihrqzxiu.supabase.co/functions/v1/hub';
+var T = (location.hash.match(/t=([0-9a-f]{32,})/) || [])[1] || '';
+function post(body) { return fetch(FAST, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(function (r) { return r.json(); }); }
+function msg(ok, t) { var m = document.getElementById('m'); m.className = ok ? 'ok' : 'bad'; m.textContent = t; }
+if (T) {
+  document.getElementById('h').textContent = 'Choose a new password';
+  document.getElementById('p').textContent = 'At least 8 characters. After this, you sign in with the new password on every device.';
+  document.getElementById('fields').innerHTML = '<label for="n1">New password</label><input id="n1" type="password" autocomplete="new-password">' +
+    '<label for="n2">The same again</label><input id="n2" type="password" autocomplete="new-password">';
+  document.getElementById('b').textContent = 'Save the new password';
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}   // the link's secret leaves the address bar
+}
+function go() {
+  var b = document.getElementById('b'); b.disabled = true;
+  if (T) {
+    var a = document.getElementById('n1').value, c = document.getElementById('n2').value;
+    if (a.length < 8) { msg(false, 'At least 8 characters.'); b.disabled = false; return; }
+    if (a !== c) { msg(false, 'The two passwords are not the same.'); b.disabled = false; return; }
+    post({ fn: 'pw_reset_finish', token: T, pw: a }).then(function (j) {
+      if (!j || !j.ok) { msg(false, (j && j.error) || 'Not saved.'); b.disabled = false; return; }
+      msg(true, 'Saved ✓ — sign in with your new password.'); document.getElementById('fields').innerHTML = ''; b.style.display = 'none';
+    }, function () { msg(false, "Couldn't reach the server — check your connection."); b.disabled = false; });
+    return;
+  }
+  var u = document.getElementById('u').value.trim(); if (!u) { msg(false, 'Type your username.'); b.disabled = false; return; }
+  post({ fn: 'pw_reset_request', user: u }).then(function (j) { msg(true, (j && j.message) || 'Done.'); }, function () { msg(false, "Couldn't reach the server — check your connection."); b.disabled = false; });
+}
+</script>
+</body>
+</html>

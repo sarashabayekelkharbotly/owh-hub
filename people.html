@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Hub · People</title>
+<link rel="icon" href="hub-logo.png">
+<!-- THE PEOPLE SCREEN (Sarah 2026-10-18: "go ahead with the admin screen"): who can sign in, their passwords and sign-outs, where a
+     forgotten-password link is sent (Telegram), and the OWH Partner bot (who gets the owners' messages, quiet hours, a message sent by
+     hand). Replaces the sheet menu for all of this; the sheet menu keeps only the emergency password reset. Admins only. -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+:root{--blush:#f9f0f0;--red:#cc5f5f;--ink:#1a1a1a;--soft:#6b6b6b;--white:#fff;--line:#ecdede;--grey:#f6f2f2;--g:#3a7d4d;--amber:#e8b45f}
+*{box-sizing:border-box}
+body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink);padding:0 0 76px}
+.tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:440px;display:flex;background:var(--white);border:1px solid var(--line);border-bottom:0;border-radius:14px 14px 0 0;box-shadow:0 -3px 14px rgba(0,0,0,.08);z-index:20}
+.tabbar .tab{flex:1;text-align:center;padding:7px 2px 8px;font-size:10px;color:var(--soft);text-decoration:none;font-weight:600}
+.tabbar .tab .ti{display:block;font-size:17px;line-height:1.15;margin-bottom:1px}
+.wrap{max-width:860px;margin:0 auto;padding:14px 16px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 2px 12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:15px}.brand .r{color:var(--red)}.brand img{width:26px;height:26px;border-radius:6px}
+.toplinks a{font-size:11px;font-weight:600;color:var(--soft);text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:2px 8px;background:#fff;margin-left:4px}
+.frame{background:var(--blush);border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 2px 10px rgba(0,0,0,.05);margin-bottom:14px}
+h2{font-size:15px;margin:2px 2px 4px}
+.note{font-size:11px;color:var(--soft);margin:0 2px 9px}
+.card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.person{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.person .who{flex:1;min-width:170px}
+.person .who b{font-size:14px}
+.tag{display:inline-block;font-size:10px;font-weight:700;padding:1px 8px;border-radius:20px;margin-left:5px;vertical-align:middle}
+.t-admin{background:#e2edf3;color:#2c5468}.t-partner{background:#efe4d4;color:#8a6420}.t-warn{background:#f6e3e3;color:#a33}
+.meta{font-size:11px;color:var(--soft);margin-top:2px;line-height:1.5}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.btn{font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:9px;padding:5px 10px;background:var(--white);cursor:pointer;color:var(--ink)}
+.btn.pri{background:var(--red);color:#fff;border-color:var(--red);font-weight:700}
+.btn.warn{color:var(--red)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.form{background:#fbf7f7;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px;width:100%}
+.form .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:7px}
+.form label{font-size:10px;color:var(--soft);display:block;margin-bottom:2px}
+.form .f{flex:1;min-width:140px}
+.form input,.form select,.form textarea{width:100%;font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff;color:var(--ink)}
+.form textarea{min-height:64px}
+.msg{font-size:12px;margin-left:4px}.msg.ok{color:var(--g)}.msg.bad{color:var(--red)}
+.linked{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--line)}
+.linked:last-child{border-bottom:0}
+.linked .n{flex:1;min-width:120px}
+.linked .id{color:var(--soft);font-size:11px}
+.starters{font-size:11.5px;margin-top:6px}
+.starters button{margin:2px 4px 2px 0}
+.preview{white-space:pre-wrap;background:#fff;border:1px dashed var(--line);border-radius:8px;padding:8px;font-size:12.5px;margin:6px 0}
+.err{background:#f6e3e3;border:1px solid #e6b9b9;border-radius:10px;padding:12px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><img src="hub-logo.png" alt=""><span>The <span class="r">Hub</span> · People</span></div>
+    <div class="toplinks"><a href="settings.html">⚙️ Settings</a></div>
+  </div>
+
+  <div class="frame">
+    <h2>👥 Who can sign in</h2>
+    <p class="note">A new password, or a change of role or home, signs that person out on every other device. «Forgot your password?» on the sign-in page sends a one-time link (30 minutes) to the Telegram chat(s) listed for the account.</p>
+    <div id="people"><div class="card"><p class="note">Loading…</p></div></div>
+    <div class="acts" style="margin-top:4px"><button class="btn" onclick="editPerson(null)">+ Add a person</button><span style="flex:1"></span><button class="btn warn" onclick="signOut('*')">Sign everyone else out</button></div>
+    <div id="newForm"></div>
+  </div>
+
+  <div class="frame">
+    <h2>📣 OWH Partner bot</h2>
+    <p class="note">Everyone listed under a home gets that home's messages; the copies get the same text, headed with who it went to. Between the quiet hours messages still go out, silently.</p>
+    <div id="bot"><div class="card"><p class="note">Loading…</p></div></div>
+  </div>
+
+  <div class="frame">
+    <h2>✉️ Send the owners a message</h2>
+    <p class="note">For what the system cannot see by itself. It goes to the home's owners and the copies, through the partner bot.</p>
+    <div class="card" id="send"></div>
+  </div>
+</div>
+
+<nav class="tabbar">
+  <a class="tab" href="today.html"><span class="ti">🏠</span>Today</a>
+  <a class="tab" href="close.html"><span class="ti">📑</span>Close</a>
+  <a class="tab" href="stats.html"><span class="ti">📊</span>Stats</a>
+</nav>
+
+<script src="auth.js?v=ccb277f8"></script>
+<script>
+var D = null, CH = null, OPEN = null;
+function esc(s) { return (s == null ? '' : String(s)).replace(/[<>&"]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]; }); }
+function $(id) { return document.getElementById(id); }
+function say(id, ok, text) { var m = $(id); if (m) { m.className = 'msg ' + (ok ? 'ok' : 'bad'); m.textContent = text; } }
+function load() {
+  api('people_get', {}).then(function (j) {
+    if (!j || !j.ok) { $('people').innerHTML = '<div class="err">Could not load' + (j && j.error ? ': ' + esc(j.error) : '') + '. Refresh to try again.</div>'; return; }
+    D = j; CH = JSON.parse(JSON.stringify(j.bot.chats || { homes: {}, copies: [] }));
+    (D.homes || []).forEach(function (h) { if (h.partner && !CH.homes[h.id]) CH.homes[h.id] = []; });
+    renderPeople(); renderBot(); renderSend();
+  });
+}
+/* ── people ── */
+function renderPeople() {
+  $('people').innerHTML = D.people.map(function (p, k) {
+    return '<div class="card"><div class="person"><div class="who"><b>' + esc(p.user) + '</b><span class="tag t-' + p.role + '">' + esc(p.role) + (p.flat ? ' · ' + esc(p.flat) : '') + '</span>' +
+      (p.hasPassword ? '' : '<span class="tag t-warn">no password</span>') + (p.user.toLowerCase() === String(D.me).toLowerCase() ? '<span class="tag" style="background:#e4efe7;color:#3a7d4d">you</span>' : '') +
+      '<div class="meta">Signed in on ' + p.devices + ' device' + (p.devices === 1 ? '' : 's') + ' · reset link goes to ' + (p.tg ? 'Telegram ' + esc(p.tg) : '<b>nowhere yet</b>') + '</div></div>' +
+      '<div class="acts"><button class="btn" onclick="editPerson(' + k + ')">Edit</button>' +
+      (p.devices ? '<button class="btn" onclick="signOut(\'' + esc(p.user).replace(/'/g, '') + '\')">Sign out</button>' : '') +
+      (p.user.toLowerCase() === String(D.me).toLowerCase() ? '' : '<button class="btn warn" onclick="removePerson(' + k + ')">Remove</button>') + '</div>' +
+      '<div id="pf' + k + '" style="width:100%"></div></div></div>';
+  }).join('');
+}
+function homeOptions(sel) { return '<option value="">—</option>' + (D.homes || []).map(function (h) { return '<option' + (h.id === sel ? ' selected' : '') + '>' + esc(h.id) + '</option>'; }).join(''); }
+function editPerson(k) {
+  var p = k == null ? { user: '', role: 'partner', flat: '', tg: '' } : D.people[k], box = k == null ? $('newForm') : $('pf' + k);
+  ['newForm'].concat(D.people.map(function (_, i) { return 'pf' + i; })).forEach(function (id) { if ($(id)) $(id).innerHTML = ''; });
+  box.innerHTML = '<div class="form"><div class="row">' +
+    '<div class="f"><label>Username</label><input id="fU" value="' + esc(p.user) + '"' + (k == null ? '' : ' disabled') + ' autocapitalize="none"></div>' +
+    '<div class="f"><label>Role</label><select id="fR" onchange="$(\'fHw\').style.display=this.value===\'partner\'?\'\':\'none\'"><option value="admin"' + (p.role === 'admin' ? ' selected' : '') + '>admin — everything</option><option value="partner"' + (p.role === 'partner' ? ' selected' : '') + '>partner — one home only</option></select></div>' +
+    '<div class="f" id="fHw"' + (p.role === 'partner' ? '' : ' style="display:none"') + '><label>Home</label><select id="fF">' + homeOptions(p.flat) + '</select></div></div>' +
+    '<div class="row"><div class="f"><label>' + (k == null ? 'Password (at least 8 characters)' : 'New password — leave empty to keep the current one') + '</label><input id="fP" type="password" autocomplete="new-password"></div>' +
+    '<div class="f"><label>Telegram chat id(s) for a password reset — digits, comma-separated</label><input id="fT" value="' + esc(p.tg) + '" inputmode="numeric"></div></div>' +
+    '<div class="acts"><label style="font-size:11px;color:#6b6b6b;display:flex;align-items:center;gap:4px"><input type="checkbox" style="width:auto" onchange="$(\'fP\').type=this.checked?\'text\':\'password\'"> show password</label><span style="flex:1"></span>' +
+    '<span class="msg" id="fM"></span><button class="btn" onclick="this.closest(\'.form\').remove()">Cancel</button><button class="btn pri" onclick="savePerson(' + (k == null ? 'null' : k) + ')">Save</button></div></div>';
+  if (k == null) $('fU').focus();
+}
+function savePerson(k) {
+  var role = $('fR').value, body = { user: k == null ? $('fU').value.trim() : D.people[k].user, role: role, flat: role === 'partner' ? $('fF').value : '', pw: $('fP').value, tg: $('fT').value };
+  if (body.pw && body.pw.length < 8) { say('fM', false, 'At least 8 characters.'); return; }
+  say('fM', true, 'Saving…');
+  api('people_save', body).then(function (j) {
+    if (!j || !j.ok) { say('fM', false, (j && j.error) || 'Not saved.'); return; }
+    load(); setTimeout(function () { alert((j.created ? body.user + ' can now sign in.' : 'Saved.') + (j.signedOut ? '\n' + j.signedOut + ' other sign-in' + (j.signedOut > 1 ? 's were' : ' was') + ' ended.' : '')); }, 50);
+  });
+}
+function removePerson(k) {
+  var p = D.people[k]; if (!confirm('Remove ' + p.user + '? They can no longer sign in, and every device they are signed in on is signed out.')) return;
+  api('people_remove', { user: p.user }).then(function (j) { if (!j || !j.ok) { alert((j && j.error) || 'Not removed.'); return; } load(); });
+}
+function signOut(user) {
+  if (!confirm(user === '*' ? 'Sign out every device for everyone — except this one? Passwords stay the same; everyone just signs in again.' : 'Sign ' + user + ' out on every device (except this one)?')) return;
+  api('people_signout', { user: user }).then(function (j) { if (!j || !j.ok) { alert((j && j.error) || 'Not done.'); return; } alert(j.signedOut + ' sign-in' + (j.signedOut === 1 ? '' : 's') + ' ended.'); load(); });
+}
+/* ── the partner bot ── */
+function list(name, arr, key) {
+  return '<div class="card"><b style="font-size:13px">' + esc(name) + '</b>' + (arr.length ? '' : '<div class="meta">Nobody linked yet.</div>') +
+    arr.map(function (x, i) { return '<div class="linked"><span class="n">' + esc(x.n) + ' <span class="id">' + (x.id ? esc(x.id) : 'no chat id') + '</span></span>' +
+      (x.id ? '<button class="btn" onclick="botTest(\'' + esc(x.id) + '\')">Test</button>' : '') + '<button class="btn warn" onclick="unlink(\'' + key + '\',' + i + ')">Remove</button></div>'; }).join('') +
+    '<div class="form" style="margin-top:6px"><div class="row"><div class="f"><label>Name</label><input id="ln_' + key + '"></div><div class="f"><label>Telegram chat id</label><input id="li_' + key + '" inputmode="numeric"></div></div>' +
+    '<div class="acts"><button class="btn" onclick="link(\'' + key + '\')">+ Link</button></div></div></div>';
+}
+function keyList(key) { return key === '__copies' ? CH.copies : (CH.homes[key] = CH.homes[key] || []); }
+function renderBot() {
+  var b = D.bot, h = '<div class="card"><div class="meta">Bot: ' + (b.ok ? '<b>' + esc(b.name) + '</b> ✓' : (b.linked ? 'token set, but Telegram did not answer' : '<b>no token yet</b> — set it once from the sheet menu «Partner bot — set the token»')) + '</div>' +
+    '<div class="form"><div class="row"><div class="f"><label>Quiet hours (Cairo), e.g. 22-6</label><input id="bq" value="' + esc(b.quiet) + '"></div></div></div></div>';
+  Object.keys(CH.homes).sort().forEach(function (home) { h += list('Owners of ' + home, CH.homes[home], home); });
+  h += list('Copies (the same text, to the team)', CH.copies, '__copies');
+  h += '<div class="card"><div class="meta">Someone new? They open the bot in Telegram and press <b>Start</b>; then <button class="btn" onclick="starters()">show who pressed Start</button> and tap their name to fill the chat id.</div><div class="starters" id="st"></div></div>';
+  h += '<div class="acts"><span style="flex:1"></span><span class="msg" id="bm"></span><button class="btn pri" onclick="botSave()">Save the bot settings</button></div>';
+  $('bot').innerHTML = h;
+}
+var LAST_KEY = null;
+function link(key) { var n = $('ln_' + key).value.trim(), id = $('li_' + key).value.trim(); if (!n) { alert('A name, please.'); return; } if (id && !/^-?\d{5,}$/.test(id)) { alert('A chat id is digits only.'); return; } keyList(key).push({ n: n, id: id }); renderBot(); say('bm', false, 'Not saved yet — press «Save the bot settings».'); }
+function unlink(key, i) { keyList(key).splice(i, 1); renderBot(); say('bm', false, 'Not saved yet — press «Save the bot settings».'); }
+function starters() {
+  $('st').textContent = 'Asking Telegram…';
+  api('bot_updates', {}).then(function (j) {
+    if (!j || !j.ok) { $('st').textContent = (j && j.error) || 'No answer.'; return; }
+    if (!j.people.length) { $('st').textContent = 'Nobody has written to the bot in the last day.'; return; }
+    $('st').innerHTML = 'Tap a name, then «+ Link» under the right home: ' + j.people.map(function (p) { return '<button class="btn" onclick="fillStarter(\'' + esc(p.name).replace(/'/g, '') + '\',\'' + esc(p.id) + '\')">' + esc(p.name) + (p.username ? ' @' + esc(p.username) : '') + '</button>'; }).join('');
+  });
+}
+function fillStarter(name, id) { var keys = Object.keys(CH.homes).concat(['__copies']); keys.forEach(function (k) { var a = $('ln_' + k), b = $('li_' + k); if (a && !a.value) a.value = name; if (b && !b.value) b.value = id; }); }
+function botTest(id) { api('bot_test', { chat: id }).then(function (j) { alert(j && j.ok ? 'Sent ✓ — check that it rang.' : 'Not delivered: ' + ((j && j.error) || 'no answer') + '\n(Usually: they have not pressed Start on the bot yet.)'); }); }
+function botSave() {
+  say('bm', true, 'Saving…');
+  api('bot_save', { chats: JSON.stringify(CH), quiet: $('bq').value.trim() }).then(function (j) { if (!j || !j.ok) { say('bm', false, (j && j.error) || 'Not saved.'); return; } say('bm', true, 'Saved ✓'); });
+}
+/* ── a message to the owners ── */
+var KINDS = { '1': ['Emergency cost (clause 6.5.4)', 'what | amount | why — e.g. replaced the water heater | EGP 4,500 | it failed on a guest night'], '2': ['Owner stay confirmed', 'the dates, e.g. 12 Nov – 16 Nov 2026'],
+  '3': ['A document is ready', 'which document, e.g. Annex B — the furniture list'], '4': ['Damage claim outcome', 'what happened, e.g. AirCover paid $120 for the broken lamp'],
+  '5': ['Annual adjustment', 'the new figures, e.g. Ceiling $52 per turnover + $69; float $460'], '6': ['A free note', 'the note — plain English, short'] };
+function renderSend() {
+  var homes = Object.keys(CH.homes).sort();
+  $('send').innerHTML = '<div class="form" style="margin:0"><div class="row"><div class="f"><label>Home</label><select id="sH">' + homes.map(function (h) { return '<option>' + esc(h) + '</option>'; }).join('') + '</select></div>' +
+    '<div class="f"><label>Kind</label><select id="sK" onchange="$(\'sD\').placeholder=KINDS[this.value][1]">' + Object.keys(KINDS).map(function (k) { return '<option value="' + k + '">' + KINDS[k][0] + '</option>'; }).join('') + '</select></div></div>' +
+    '<div class="row"><div class="f"><label>Details</label><textarea id="sD" placeholder="' + esc(KINDS['1'][1]) + '"></textarea></div></div>' +
+    '<div id="sP"></div><div class="acts"><span style="flex:1"></span><span class="msg" id="sM"></span><button class="btn" onclick="sendMsg(true)">Preview</button><button class="btn pri" id="sB" onclick="sendMsg(false)" disabled>Send</button></div></div>';
+  $('sD').oninput = function () { $('sB').disabled = true; $('sP').innerHTML = ''; };
+}
+function sendMsg(preview) {
+  var body = { home: $('sH').value, kind: $('sK').value, details: $('sD').value.trim(), preview: preview ? '1' : '' };
+  if (!body.details) { say('sM', false, 'Write the details first.'); return; }
+  if (!preview && !confirm('Send this to the owners of ' + body.home + ' (and the copies)?')) return;
+  api('bot_message', body).then(function (j) {
+    if (preview) { if (!j || !j.ok) { say('sM', false, (j && j.error) || 'No preview.'); return; } $('sP').innerHTML = '<div class="preview">' + esc(j.preview) + '</div>'; $('sB').disabled = false; say('sM', true, ''); return; }
+    if (!j || !j.ok) { say('sM', false, 'Not delivered: ' + ((j && j.error) || 'no answer')); return; }
+    say('sM', true, 'Sent ✓ — ' + j.partners + ' owner' + (j.partners === 1 ? '' : 's') + ' reached.'); $('sD').value = ''; $('sP').innerHTML = ''; $('sB').disabled = true;
+  });
+}
+AUTH_ON_LOGIN = function () { load(); }; if (authGuard()) load();
+</script>
+</body>
+</html>
