@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Hub · Settings</title>
+<link rel="icon" href="hub-logo.png">
+<!-- PHASE 6 (Sarah 2026-10-18: "move the settings"): the eight settings tabs that used to be edited in the Google Sheet — Config,
+     Targets, Deal terms, Payment defaults, Channel aliases, WeShare category map, Properties, Cost categories — edited here.
+     Supabase is their master; the sheet gets a copy every night (03:00 Cairo), so an edit made in the sheet is overwritten. -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+:root{--blush:#f9f0f0;--red:#cc5f5f;--ink:#1a1a1a;--soft:#6b6b6b;--white:#fff;--line:#ecdede;--grey:#f6f2f2;--g:#3a7d4d;--amber:#e8b45f}
+*{box-sizing:border-box}
+body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink);padding:0 0 76px}
+.tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:440px;display:flex;background:var(--white);border:1px solid var(--line);border-bottom:0;border-radius:14px 14px 0 0;box-shadow:0 -3px 14px rgba(0,0,0,.08);z-index:20}
+.tabbar .tab{flex:1;text-align:center;padding:7px 2px 8px;font-size:10px;color:var(--soft);text-decoration:none;font-weight:600;border-top:2px solid transparent}
+.tabbar .tab .ti{display:block;font-size:17px;line-height:1.15;margin-bottom:1px}
+.wrap{max-width:980px;margin:0 auto;padding:14px 16px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 2px 12px}
+.brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:15px}.brand .r{color:var(--red)}.brand img{width:26px;height:26px;border-radius:6px}
+.frame{background:var(--blush);border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.picker{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.picker button{font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:9px;padding:6px 10px;background:var(--white);color:var(--ink);cursor:pointer}
+.picker button.on{background:var(--red);color:#fff;border-color:var(--red)}
+.picker button .dot{color:var(--amber);font-weight:700;margin-left:3px}
+.card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.note{font-size:11px;color:var(--soft);margin:0 0 8px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;font-size:12.5px;min-width:100%}
+th{font-size:10.5px;color:var(--soft);font-weight:700;text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:2px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+td input{font-family:inherit;font-size:12.5px;width:100%;min-width:90px;border:1px solid transparent;border-radius:6px;padding:4px 6px;background:transparent;color:var(--ink)}
+td input:hover{border-color:var(--line)}
+td input:focus{outline:none;border-color:var(--red);background:#fff}
+td input.chg{background:#fdf3e1;border-color:#efd6a4}
+tr.del td input{text-decoration:line-through;color:#b9a9a9}
+tr.new td input{background:#eef5ef}
+td.x{width:28px;text-align:center}
+td.x button{border:0;background:none;color:#b9a9a9;font-size:15px;cursor:pointer;padding:2px 4px}
+td.x button:hover{color:var(--red)}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.btn{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:9px;padding:7px 12px;background:var(--white);cursor:pointer}
+.btn.pri{background:var(--red);color:#fff;border-color:var(--red);font-weight:700}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.msg{font-size:12px}.msg.ok{color:var(--g)}.msg.bad{color:var(--red)}
+.banner{background:#fbf3e3;border:1px solid #efd6a4;border-radius:10px;padding:9px 12px;font-size:12px;margin-bottom:10px}
+.err{background:#f6e3e3;border:1px solid #e6b9b9;border-radius:10px;padding:12px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><img src="hub-logo.png" alt=""><span>The <span class="r">Hub</span> · Settings</span></div>
+  </div>
+  <div class="frame">
+    <div id="banner"></div>
+    <div class="picker" id="picker"></div>
+    <div class="card" id="body"><p class="note">Loading…</p></div>
+  </div>
+</div>
+
+<nav class="tabbar">
+  <a class="tab" href="today.html"><span class="ti">🏠</span>Today</a>
+  <a class="tab" href="close.html"><span class="ti">📑</span>Close</a>
+  <a class="tab" href="stats.html"><span class="ti">📊</span>Stats</a>
+</nav>
+
+<script src="auth.js?v=edab1d99"></script>
+<script>
+var TABS = [], CUR = null, EDITABLE = false, EDITS = {}, ADDS = [], DELS = {};
+var ABOUT = {
+  'Config': 'Each home: who earns what, long-let or not, partner and owner share, the demo.',
+  'Targets': 'Monthly USD targets for a 30-day month (the app pro-rates by the days in the month).',
+  'Deal terms': 'The deal assumptions the money rules read (e.g. the Stripe commission, the management fee).',
+  'Payment defaults': 'Which account an Airbnb / Booking.com payout lands in, per home.',
+  'Channel aliases': 'How an unusual channel name is grouped, and whether it counts as revenue.',
+  'WeShare category map': 'How each WeShare category is named in the books and treated (import · cash-only · exclude · electricity).',
+  'Properties': 'The homes themselves: model, partner, revenue and cost splits.',
+  'Cost categories': 'Which costs a partner bears, what rolls into contingency, how shared costs are split.'
+};
+function esc(s) { return (s == null ? '' : String(s)).replace(/[<>&"]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]; }); }
+function shown(v) { if (v === true) return 'TRUE'; if (v === false) return 'FALSE'; if (v == null) return ''; var t = String(v); return /^\d{4}-\d{2}-\d{2}T00:00:00$/.test(t) ? t.slice(0, 10) : t; }
+function cols(t) {                  // the named columns; a long header cell is a note about the tab, not a column
+  var out = [], notes = [];
+  (t.header || []).forEach(function (h, i) { h = String(h || '').trim(); if (!h) return; if (h.length > 40) notes.push(h); else out.push({ i: i, h: h }); });
+  return { cols: out, notes: notes };
+}
+function dirty() { return Object.keys(EDITS).length + ADDS.length + Object.keys(DELS).length; }
+function picker() {
+  document.getElementById('picker').innerHTML = TABS.map(function (t, k) {
+    return '<button class="' + (CUR === k ? 'on' : '') + '" onclick="pick(' + k + ')">' + esc(t.tab) + '</button>'; }).join('');
+}
+function pick(k) {
+  if (k === CUR) return;
+  if (dirty() && !confirm('You have unsaved changes on ' + TABS[CUR].tab + '. Drop them?')) return;
+  CUR = k; EDITS = {}; ADDS = []; DELS = {}; picker(); render();
+}
+function render() {
+  var t = TABS[CUR], c = cols(t), lock = EDITABLE ? '' : ' disabled';
+  var h = '<p class="note"><b>' + esc(t.tab) + '</b> — ' + esc(ABOUT[t.tab] || '') + '</p>';
+  c.notes.forEach(function (n) { h += '<p class="note">' + esc(n) + '</p>'; });
+  h += '<div class="scroll"><table><thead><tr>' + c.cols.map(function (x) { return '<th>' + esc(x.h) + '</th>'; }).join('') + (EDITABLE ? '<th></th>' : '') + '</tr></thead><tbody>';
+  t.rows.forEach(function (row) {
+    var d = !!DELS[row.r];
+    h += '<tr class="' + (d ? 'del' : '') + '">' + c.cols.map(function (x) {
+      var e = EDITS[row.r] && EDITS[row.r].cells.hasOwnProperty(x.i), val = e ? EDITS[row.r].cells[x.i] : shown(row.v[x.i]);
+      return '<td><input class="' + (e ? 'chg' : '') + '" value="' + esc(val) + '" oninput="edit(' + row.r + ',' + x.i + ',this)"' + lock + (d ? ' disabled' : '') + '></td>'; }).join('') +
+      (EDITABLE ? '<td class="x"><button title="' + (d ? 'Keep this row' : 'Delete this row') + '" onclick="del(' + row.r + ')">' + (d ? '↺' : '✕') + '</button></td>' : '') + '</tr>';
+  });
+  ADDS.forEach(function (nv, k) {
+    h += '<tr class="new">' + c.cols.map(function (x) { return '<td><input value="' + esc(nv[x.i] || '') + '" oninput="addEdit(' + k + ',' + x.i + ',this)"></td>'; }).join('') +
+      '<td class="x"><button title="Remove this new row" onclick="addDrop(' + k + ')">✕</button></td></tr>';
+  });
+  h += '</tbody></table></div>';
+  if (EDITABLE) h += '<div class="bar"><button class="btn" onclick="addRow()">+ Add a row</button><span style="flex:1"></span><span class="msg" id="msg"></span>' +
+    '<button class="btn" onclick="reset()" ' + (dirty() ? '' : 'disabled') + '>Undo changes</button><button class="btn pri" id="save" onclick="save()" ' + (dirty() ? '' : 'disabled') + '>Save ' + (dirty() ? '(' + dirty() + ')' : '') + '</button></div>';
+  document.getElementById('body').innerHTML = h;
+}
+function bar() { var s = document.getElementById('save'); if (s) { s.disabled = !dirty(); s.textContent = 'Save' + (dirty() ? ' (' + dirty() + ')' : ''); } var u = s && s.previousSibling; if (u) u.disabled = !dirty(); }
+function edit(r, i, el) {
+  var row = TABS[CUR].rows.filter(function (x) { return x.r === r; })[0]; if (!row) return;
+  if (!EDITS[r]) EDITS[r] = { ver: row.ver, cells: {} };
+  if (el.value === shown(row.v[i])) delete EDITS[r].cells[i]; else EDITS[r].cells[i] = el.value;
+  if (!Object.keys(EDITS[r].cells).length) delete EDITS[r];
+  el.className = EDITS[r] && EDITS[r].cells.hasOwnProperty(i) ? 'chg' : ''; bar();
+}
+function del(r) { if (DELS[r]) delete DELS[r]; else DELS[r] = 1; render(); }
+function addRow() { ADDS.push([]); render(); var ins = document.querySelectorAll('tr.new input'); if (ins.length) ins[ins.length - cols(TABS[CUR]).cols.length].focus(); }
+function addEdit(k, i, el) { ADDS[k][i] = el.value; bar(); }
+function addDrop(k) { ADDS.splice(k, 1); render(); }
+function reset() { EDITS = {}; ADDS = []; DELS = {}; render(); }
+function save() {
+  var t = TABS[CUR], n = cols(t).cols, width = Math.max.apply(null, n.map(function (x) { return x.i; })) + 1;
+  var adds = ADDS.map(function (a) { var v = []; for (var i = 0; i < width; i++) v.push(a[i] || ''); return v; }).filter(function (v) { return String(v[n[0].i] || '').trim(); });
+  if (ADDS.length && adds.length < ADDS.length && !confirm('A new row with an empty «' + n[0].h + '» is skipped. Save the rest?')) return;
+  var dn = Object.keys(DELS).length;
+  if (dn && !confirm('Delete ' + dn + ' row' + (dn > 1 ? 's' : '') + ' from ' + t.tab + '?')) return;
+  var changes = { edits: Object.keys(EDITS).map(function (r) { return { r: Number(r), ver: EDITS[r].ver, cells: EDITS[r].cells }; }), adds: adds, dels: Object.keys(DELS).map(Number) };
+  var b = document.getElementById('save'); b.disabled = true; b.textContent = 'Saving…';
+  api('props_settings_save', { tab: t.tab, changes: JSON.stringify(changes) }).then(function (j) {
+    if (!j || !j.ok) { document.getElementById('msg').className = 'msg bad'; document.getElementById('msg').textContent = (j && j.error) || 'Not saved.'; bar(); return; }
+    var keep = CUR; load(function () { CUR = keep; EDITS = {}; ADDS = []; DELS = {}; picker(); render();
+      var m = document.getElementById('msg'); if (m) { m.className = 'msg ok'; m.textContent = 'Saved ✓ — the screens pick it up within a minute.'; } });
+  });
+}
+function load(then) {
+  api('props_settings_get', {}).then(function (j) {
+    if (!j || !j.ok) { document.getElementById('body').innerHTML = '<div class="err">Could not load the settings' + (j && j.error ? ': ' + esc(j.error) : '') + '. Refresh to try again.</div>'; return; }
+    TABS = j.tabs || []; EDITABLE = !!j.editable;
+    document.getElementById('banner').innerHTML = EDITABLE
+      ? '<div class="banner">These used to be edited in the Google Sheet. They live here now — the sheet gets a copy every night, so a change typed in the sheet is overwritten.</div>'
+      : '<div class="banner">Read-only for now: these settings still live in the Google Sheet. This screen becomes editable once they move.</div>';
+    if (then) then(); else { CUR = 0; picker(); render(); }
+  });
+}
+window.addEventListener('beforeunload', function (e) { if (dirty()) { e.preventDefault(); e.returnValue = ''; } });
+AUTH_ON_LOGIN = function () { load(); }; if (authGuard()) load();   // signed in → load now; otherwise the sign-in form loads it
+</script>
+</body>
+</html>
