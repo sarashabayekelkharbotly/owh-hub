@@ -508,9 +508,116 @@ function secReturn(){
 function render(){
   if(!allMonths().length){ document.getElementById('app').innerHTML='<div class="card muted">No months yet.</div>'; return; }
   var h='<div class="scope" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+scopeSeg()+curSeg()+'</div>';
-  h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs()+secReturn()+'<div class="inv" id="invPartner"></div>';
+  h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs()+secReturn()+'<div class="inv" id="invPartner"></div>'+secForecast();
   document.getElementById('app').innerHTML=h;
-  invPartnerFill();
+  invPartnerFill(); fcFill();
+}
+
+/* ================= FORECAST (Sarah 2026-10-19/20) — OWH's own screen only until she has verified it =================
+   Zayed 2000 and 28A over their 3-year rent contracts · VW1 over 4 years from its start, seen by OWH (the 25% fee) and by the owner.
+   A month shows its ACTUALS only once it is marked closed; every other month — the current one too — shows the forecast.
+   Zayed / 28A: revenue = the latest closed same calendar month × (1 + revenue growth)^years, never below what is already booked;
+   other EGP costs = that month's × (1 + cost inflation)^years; rent = the last rent paid, +rent increase on the contract's anniversary
+   month; the rate = the latest closed month's × (1 + devaluation)^years; USD costs (booking software) as that month.
+   VW1 (until it has its own year): the partnership proposal's model — ramp-up occupancy, seasonal demand and price, costs per stay and
+   per month (+15%/yr, +5% contingency), the 25% fee — on today's real rate. The assumptions are Settings → Deal terms. */
+var FC_VIEW='Zayed 2000';
+var FC_HOMES={ 'Zayed 2000':{start:'2025-02',end:'2028-01',inv:513415,invMonth:'2025-01',rentStep:2},
+               '28A':{start:'2025-05',end:'2028-04',inv:187600,invMonth:'2025-04',rentStep:5} };
+var VW1_PROPOSAL={ occ:[0.40,0.55,0.65], occTypical:0.78, occCap:0.92, rate:64, rateGrowth:0.035, stay:5, cleanPerStay:650, laundryPerStay:400,
+  supplies:1500, internet:800, utilities:1800, opsMgr:1200, contingency:0.05, costInfl:0.15, fee:0.25,
+  demand:[0.93,1.05,1.06,0.937,0.96,0.95,1.06,0.97,1.009,1.06,0.95,1.06], price:[1.044,0.997,1.034,1.05,1.06,1.011,0.988,1.032,0.97,0.982,0.988,0.914] };
+function fcAddM(ym,n){ var y=+ym.slice(0,4), m=+ym.slice(5,7)-1+n; y+=Math.floor(m/12); m=((m%12)+12)%12; return y+'-'+('0'+(m+1)).slice(-2); }
+function fcDiff(a,b){ return (+b.slice(0,4)-+a.slice(0,4))*12+(+b.slice(5,7)-+a.slice(5,7)); }
+function fcTerms(){ var tt=(D.meta&&D.meta.dealTerms)||{}, g=function(k,d){ return tt[k]!=null?tt[k]:d; };
+  return { rev:g('Revenue growth (annual, USD)',0.03), cost:g('Cost inflation (annual)',0.10), rent:g('Rent increase (annual)',0.10), dev:g('EGP devaluation (annual)',0.07) }; }
+function fcClosed(rec){ return !!(rec&&rec.status==='final'); }
+function fcFxBase(){ var by=(D.meta.fx&&D.meta.fx.byMonth)||{}, P=D.pnl['Zayed 2000']||{}, best=null;
+  Object.keys(by).forEach(function(m){ if(by[m]&&fcClosed(P[m])&&(!best||m>best)) best=m; });
+  return best?{m:best,r:by[best]}:{m:D.meta.currentMonth,r:(D.meta.fx&&D.meta.fx.current)||50}; }
+function fcCost(rec){ var o={egp:0,rent:0,usd:0}; (rec.costs||[]).forEach(function(c){ var a=+c.amount||0; if(c.currency==='USD') o.usd+=a; else { o.egp+=a; if(c.key==='rent') o.rent+=a; } }); return o; }
+function fcIrr(flows){ var npv=function(r){ var v=0; for(var k=0;k<flows.length;k++) v+=flows[k]/Math.pow(1+r,k); return v; };
+  var lo=-0.99, hi=1; if(npv(lo)*npv(hi)>0) return null; for(var it=0;it<200;it++){ var mid=(lo+hi)/2; if(npv(lo)*npv(mid)<=0) hi=mid; else lo=mid; } return Math.pow(1+(lo+hi)/2,12)-1; }
+function fcHome(f){
+  var H=FC_HOMES[f], T=fcTerms(), P=D.pnl[f]||{}, fx=fcFxBase(), rows=[], lastRent=0, lastRentM=H.start;
+  Object.keys(P).sort().forEach(function(m){ if(fcClosed(P[m])){ var r=fcCost(P[m]).rent; if(r>0){ lastRent=r; lastRentM=m; } } });
+  for(var m=H.start; m<=H.end; m=fcAddM(m,1)){
+    var rec=P[m];
+    if(fcClosed(rec)){ rows.push({m:m, actual:true, rev:rec.revenue.total, net:rec.net}); continue; }
+    var base=null, k=0; for(var j=1;j<=6;j++){ var bm=fcAddM(m,-12*j); if(fcClosed(P[bm])){ base=bm; k=j; break; } }
+    if(!base){ rows.push({m:m, actual:false, rev:0, net:0, nobase:true}); continue; }
+    var B=P[base], bc=fcCost(B), rev=B.revenue.total*Math.pow(1+T.rev,k), booked=(rec&&rec.revenue)?(+rec.revenue.total||0):0;
+    if(booked>rev) rev=booked;
+    var other=(bc.egp-bc.rent)*Math.pow(1+T.cost,k), steps=0;
+    for(var s2=fcAddM(lastRentM,1); s2<=m; s2=fcAddM(s2,1)) if(+s2.slice(5,7)===H.rentStep) steps++;
+    var rent=lastRent*Math.pow(1+T.rent,steps), rate=fx.r*Math.pow(1+T.dev,fcDiff(fx.m,m)/12);
+    rows.push({m:m, actual:false, rev:rev, net:rev-(other+rent)/rate-bc.usd, rent:rent, rate:rate, base:base});
+  }
+  var by=(D.meta.fx&&D.meta.fx.byMonth)||{}, invUsd=H.inv/(by[H.invMonth]||fx.r), flows=[], cum=-invUsd, pay=null;
+  flows[0]=-invUsd; rows.forEach(function(r){ var i=fcDiff(H.invMonth,r.m); flows[i]=(flows[i]||0)+r.net; cum+=r.net; r.cum=cum; if(pay===null&&cum>=0) pay=r.m; });
+  for(var q=0;q<flows.length;q++) if(flows[q]==null) flows[q]=0;
+  return { rows:rows, inv:invUsd, invEgp:H.inv, invMonth:H.invMonth, start:H.start, end:H.end, payback:pay, irr:fcIrr(flows), total:cum+invUsd };
+}
+function fcVw1(d, who){
+  var P=VW1_PROPOSAL, T=fcTerms(), cm=(d.meta&&d.meta.commencement&&d.meta.commencement.VW1)||'', start=cm?cm.slice(0,7):'2026-10', end=fcAddM(start,47), fx=fcFxBase(), rows=[], i=1;
+  for(var m=start; m<=end; m=fcAddM(m,1), i++){
+    var rec=d.pnl&&d.pnl.VW1&&d.pnl.VW1[m];
+    if(fcClosed(rec)){ var md=PC.model(d,'VW1',m); rows.push({m:m, actual:true, val: who==='owh' ? (+((rec.partnerView||{}).managementFee)||0) : (md?md.v.res:0)}); continue; }
+    var cal=+m.slice(5,7)-1, yr=Math.floor((i-1)/12), occ=i<=3?P.occ[i-1]:Math.min(P.occCap,P.occTypical*P.demand[cal]);
+    var nights=PC.daysIn(m)*occ, gross=nights*P.rate*P.price[cal]*Math.pow(1+P.rateGrowth,yr), fee=gross*P.fee;
+    var egp=(nights/P.stay*(P.cleanPerStay+P.laundryPerStay)+P.supplies+P.internet+P.utilities+P.opsMgr)*(1+P.contingency)*Math.pow(1+P.costInfl,yr);
+    var rate=fx.r*Math.pow(1+T.dev,fcDiff(fx.m,m)/12);
+    rows.push({m:m, actual:false, val: who==='owh' ? fee : gross-fee-egp/rate, occ:occ, gross:gross});
+  }
+  var out={ rows:rows, start:start, assumedStart:!cm, end:end, who:who }, cum=0;
+  var su=(d.meta&&d.meta.partnerSetup&&d.meta.partnerSetup.VW1)||null;
+  if(who==='owner'&&su&&su.amount>0){ var by=(d.meta.fx&&d.meta.fx.byMonth)||{}, sm=String(su.date).slice(0,7), usd=su.currency==='USD'?su.amount:su.amount/(by[sm]||fx.r);
+    out.inv=usd; out.invMonth=sm; cum=-usd; var flows=[], first=sm<start?sm:start; flows[fcDiff(first,sm)]=-usd;
+    rows.forEach(function(r){ var k2=fcDiff(first,r.m); flows[k2]=(flows[k2]||0)+r.val; }); for(var q=0;q<flows.length;q++) if(flows[q]==null) flows[q]=0; out.irr=fcIrr(flows); }
+  var pay=null; rows.forEach(function(r){ cum+=r.val; r.cum=cum; if(out.inv&&pay===null&&cum>=0) pay=r.m; }); out.payback=pay; out.total=rows.reduce(function(a,r){ return a+r.val; },0);
+  return out;
+}
+function setFcView(v){ FC_VIEW=v; render(); }
+function fcUsd(n){ n=+n||0; return (n<0?'−':'')+'$'+Math.round(Math.abs(n)).toLocaleString('en-US'); }
+function fcMon(ym){ return MON[+ym.slice(5,7)-1]+' '+ym.slice(0,4); }
+function secForecast(){
+  var opts=[['Zayed 2000','Zayed 2000'],['28A','28A'],['VW1-owh','VW1 · OWH'],['VW1-owner','VW1 · owner']];
+  var h='<div class="card" id="fcCard"><h3>Forecast<span class="rt">only on this screen until verified · USD</span></h3>'+
+    '<div class="rowbtns">'+seg(opts,FC_VIEW,'setFcView')+'</div><div id="fcBody">'+(FC_HOMES[FC_VIEW]?fcRender(fcHome(FC_VIEW),FC_VIEW):'<div class="muted">Loading VW1…</div>')+'</div></div>';
+  return h;
+}
+var FC_VW1=null;
+function fcFill(){
+  if(FC_HOMES[FC_VIEW]) return;
+  var put=function(){ var el=document.getElementById('fcBody'); if(el&&FC_VW1) el.innerHTML=fcRender(fcVw1(FC_VW1, FC_VIEW==='VW1-owh'?'owh':'owner'), FC_VIEW); };
+  if(FC_VW1){ put(); return; }
+  if(INV_CACHE['VW1']){ FC_VW1=INV_CACHE['VW1']; put(); return; }
+  api('props_get_all',{asPartner:'VW1'}).then(function(j){ if(j&&j.ok&&j.data){ FC_VW1=INV_CACHE['VW1']=j.data; put(); } else { var el=document.getElementById('fcBody'); if(el) el.innerHTML='<div class="muted">Could not load VW1.</div>'; } });
+}
+function fcRender(x, view){
+  var T=fcTerms(), isVw=!FC_HOMES[view], owh=view==='VW1-owh', val=function(r){ return isVw?r.val:r.net; };
+  var nAct=x.rows.filter(function(r){ return r.actual; }).length, nFc=x.rows.length-nAct;
+  var head='';
+  if(!isVw) head='Contract '+fcMon(x.start)+' → '+fcMon(x.end)+' · invested EGP '+Math.round(x.invEgp).toLocaleString('en-US')+' ('+fcUsd(x.inv)+', '+fcMon(x.invMonth)+') · net over the contract '+fcUsd(x.total)+' · '+
+    (x.payback?'<b>paid back '+fcMon(x.payback)+'</b>':'<b>not paid back within the contract</b>')+(x.irr!=null?' · <b>IRR '+(x.irr*100).toFixed(1)+'%</b>':'')+'.';
+  else if(owh) head='4 years from '+fcMon(x.start)+(x.assumedStart?' (assumed — set the commencement date in Close)':'')+' → '+fcMon(x.end)+' · OWH\'s 25% fee over the 4 years <b>'+fcUsd(x.total)+'</b> · OWH paid no set-up, so there is no return rate.';
+  else head='4 years from '+fcMon(x.start)+(x.assumedStart?' (assumed — set the commencement date in Close)':'')+' → '+fcMon(x.end)+' · the owner\'s month results over the 4 years <b>'+fcUsd(x.total)+'</b>'+
+    (x.inv?' · set-up '+fcUsd(x.inv)+' · '+(x.payback?'<b>paid back '+fcMon(x.payback)+'</b>':'<b>not paid back within 4 years</b>')+(x.irr!=null?' · <b>IRR '+(x.irr*100).toFixed(1)+'%</b>':''):' · <span class="muted">enter her set-up in Close to see her payback and return</span>')+'.';
+  var rows=x.rows.map(function(r){ var c=(isVw&&!x.inv)?r.cum:r.cum; return { m:r.m, vals: r.actual?{'Actual':c}:{'Forecast':c} }; });
+  var series=[{k:'Actual',color:'#4a7fb5'},{k:'Forecast',color:'#c9b8b8'}];
+  var h='<div class="legend" style="margin-bottom:6px">'+head+'</div>'+stackedChart(rows, series, {unit:'', fmt:kk})+
+    '<div class="legend"><span><i style="background:#4a7fb5"></i>Actual (closed months)</span><span><i style="background:#c9b8b8"></i>Forecast</span> · each bar = the running total'+(x.inv||!isVw?' from minus the investment':'')+'.</div>';
+  // contract years: each adds up (months → year → running total)
+  var yrs=[]; x.rows.forEach(function(r,i){ var yi=Math.floor(i/12); yrs[yi]=yrs[yi]||{from:r.m,to:r.m,v:0,rev:0,act:0}; yrs[yi].to=r.m; yrs[yi].v+=val(r); yrs[yi].rev+=(r.rev||r.gross||0); if(r.actual) yrs[yi].act++; });
+  var run=(x.inv?-x.inv:0);
+  h+='<table class="t" style="margin-top:8px"><tr><th style="text-align:left">Year</th>'+(isVw&&owh?'':'<th>Revenue</th>')+'<th>'+(owh?'OWH fee':(isVw?'Owner result':'Net'))+'</th><th>Running total</th></tr>'+
+    (x.inv?'<tr><td style="text-align:left">Investment · '+fcMon(x.invMonth)+'</td>'+(isVw&&owh?'':'<td></td>')+'<td>'+fcUsd(-x.inv)+'</td><td>'+fcUsd(-x.inv)+'</td></tr>':'')+
+    yrs.map(function(y,i){ run+=y.v; return '<tr><td style="text-align:left">Year '+(i+1)+' · '+fcMon(y.from)+' – '+fcMon(y.to)+(y.act?' <span class="muted">('+y.act+' actual)</span>':'')+'</td>'+(isVw&&owh?'':'<td>'+fcUsd(y.rev)+'</td>')+'<td>'+fcUsd(y.v)+'</td><td>'+fcUsd(run)+'</td></tr>'; }).join('')+'</table>';
+  h+='<details style="margin-top:6px"><summary class="muted" style="cursor:pointer">Month by month</summary><table class="t"><tr><th style="text-align:left">Month</th>'+(isVw&&owh?'':'<th>Revenue</th>')+'<th>'+(owh?'OWH fee':(isVw?'Owner result':'Net'))+'</th><th>Running total</th></tr>'+
+    x.rows.map(function(r){ return '<tr'+(r.actual?'':' style="color:#8a7a7a"')+'><td style="text-align:left">'+fcMon(r.m)+(r.actual?'':(r.nobase?' · no base month':' · forecast'))+'</td>'+(isVw&&owh?'':'<td>'+fcUsd(r.rev||r.gross||0)+'</td>')+'<td>'+fcUsd(val(r))+'</td><td>'+fcUsd(r.cum)+'</td></tr>'; }).join('')+'</table></details>';
+  h+='<div class="note">'+(isVw?'Forecast months follow the partnership proposal (ramp-up occupancy 40% · 55% · 65%, then 78% × the season, capped 92%; $64 a night × the season, +3.5%/yr; cleaning 650 + laundry 400 per stay of 5 nights; supplies 1,500 · internet 800 · utilities 1,800 · operations 1,200 EGP a month, +5% contingency, +15%/yr), on today\'s rate +'+Math.round(T.dev*100)+'%/yr. Closed months are the actual statement figures.'
+    :'Forecast months: the latest closed same month, revenue +'+Math.round(T.rev*100)+'%/yr (never below what is booked), other costs +'+Math.round(T.cost*100)+'%/yr, rent +'+Math.round(T.rent*100)+'% on the contract anniversary, the rate +'+Math.round(T.dev*100)+'%/yr. A month shows its actuals once it is closed. Assumptions: Settings → Deal terms.')+'</div>';
+  return h;
 }
 /* the partner homes' owner investment (Sarah 2026-10-18): her own set-up spend against her month results — the very card on her Overview, from her page's data */
 var INV_CACHE={};
