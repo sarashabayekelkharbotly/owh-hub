@@ -77,6 +77,7 @@ table.t{width:100%;border-collapse:collapse;font-size:12px}
 </div>
 
 <script src="partner-core.js?v=8"></script>
+<script src="vw1-plan.js?v=1"></script>
 <script src="auth.js?v=ccb277f8"></script>
 <script>
 /* CONFIG (ENDPOINT + session) lives in auth.js */
@@ -524,9 +525,7 @@ function render(){
 var FC_VIEW='Zayed 2000';
 var FC_HOMES={ 'Zayed 2000':{start:'2025-02',end:'2028-01',inv:513415,invMonth:'2025-01',rentStep:2},
                '28A':{start:'2025-05',end:'2028-04',inv:187600,invMonth:'2025-04',rentStep:5} };
-var VW1_PROPOSAL={ occ:[0.40,0.55,0.65], occTypical:0.78, occCap:0.92, rate:64, rateGrowth:0.035, stay:5, cleanPerStay:650, laundryPerStay:400,
-  supplies:1500, internet:800, utilities:1800, opsMgr:1200, contingency:0.05, costInfl:0.15, fee:0.25,
-  demand:[0.93,1.05,1.06,0.937,0.96,0.95,1.06,0.97,1.009,1.06,0.95,1.06], price:[1.044,0.997,1.034,1.05,1.06,1.011,0.988,1.032,0.97,0.982,0.988,0.914] };
+var VW1_PROPOSAL=VW1_PLAN.P;   // the plan lives in vw1-plan.js, shared with Today's VW1 target
 function fcAddM(ym,n){ var y=+ym.slice(0,4), m=+ym.slice(5,7)-1+n; y+=Math.floor(m/12); m=((m%12)+12)%12; return y+'-'+('0'+(m+1)).slice(-2); }
 function fcDiff(a,b){ return (+b.slice(0,4)-+a.slice(0,4))*12+(+b.slice(5,7)-+a.slice(5,7)); }
 function fcTerms(){ var tt=(D.meta&&D.meta.dealTerms)||{}, g=function(k,d){ return tt[k]!=null?tt[k]:d; };
@@ -559,7 +558,7 @@ function fcHome(f){
   return { rows:rows, inv:invUsd, invEgp:H.inv, invMonth:H.invMonth, start:H.start, end:H.end, payback:pay, irr:fcIrr(flows), total:cum+invUsd };
 }
 function fcVw1(d, who){
-  var P=VW1_PROPOSAL, T=fcTerms(), cm=(d.meta&&d.meta.commencement&&d.meta.commencement.VW1)||'', start=cm?cm.slice(0,7):'2026-10', end=fcAddM(start,47), fx=fcFxBase(), rows=[], i=1;
+  var P=VW1_PROPOSAL, T=fcTerms(), cm=(d.meta&&d.meta.commencement&&d.meta.commencement.VW1)||'', start=cm?cm.slice(0,7):VW1_PLAN.START, end=fcAddM(start,47), fx=fcFxBase(), rows=[], i=1;
   for(var m=start; m<=end; m=fcAddM(m,1), i++){
     var rec=d.pnl&&d.pnl.VW1&&d.pnl.VW1[m];
     if(fcClosed(rec)){ var md=PC.model(d,'VW1',m); rows.push({m:m, actual:true, val: who==='owh' ? (+((rec.partnerView||{}).managementFee)||0) : (md?md.v.res:0)}); continue; }

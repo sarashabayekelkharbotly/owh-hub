@@ -77,6 +77,7 @@ a.tab{font-size:11px;color:var(--red);text-decoration:none;font-weight:700}
   </nav>
 </div>
 
+<script src="vw1-plan.js?v=1"></script>
 <script src="auth.js?v=ccb277f8"></script>
 <script>
 /* CONFIG lives in auth.js: ENDPOINT + the session token. No password or shared
@@ -238,9 +239,14 @@ function flatBlockedNights(f,m){ var set={}; D.stays.forEach(function(s){ if(s.f
   var t=new Date(Math.max(day(s.checkIn),m.start)), b=Math.min(day(s.checkOut),m.nextStart);
   for(; t<b; t.setDate(t.getDate()+1)) set[ymd(t)]=1; }); return Object.keys(set).length; }
 function flatBooked(f,m){ var v=0; rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; var on=overlapNights(s,m); if(on&&s.nights)v+=s.allIn*on/s.nights; }); return v; }   // MONEY → rawStays()
-function airbnbFlats(){ return D.meta.flatsOrder.filter(function(f){ return D.targets.byFlat[f]; }); }
-function targetB(f,m){ return (D.targets.byFlat[f]||{B:0}).B*m.dim/D.targets.daysBasis; }
-function targetA(f,m){ return (D.targets.byFlat[f]||{A:0}).A*m.dim/D.targets.daysBasis; }
+/* every short-stay home (Sarah 2026-10-20: VW1 in every table). A home with a Targets row uses it; VW1 has none — its B (and A) is
+   the partnership plan's revenue for that month (vw1-plan.js, month 1 = November 2026); before the plan starts there is no target («—»). */
+function isLongLetF(f){ var x=(D.flats||[]).filter(function(o){ return o.id===f; })[0]; return !!(x&&x.isLongLet); }
+function airbnbFlats(){ return D.meta.flatsOrder.filter(function(f){ return D.targets.byFlat[f] || (f==='VW1'&&!isLongLetF(f)); }); }
+function planT(f,m){ if(f!=='VW1'||D.targets.byFlat[f]||typeof VW1_PLAN==='undefined') return null; var p=VW1_PLAN.month(m.ym); return p?p.gross:0; }
+function targetB(f,m){ var p=planT(f,m); if(p!==null) return p; return (D.targets.byFlat[f]||{B:0}).B*m.dim/D.targets.daysBasis; }
+function targetA(f,m){ var p=planT(f,m); if(p!==null) return p; return (D.targets.byFlat[f]||{A:0}).A*m.dim/D.targets.daysBasis; }
+function flatNightsAdr(f,m){ var n=0; D.stays.forEach(function(s){ if(s.flat===f&&isLive(s)&&!s.review)n+=overlapNights(s,m); }); return n; }   // review bookings: occupancy yes, ADR no
 
 function nextCheckIn(flat,asOf){ var next=null; STAYS.forEach(function(s){ if(s.flat!==flat)return; var ci=day(s.checkIn); if(ci>=asOf&&(!next||ci<next))next=ci; }); return next; }
 function occStayOn(flat,asOf){ var o=null; STAYS.forEach(function(s){ if(s.flat===flat&&s.checkIn&&s.checkOut&&day(s.checkIn)<=asOf&&asOf<day(s.checkOut))o=s; }); return o; }
@@ -268,13 +274,14 @@ function render(){
   var cm=mInfo(cmY), nm=mInfo(nmY), pm=mInfo(pmY), flats=airbnbFlats(), asOf=day(D.meta.asOf);
   $('#rib').innerHTML=authWho()+' · FX '+(D.meta.fx.current||'?')+' · '+(D._gen?new Date(D._gen).toLocaleDateString():'');
 
-  var pf={}, T={earn:0,tB:0,tA:0,n:0, nmEarn:0,nmTB:0,nmN:0, pmN:0, blk:0, blkVal:0};
+  var pf={}, T={earn:0,earnB:0,tB:0,tA:0,n:0,nA:0, nmEarn:0,nmEarnB:0,nmTB:0,nmN:0, pmN:0, blk:0, blkVal:0};
   flats.forEach(function(f){
     var earn=(((D.pnl[f]||{})[cmY]||{}).revenue||{}).earnings||0;
     var n=flatNights(f,cm), nmEarn=flatBooked(f,nm), nmN=flatNights(f,nm), pmN=flatNights(f,pm);
-    var tB=targetB(f,cm), nmtB=targetB(f,nm), adr=n?earn/n:0, blk=flatBlockedNights(f,cm);
-    pf[f]={earn:earn,n:n,occ:n/cm.dim,adr:adr,vsB:tB?earn/tB:0, nmEarn:nmEarn,nmVsB:nmtB?nmEarn/nmtB:0, blk:blk, blkVal:blk*adr};
-    T.earn+=earn;T.tB+=tB;T.tA+=targetA(f,cm);T.n+=n; T.nmEarn+=nmEarn;T.nmTB+=nmtB;T.nmN+=nmN; T.pmN+=pmN; T.blk+=blk; T.blkVal+=blk*adr;
+    var tB=targetB(f,cm), nmtB=targetB(f,nm), nA=flatNightsAdr(f,cm), adr=nA?earn/nA:0, blk=flatBlockedNights(f,cm);
+    pf[f]={earn:earn,n:n,occ:n/cm.dim,adr:adr,vsB:tB?earn/tB:NaN, nmEarn:nmEarn,nmVsB:nmtB?nmEarn/nmtB:NaN, blk:blk, blkVal:blk*adr};
+    // vs B over the homes that HAVE a target that month (VW1 before its plan starts adds to the $, not to the ratio)
+    T.earn+=earn;T.tB+=tB;T.tA+=targetA(f,cm);T.n+=n;T.nA+=nA; if(tB)T.earnB+=earn; T.nmEarn+=nmEarn;T.nmTB+=nmtB;T.nmN+=nmN; if(nmtB)T.nmEarnB+=nmEarn; T.pmN+=pmN; T.blk+=blk; T.blkVal+=blk*adr;
   });
   var denom=cm.dim*flats.length;
   var occ=T.n/denom, pmOcc=T.pmN/(pm.dim*flats.length);
@@ -290,8 +297,8 @@ function render(){
 
   // ---- 4 KPI tiles
   h+='<div class="kpis">';
-  h+=kpi(mLabel(cmY)+' earnings','$'+fmt(T.earn),'B '+col(T.earn/T.tB)+' · A '+pct(T.tA?T.earn/T.tA:0));
-  h+=kpi(mLabel(nmY)+' earnings','$'+fmt(T.nmEarn),'B '+col(T.nmTB?T.nmEarn/T.nmTB:0)+' · '+T.nmN+'n booked / '+flats.length+' flats');
+  h+=kpi(mLabel(cmY)+' earnings','$'+fmt(T.earn),'B '+col(T.tB?T.earnB/T.tB:NaN)+' · A '+pct(T.tA?T.earnB/T.tA:0));
+  h+=kpi(mLabel(nmY)+' earnings','$'+fmt(T.nmEarn),'B '+col(T.nmTB?T.nmEarnB/T.nmTB:NaN)+' · '+T.nmN+'n booked / '+flats.length+' flats');
   h+=kpi('Free '+mLabel(cmY)+' nights',String(freeN),runs.length+' run'+(runs.length===1?'':'s')+' · $'+fmt(freeVal));
   h+=kpi('Occupancy',pct(occ),mLabel(pmY)+' '+pct(pmOcc)+' · '+deltaPts(occ,pmOcc));
   h+='</div>';
@@ -299,8 +306,9 @@ function render(){
   // ---- by flat (this month + next-month vs B)
   h+='<div class="card"><h3>By flat<span class="rt">'+mLabel(cmY)+' &amp; '+mLabel(nmY)+'</span></h3><table><thead><tr><th>Flat</th><th>'+mLabel(cmY)+' $</th><th>vs B</th><th>Occ</th><th>ADR</th><th>'+mLabel(nmY)+' vsB</th></tr></thead><tbody>';
   flats.forEach(function(f){ var p=pf[f];
-    h+='<tr><td>'+f+'</td><td>'+fmt(p.earn)+'</td><td class="'+cc(p.vsB)+'">'+pct(p.vsB)+'</td><td>'+pct(p.occ)+'</td><td>'+p.adr.toFixed(1)+'</td><td class="'+cc(p.nmVsB)+'">'+pct(p.nmVsB)+'</td></tr>'; });
-  h+='<tr class="tot"><td>Portfolio</td><td>'+fmt(T.earn)+'</td><td class="'+cc(T.tB?T.earn/T.tB:0)+'">'+pct(T.tB?T.earn/T.tB:0)+'</td><td>'+pct(occ)+'</td><td>'+(T.n?(T.earn/T.n).toFixed(1):'—')+'</td><td class="'+cc(T.nmTB?T.nmEarn/T.nmTB:0)+'">'+pct(T.nmTB?T.nmEarn/T.nmTB:0)+'</td></tr>';
+    h+='<tr><td>'+f+'</td><td>'+fmt(p.earn)+'</td>'+vbTd(p.vsB)+'<td>'+pct(p.occ)+'</td><td>'+(p.adr?p.adr.toFixed(1):'—')+'</td>'+vbTd(p.nmVsB)+'</tr>'; });
+  h+='<tr class="tot"><td>Portfolio</td><td>'+fmt(T.earn)+'</td>'+vbTd(T.tB?T.earnB/T.tB:NaN)+'<td>'+pct(occ)+'</td><td>'+(T.nA?(T.earn/T.nA).toFixed(1):'—')+'</td>'+vbTd(T.nmTB?T.nmEarnB/T.nmTB:NaN)+'</tr>';
+  if(flats.indexOf('VW1')>-1) h+='<div class="legend">VW1\'s B = the partnership plan\'s revenue for the month (month 1 = November 2026); no target before then.</div>';
   h+='</tbody></table></div>';
 
   // ---- happening today
@@ -391,6 +399,7 @@ function mLabel(ym){ return MON[+ym.slice(5,7)-1]; }
 function kpi(l,v,s){ return '<div class="kpi"><div class="kl">'+l+'</div><div class="kv">'+v+'</div><div class="ks">'+s+'</div></div>'; }
 function col(x){ return isFinite(x)?'<span class="'+cc(x)+'">'+pct(x)+'</span>':'—'; }
 function cc(x){ return x>=1?'g':'r'; }
+function vbTd(x){ return isFinite(x)?'<td class="'+cc(x)+'">'+pct(x)+'</td>':'<td class="soft">—</td>'; }
 function deltaPts(a,b){ var d=Math.round((a-b)*100); return '<span class="'+(d>=0?'g':'r')+'">'+(d>=0?'+':'')+d+'</span>'; }
 
 function happening(cm,asOf){
@@ -401,7 +410,7 @@ function happening(cm,asOf){
      the channel dot sits next to each guest so both guests show their own channel. */
   airbnbFlats().forEach(function(f){
     var cur=null, coToday=null;
-    STAYS.forEach(function(s){ if(s.flat!==f)return;
+    STAYS.forEach(function(s){ if(s.flat!==f||s.review)return;   // a review booking has no real guest (2026-10-20)
       if(day(s.checkIn)<=asOf&&asOf<day(s.checkOut))cur=s;   // occupied tonight (incl. check-in today)
       if(s.checkOut===today)coToday=s; });
     var events=[];
