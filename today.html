@@ -243,7 +243,9 @@ function flatBooked(f,m){ var v=0; rawStays().forEach(function(s){ if(s.flat!==f
    the partnership plan's revenue for that month (vw1-plan.js, month 1 = November 2026); before the plan starts there is no target («—»). */
 function isLongLetF(f){ var x=(D.flats||[]).filter(function(o){ return o.id===f; })[0]; return !!(x&&x.isLongLet); }
 function airbnbFlats(){ return D.meta.flatsOrder.filter(function(f){ return D.targets.byFlat[f] || (f==='VW1'&&!isLongLetF(f)); }); }
-function planT(f,m){ if(f!=='VW1'||D.targets.byFlat[f]||typeof VW1_PLAN==='undefined') return null; var p=VW1_PLAN.month(m.ym); return p?p.gross:0; }
+/* OUR share of a partner home's money (Sarah 2026-10-20): VW1 counts at the management fee (25%) — its earnings AND its plan target */
+function ourShare(f){ var x=(D.flats||[]).filter(function(o){ return o.id===f; })[0], p=x&&x.partner; if(!p||!p.hasPartner) return 1; var s=+p.sharePctOfTotalRev; return s>0&&s<1?s:0.25; }
+function planT(f,m){ if(f!=='VW1'||D.targets.byFlat[f]||typeof VW1_PLAN==='undefined') return null; var p=VW1_PLAN.month(m.ym); return p?p.gross*ourShare(f):0; }
 function targetB(f,m){ var p=planT(f,m); if(p!==null) return p; return (D.targets.byFlat[f]||{B:0}).B*m.dim/D.targets.daysBasis; }
 function targetA(f,m){ var p=planT(f,m); if(p!==null) return p; return (D.targets.byFlat[f]||{A:0}).A*m.dim/D.targets.daysBasis; }
 function flatNightsAdr(f,m){ var n=0; D.stays.forEach(function(s){ if(s.flat===f&&isLive(s)&&!s.review)n+=overlapNights(s,m); }); return n; }   // review bookings: occupancy yes, ADR no
@@ -276,12 +278,12 @@ function render(){
 
   var pf={}, T={earn:0,earnB:0,tB:0,tA:0,n:0,nA:0, nmEarn:0,nmEarnB:0,nmTB:0,nmN:0, pmN:0, blk:0, blkVal:0};
   flats.forEach(function(f){
-    var earn=(((D.pnl[f]||{})[cmY]||{}).revenue||{}).earnings||0;
-    var n=flatNights(f,cm), nmEarn=flatBooked(f,nm), nmN=flatNights(f,nm), pmN=flatNights(f,pm);
-    var tB=targetB(f,cm), nmtB=targetB(f,nm), nA=flatNightsAdr(f,cm), adr=nA?earn/nA:0, blk=flatBlockedNights(f,cm);
-    pf[f]={earn:earn,n:n,occ:n/cm.dim,adr:adr,vsB:tB?earn/tB:NaN, nmEarn:nmEarn,nmVsB:nmtB?nmEarn/nmtB:NaN, blk:blk, blkVal:blk*adr};
+    var sh=ourShare(f), earnFull=(((D.pnl[f]||{})[cmY]||{}).revenue||{}).earnings||0, earn=earnFull*sh;
+    var n=flatNights(f,cm), nmEarn=flatBooked(f,nm)*sh, nmN=flatNights(f,nm), pmN=flatNights(f,pm);
+    var tB=targetB(f,cm), nmtB=targetB(f,nm), nA=flatNightsAdr(f,cm), adr=nA?earnFull/nA:0, blk=flatBlockedNights(f,cm);
+    pf[f]={sh:sh,earn:earn,n:n,occ:n/cm.dim,adr:adr,vsB:tB?earn/tB:NaN, nmEarn:nmEarn,nmVsB:nmtB?nmEarn/nmtB:NaN, blk:blk, blkVal:blk*adr};
     // vs B over the homes that HAVE a target that month (VW1 before its plan starts adds to the $, not to the ratio)
-    T.earn+=earn;T.tB+=tB;T.tA+=targetA(f,cm);T.n+=n;T.nA+=nA; if(tB)T.earnB+=earn; T.nmEarn+=nmEarn;T.nmTB+=nmtB;T.nmN+=nmN; if(nmtB)T.nmEarnB+=nmEarn; T.pmN+=pmN; T.blk+=blk; T.blkVal+=blk*adr;
+    T.earn+=earn;T.earnFull=(T.earnFull||0)+earnFull;T.tB+=tB;T.tA+=targetA(f,cm);T.n+=n;T.nA+=nA; if(tB)T.earnB+=earn; T.nmEarn+=nmEarn;T.nmTB+=nmtB;T.nmN+=nmN; if(nmtB)T.nmEarnB+=nmEarn; T.pmN+=pmN; T.blk+=blk; T.blkVal+=blk*adr;
   });
   var denom=cm.dim*flats.length;
   var occ=T.n/denom, pmOcc=T.pmN/(pm.dim*flats.length);
@@ -306,9 +308,9 @@ function render(){
   // ---- by flat (this month + next-month vs B)
   h+='<div class="card"><h3>By flat<span class="rt">'+mLabel(cmY)+' &amp; '+mLabel(nmY)+'</span></h3><table><thead><tr><th>Flat</th><th>'+mLabel(cmY)+' $</th><th>vs B</th><th>Occ</th><th>ADR</th><th>'+mLabel(nmY)+' vsB</th></tr></thead><tbody>';
   flats.forEach(function(f){ var p=pf[f];
-    h+='<tr><td>'+f+'</td><td>'+fmt(p.earn)+'</td>'+vbTd(p.vsB)+'<td>'+pct(p.occ)+'</td><td>'+(p.adr?p.adr.toFixed(1):'—')+'</td>'+vbTd(p.nmVsB)+'</tr>'; });
-  h+='<tr class="tot"><td>Portfolio</td><td>'+fmt(T.earn)+'</td>'+vbTd(T.tB?T.earnB/T.tB:NaN)+'<td>'+pct(occ)+'</td><td>'+(T.nA?(T.earn/T.nA).toFixed(1):'—')+'</td>'+vbTd(T.nmTB?T.nmEarnB/T.nmTB:NaN)+'</tr>';
-  if(flats.indexOf('VW1')>-1) h+='<div class="legend">VW1\'s B = the partnership plan\'s revenue for the month (month 1 = November 2026); no target before then.</div>';
+    h+='<tr><td>'+f+(p.sh<1?' <span class="soft">'+Math.round(p.sh*100)+'%</span>':'')+'</td><td>'+fmt(p.earn)+'</td>'+vbTd(p.vsB)+'<td>'+pct(p.occ)+'</td><td>'+(p.adr?p.adr.toFixed(1):'—')+'</td>'+vbTd(p.nmVsB)+'</tr>'; });
+  h+='<tr class="tot"><td>Portfolio</td><td>'+fmt(T.earn)+'</td>'+vbTd(T.tB?T.earnB/T.tB:NaN)+'<td>'+pct(occ)+'</td><td>'+(T.nA?(T.earnFull/T.nA).toFixed(1):'—')+'</td>'+vbTd(T.nmTB?T.nmEarnB/T.nmTB:NaN)+'</tr>';
+  if(flats.indexOf('VW1')>-1) h+='<div class="legend">VW1 counts at our 25% share — its $, its B and the earnings tiles. Its B = 25% of the partnership plan\'s revenue for the month (month 1 = November 2026); no target before then. ADR is the full nightly price.</div>';
   h+='</tbody></table></div>';
 
   // ---- happening today
