@@ -17,13 +17,13 @@
 :root{--blush:#f9f0f0;--red:#cc5f5f;--blue:#b8c9d9;--ink:#1a1a1a;--soft:#6b6b6b;--white:#fff;--line:#ecdede;--grey:#f6f2f2;--g:#3a7d4d;--rr:#cc5f5f;--amber:#e8b45f;
 --ch-airbnb:#e0798a;--ch-booking:#4a7fb5;--ch-direct:#6f9a76}
 *{box-sizing:border-box}
-body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink);font-variant-numeric:tabular-nums;padding:0 0 40px}
+body{margin:0;background:#dcd0d0;font-family:'Cairo',sans-serif;color:var(--ink);font-variant-numeric:tabular-nums;padding:0 0 calc(84px + env(safe-area-inset-bottom))}
 .frame{max-width:440px;margin:16px auto;background:var(--white);border:1px solid var(--line);border-radius:20px;box-shadow:0 5px 24px rgba(0,0,0,.10);overflow:hidden}
 .topbar{display:flex;justify-content:space-between;align-items:center;padding:11px 15px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:15px;white-space:nowrap;flex:none}.brand .r{color:var(--red)}.brand .logo{width:26px;height:26px;border-radius:6px;flex:none}.brand .bs{font-weight:600;font-size:11.5px;color:var(--soft);border-left:1px solid var(--line);padding-left:7px}
 .rib{font-size:10px;color:#4c4040;text-align:right;line-height:1.5}.rib b{color:#1a1a1a}
 .body{padding:13px 13px 12px;background:var(--blush)}
-.tabbar{display:flex;background:var(--white);border-top:1px solid var(--line)}
+.tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:440px;display:flex;background:var(--white);border:1px solid var(--line);border-bottom:0;border-radius:14px 14px 0 0;box-shadow:0 -3px 16px rgba(0,0,0,.08);z-index:20;padding-bottom:env(safe-area-inset-bottom)}   /* always on screen, like الكنترول (Sarah 2026-10-23) */
 .tabbar .tab{flex:1;text-align:center;padding:7px 2px 8px;font-size:10px;color:var(--soft);text-decoration:none;font-weight:600;border-top:2px solid transparent}
 .tabbar .tab .ti{display:block;font-size:17px;line-height:1.15;margin-bottom:1px}
 .tabbar .tab.active{color:var(--red);border-top-color:var(--red)}
