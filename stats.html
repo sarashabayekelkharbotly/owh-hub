@@ -164,6 +164,9 @@ function owhP(f,m){ var p=pnlOf(f,m); if(!p||!partnerCfg(f)) return p;
 function moneyP(f,m){ return scope==='portfolio'?owhP(f,m):pnlOf(f,m); }   // single-flat scope = the flat's own full story
 function rawStays(){ return D.stays||[]; }
 function scopeFlats(){ return scope==='portfolio'?allFlats():[scope]; }                          // money
+/* ADR counts PAID nights only: a review booking (OWH-/owner-funded, no revenue) fills nights for occupancy but never for ADR —
+   the rule Today and partner-core already follow (Sarah 2026-10-24: VW1's 10 review nights pulled October's portfolio ADR down) */
+function adrN(s,n){ return s&&s.review?0:n; }
 function scopeStayFlats(){ return scopeFlats().filter(function(f){ return !isLongLet(f); }); }   // per-booking metrics
 function monthOf(d){ return String(d).slice(0,7); }
 
@@ -705,7 +708,7 @@ function secDelta(){
 function occLine(f,mNow,refMs){
   function occOf(msArr){ var o=0,a=0,e=0,nn=0; msArr.forEach(function(m){ a+=daysIn(m);
     rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return;
-      var on=overlapNights(s,m); o+=on; e+=earnedIn(s,m); nn+=on; }); });
+      var on=overlapNights(s,m); o+=on; e+=earnedIn(s,m); nn+=adrN(s,on); }); });
     return {occ:a>0?o/a*100:0, adr:nn>0?e/nn:0, nightsAvg:o/(msArr.length||1)};
   }
   var a=occOf([mNow]), b=occOf(refMs);
@@ -830,7 +833,7 @@ function secOccAdr(){
     rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))o+=overlapNights(s,m); }); }); return {m:m,value:a>0?o/a*100:0}; });
   // ADR is a per-booking rate — a long-let has no bookings, so it is not part of this average
   var adr=ms.map(function(m){ var e=0,n=0; scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return;
-    e+=earnedIn(s,m); n+=overlapNights(s,m); }); }); return {m:m,value:disp(n>0?e/n:0,m)}; });
+    e+=earnedIn(s,m); n+=adrN(s,overlapNights(s,m)); }); }); return {m:m,value:disp(n>0?e/n:0,m)}; });
   return '<div class="card"><h3>Occupancy &amp; ADR</h3><div class="csub">bars = ADR (earned in the month ÷ nights occupied in it, '+CUR+', Airbnb flats only — a long-let has no per-night rate) · line = occupancy % (a long-let counts as fully occupied)</div>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div><div class="rowbtns">'+timeSeg('occ')+'</div>'+occAdrChart(occ,adr)+
     '<div class="legend"><span><i style="background:var(--c-occ)"></i>ADR '+CUR+'</span><span><i style="background:var(--red)"></i>Occupancy %</span></div></div>';
@@ -856,7 +859,7 @@ function secNights(){
         });
         if(occ)b++; else if(blk)bl++; else fr++;
       }
-      rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; earn+=earnedIn(s,m); nn+=overlapNights(s,m); });
+      rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; earn+=earnedIn(s,m); nn+=adrN(s,overlapNights(s,m)); });
     });
     if(nbMode==='nights') return {m:m,vals:{booked:b,blocked:bl,free:fr}};
     var adr=nn>0?earn/nn:0;
@@ -938,7 +941,7 @@ function secAdrTable(){
   // straddling the range edge contributes only its inside part instead of all-or-nothing
   scopeStayFlats().forEach(function(f){ var e={},n={},tE=0,tN=0; rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return;
     var g=channelGroup(s.portal).group, ev=0, nv=0;
-    ms.forEach(function(mm){ ev+=disp(earnedIn(s,mm),mm); nv+=overlapNights(s,mm); });
+    ms.forEach(function(mm){ ev+=disp(earnedIn(s,mm),mm); nv+=adrN(s,overlapNights(s,mm)); });
     if(!nv&&!ev)return;
     e[g]=(e[g]||0)+ev; n[g]=(n[g]||0)+nv; tE+=ev; tN+=nv;
     gE[g]=(gE[g]||0)+ev; gN[g]=(gN[g]||0)+nv; gTE+=ev; gTN+=nv; });
