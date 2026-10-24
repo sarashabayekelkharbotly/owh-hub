@@ -259,7 +259,12 @@ function doorCode(flat,asOf){ var cur=occStayOn(flat,asOf); if(cur)return codeOf
 function prevCheckOut(flat,before){ var last=null; STAYS.forEach(function(s){ if(s.flat!==flat)return; var co=day(s.checkOut); if(co<=before&&(!last||co>last))last=co; }); return last; }
 
 /* free-night runs (>=2) in cm, from today forward */
+/* a partner home is not «free» before its commencement date — it is not open for business yet (Sarah 2026-10-24: VW1 has no
+   date, so it has no free nights at all). Its bookings and blocks still count; our own homes are always open. */
+function opStart(f){ var x=(D.flats||[]).filter(function(o){ return o.id===f; })[0]; if(!(x&&x.partner&&x.partner.hasPartner)) return ''; return ((D.meta&&D.meta.commencement)||{})[f]||null; }
+function preOp(f,k){ var o=opStart(f); return o===null||(!!o&&k<o); }
 function freeRuns(flat,cm,fromISO){
+  var op0=opStart(flat); if(op0===null) return []; if(op0&&op0>fromISO) fromISO=op0;
   var occ={}; D.stays.forEach(function(s){ if(s.flat!==flat||!s.checkIn||!s.checkOut||(!isLive(s)&&!isBlocked(s)))return; for(var t=day(s.checkIn),b=day(s.checkOut); t<b; t.setDate(t.getDate()+1))occ[ymd(t)]=1; });
   var from=day(fromISO); if(from<cm.start)from=new Date(cm.start);
   var runs=[],cur=null;
