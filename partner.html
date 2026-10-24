@@ -120,7 +120,13 @@ var TAB='overview', SUB='stmt';          // which of the five tabs is open, and 
 function setTab(t){ TAB=t; try{ history.replaceState(null,'','#'+t+(t==='statement'&&SUB!=='stmt'?'/'+(SUB==='settle'?'settlement':'months'):'')); }catch(e){} render(); try{ window.scrollTo(0,0); }catch(e){} }
 function setSub(x){ SUB=x; try{ history.replaceState(null,'','#statement'+(x==='stmt'?'':'/'+(x==='settle'?'settlement':'months'))); }catch(e){} render(); }
 /* the month chips stop at next month — the sheet carries empty rows far into the future that would only be noise */
-function chipLimit(){ var c=(DATA&&DATA.meta&&DATA.meta.currentMonth)||''; if(!c) return '9999'; var y=+c.slice(0,4), mo=+c.slice(5,7)+1; if(mo>12){ y++; mo=1; } return y+'-'+('0'+mo).slice(-2); }
+/* the months the owner can pick: up to next month, and further to the LAST month that has anything in it — a booking, revenue or a cost
+   (Sarah 2026-10-24: a January booking was hidden behind the next-month cut-off). Empty months in between stay in so the list is continuous. */
+function chipLimit(){ var c=(DATA&&DATA.meta&&DATA.meta.currentMonth)||''; if(!c) return '9999'; var y=+c.slice(0,4), mo=+c.slice(5,7)+1; if(mo>12){ y++; mo=1; } var lim=y+'-'+('0'+mo).slice(-2);
+  var f=myFlat(), P=(DATA.pnl&&DATA.pnl[f])||{};
+  Object.keys(P).forEach(function(m){ var r=P[m]; if(m>lim&&r&&((r.revenue&&(+r.revenue.total||+r.revenue.other))||(r.costs||[]).some(function(q){ return +q.amount; }))) lim=m; });
+  (DATA.stays||[]).forEach(function(s){ var st=String(s.status||'').toLowerCase(); if(s.flat!==f||!s.checkIn||st.indexOf('cancel')>-1||st.indexOf('block')>-1) return; var m=String(s.checkIn).slice(0,7); if(m>lim) lim=m; });
+  return lim; }
 var MON_FULL=['January','February','March','April','May','June','July','August','September','October','November','December'];
 /* a new year keeps the same month when that year has it, otherwise lands on that year's latest month */
 function pickYear(y){
