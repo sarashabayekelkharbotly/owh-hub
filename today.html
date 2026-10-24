@@ -263,6 +263,9 @@ function prevCheckOut(flat,before){ var last=null; STAYS.forEach(function(s){ if
    date, so it has no free nights at all). Its bookings and blocks still count; our own homes are always open. */
 function opStart(f){ var x=(D.flats||[]).filter(function(o){ return o.id===f; })[0]; if(!(x&&x.partner&&x.partner.hasPartner)) return ''; return ((D.meta&&D.meta.commencement)||{})[f]||null; }
 function preOp(f,k){ var o=opStart(f); return o===null||(!!o&&k<o); }
+/* occupancy too (2026-10-25): the month as the home was OPEN in it — from its commencement date; null = not open at all that month */
+function opClip(f,m){ var o=opStart(f); if(o===null) return null; if(!o) return m; var od=day(o); if(od<=m.start) return m; if(od>=m.nextStart) return null;
+  return {ym:m.ym,start:od,nextStart:m.nextStart,dim:Math.round((m.nextStart-od)/DAYMS)}; }
 function freeRuns(flat,cm,fromISO){
   var op0=opStart(flat); if(op0===null) return []; if(op0&&op0>fromISO) fromISO=op0;
   var occ={}; D.stays.forEach(function(s){ if(s.flat!==flat||!s.checkIn||!s.checkOut||(!isLive(s)&&!isBlocked(s)))return; for(var t=day(s.checkIn),b=day(s.checkOut); t<b; t.setDate(t.getDate()+1))occ[ymd(t)]=1; });
@@ -288,11 +291,14 @@ function render(){
     var tB=targetB(f,cm), nmtB=targetB(f,nm), nA=flatNightsAdr(f,cm), adr=nA?earnFull/nA:0, blk=flatBlockedNights(f,cm);
     pf[f]={sh:sh,earn:earn,n:n,occ:n/cm.dim,adr:adr,vsB:tB?earn/tB:NaN, nmEarn:nmEarn,nmVsB:nmtB?nmEarn/nmtB:NaN, blk:blk, blkVal:blk*adr};
     // vs B over the homes that HAVE a target that month (VW1 before its plan starts adds to the $, not to the ratio)
+    var oc=opClip(f,cm), opm=opClip(f,pm), nO=oc?flatNights(f,oc):0, dO=oc?oc.dim:0, bO=oc?flatBlockedNights(f,oc):0;
+    pf[f].occ=dO?nO/dO:NaN; T.nO=(T.nO||0)+nO; T.dO=(T.dO||0)+dO; T.bO=(T.bO||0)+bO; T.pnO=(T.pnO||0)+(opm?flatNights(f,opm):0); T.pdO=(T.pdO||0)+(opm?opm.dim:0);
     T.earn+=earn;T.earnFull=(T.earnFull||0)+earnFull;T.tB+=tB;T.tA+=targetA(f,cm);T.n+=n;T.nA+=nA; if(tB)T.earnB+=earn; T.nmEarn+=nmEarn;T.nmTB+=nmtB;T.nmN+=nmN; if(nmtB)T.nmEarnB+=nmEarn; T.pmN+=pmN; T.blk+=blk; T.blkVal+=blk*adr;
   });
-  var denom=cm.dim*flats.length;
-  var occ=T.n/denom, pmOcc=T.pmN/(pm.dim*flats.length);
-  var occExBlk=(denom-T.blk)>0?T.n/(denom-T.blk):0, pctBlk=denom?T.blk/denom:0;
+  // occupancy counts each home from its commencement date (a partner home before it opens is neither available nor occupied)
+  var denom=T.dO||0;
+  var occ=denom?T.nO/denom:0, pmOcc=T.pdO?T.pnO/T.pdO:0;
+  var occExBlk=(denom-T.bO)>0?T.nO/(denom-T.bO):0, pctBlk=denom?T.bO/denom:0;
 
   // free nights (forward)
   var runs=[], freeVal=0, freeN=0;
@@ -313,7 +319,7 @@ function render(){
   // ---- by flat (this month + next-month vs B)
   h+='<div class="card"><h3>By flat<span class="rt">'+mLabel(cmY)+' &amp; '+mLabel(nmY)+'</span></h3><table><thead><tr><th>Flat</th><th>'+mLabel(cmY)+' $</th><th>vs B</th><th>Occ</th><th>ADR</th><th>'+mLabel(nmY)+' vsB</th></tr></thead><tbody>';
   flats.forEach(function(f){ var p=pf[f];
-    h+='<tr><td>'+f+(p.sh<1?' <span class="soft">'+Math.round(p.sh*100)+'%</span>':'')+'</td><td>'+fmt(p.earn)+'</td>'+vbTd(p.vsB)+'<td>'+pct(p.occ)+'</td><td>'+(p.adr?p.adr.toFixed(1):'—')+'</td>'+vbTd(p.nmVsB)+'</tr>'; });
+    h+='<tr><td>'+f+(p.sh<1?' <span class="soft">'+Math.round(p.sh*100)+'%</span>':'')+'</td><td>'+fmt(p.earn)+'</td>'+vbTd(p.vsB)+'<td>'+(isFinite(p.occ)?pct(p.occ):'—')+'</td><td>'+(p.adr?p.adr.toFixed(1):'—')+'</td>'+vbTd(p.nmVsB)+'</tr>'; });
   h+='<tr class="tot"><td>Portfolio</td><td>'+fmt(T.earn)+'</td>'+vbTd(T.tB?T.earnB/T.tB:NaN)+'<td>'+pct(occ)+'</td><td>'+(T.nA?(T.earnFull/T.nA).toFixed(1):'—')+'</td>'+vbTd(T.nmTB?T.nmEarnB/T.nmTB:NaN)+'</tr>';
   if(flats.indexOf('VW1')>-1) h+='<div class="legend">VW1 counts at our 25% share — its $, its B and the earnings tiles. Its B = 25% of the partnership plan\'s revenue for the month (month 1 = November 2026); no target before then. ADR is the full nightly price.</div>';
   h+='</tbody></table></div>';

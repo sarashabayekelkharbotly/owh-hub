@@ -171,6 +171,9 @@ function adrN(s,n){ return s&&s.review?0:n; }
    date, so it has no free nights at all). Its bookings and blocks still count; our own homes are always open. */
 function opStart(f){ var x=(D.flats||[]).filter(function(o){ return o.id===f; })[0]; if(!(x&&x.partner&&x.partner.hasPartner)) return ''; return ((D.meta&&D.meta.commencement)||{})[f]||null; }
 function preOp(f,k){ var o=opStart(f); return o===null||(!!o&&k<o); }
+/* occupancy too (2026-10-25): days the home was open in month m, and a stay's nights from the commencement date on */
+function openDays(f,m){ var o=opStart(f), dim=daysIn(m); if(o===null) return 0; if(!o||o<=m+'-01') return dim; if(o.slice(0,7)>m) return 0; return dim-(+o.slice(8,10))+1; }
+function occN(s,f,m){ var o=opStart(f); if(o===null) return 0; if(!o||String(s.checkIn)>=o) return overlapNights(s,m); return overlapNights({checkIn:o,checkOut:s.checkOut},m); }
 function scopeStayFlats(){ return scopeFlats().filter(function(f){ return !isLongLet(f); }); }   // per-booking metrics
 function monthOf(d){ return String(d).slice(0,7); }
 
@@ -710,9 +713,9 @@ function secDelta(){
   return h;
 }
 function occLine(f,mNow,refMs){
-  function occOf(msArr){ var o=0,a=0,e=0,nn=0; msArr.forEach(function(m){ a+=daysIn(m);
+  function occOf(msArr){ var o=0,a=0,e=0,nn=0; msArr.forEach(function(m){ a+=openDays(f,m);
     rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return;
-      var on=overlapNights(s,m); o+=on; e+=earnedIn(s,m); nn+=adrN(s,on); }); });
+      var on=overlapNights(s,m); o+=occN(s,f,m); e+=earnedIn(s,m); nn+=adrN(s,on); }); });
     return {occ:a>0?o/a*100:0, adr:nn>0?e/nn:0, nightsAvg:o/(msArr.length||1)};
   }
   var a=occOf([mNow]), b=occOf(refMs);
@@ -832,9 +835,9 @@ function secAttribution(){
 function secOccAdr(){
   var ms=monthsInRange(R.occ);
   // a long-let is occupied every night of the month — counting it as vacant would deflate the portfolio
-  var occ=ms.map(function(m){ var o=0,a=0; scopeFlats().forEach(function(f){ a+=daysIn(m);
+  var occ=ms.map(function(m){ var o=0,a=0; scopeFlats().forEach(function(f){ a+=openDays(f,m);
     if(isLongLet(f)){ o+=daysIn(m); return; }
-    rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))o+=overlapNights(s,m); }); }); return {m:m,value:a>0?o/a*100:0}; });
+    rawStays().forEach(function(s){ if(s.flat===f&&isLive(s))o+=occN(s,f,m); }); }); return {m:m,value:a>0?o/a*100:0}; });
   // ADR is a per-booking rate — a long-let has no bookings, so it is not part of this average
   var adr=ms.map(function(m){ var e=0,n=0; scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return;
     e+=earnedIn(s,m); n+=adrN(s,overlapNights(s,m)); }); }); return {m:m,value:disp(n>0?e/n:0,m)}; });
