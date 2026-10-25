@@ -69,13 +69,14 @@ a.tab{font-size:11px;color:var(--red);text-decoration:none;font-weight:700}
     <div class="rib" id="rib"></div>
   </div>
   <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
-  <nav class="tabbar">
-    <a class="tab active" href="today.html"><span class="ti">🏠</span>Today</a>
-    <a class="tab" href="close.html"><span class="ti">📑</span>Close</a>
-    <a class="tab" href="stats.html"><span class="ti">📊</span>Stats</a>
-    <a class="tab" href="partner.html?as=" id="demoTab"><span class="ti">👁</span>Partner view</a>
-  </nav>
 </div>
+<!-- the tab bar lives OUTSIDE the card: inside it (overflow:hidden + rounded corners) iPhone Safari pins it to the card, not the screen (2026-10-25) -->
+<nav class="tabbar">
+  <a class="tab active" href="today.html"><span class="ti">🏠</span>Today</a>
+  <a class="tab" href="close.html"><span class="ti">📑</span>Close</a>
+  <a class="tab" href="stats.html"><span class="ti">📊</span>Stats</a>
+  <a class="tab" href="partner.html?as=" id="demoTab"><span class="ti">👁</span>Partner view</a>
+</nav>
 
 <script src="vw1-plan.js?v=1"></script>
 <script src="auth.js?v=a8bf822f"></script>

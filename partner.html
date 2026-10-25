@@ -94,14 +94,15 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
     <div class="rib" id="rib"></div>
   </div>
   <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
-  <nav class="tabbar" id="tabbar">
-    <a class="tab" id="tb-overview" href="#overview" onclick="setTab('overview');return false"><span class="ti">🏠</span>Overview</a>
-    <a class="tab" id="tb-bookings" href="#bookings" onclick="setTab('bookings');return false"><span class="ti">📅</span>Bookings</a>
-    <a class="tab" id="tb-statement" href="#statement" onclick="setTab('statement');return false"><span class="ti">📄</span>Statement</a>
-    <a class="tab" href="partner-history.html"><span class="ti">📊</span>Statistics</a>
-    <a class="tab" id="tb-contract" href="#contract" onclick="setTab('contract');return false"><span class="ti">📜</span>Contract</a>
-  </nav>
 </div>
+<!-- the tab bar lives OUTSIDE the card: inside it (overflow:hidden + rounded corners) iPhone Safari pins it to the card, not the screen (2026-10-25) -->
+<nav class="tabbar" id="tabbar">
+  <a class="tab" id="tb-overview" href="#overview" onclick="setTab('overview');return false"><span class="ti">🏠</span>Overview</a>
+  <a class="tab" id="tb-bookings" href="#bookings" onclick="setTab('bookings');return false"><span class="ti">📅</span>Bookings</a>
+  <a class="tab" id="tb-statement" href="#statement" onclick="setTab('statement');return false"><span class="ti">📄</span>Statement</a>
+  <a class="tab" href="partner-history.html"><span class="ti">📊</span>Statistics</a>
+  <a class="tab" id="tb-contract" href="#contract" onclick="setTab('contract');return false"><span class="ti">📜</span>Contract</a>
+</nav>
 
 <script src="auth.js?v=a8bf822f"></script>
 <script src="partner-core.js?v=8"></script>

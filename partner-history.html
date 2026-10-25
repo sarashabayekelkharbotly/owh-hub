@@ -79,14 +79,15 @@ table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
     <div class="rib" id="rib"></div>
   </div>
   <div class="body"><div id="app"><div class="card"><span class="muted">Loading…</span></div></div></div>
-  <nav class="tabbar">
-    <a class="tab" href="partner.html#overview"><span class="ti">🏠</span>Overview</a>
-    <a class="tab" href="partner.html#bookings"><span class="ti">📅</span>Bookings</a>
-    <a class="tab" href="partner.html#statement"><span class="ti">📄</span>Statement</a>
-    <a class="tab active" href="partner-history.html"><span class="ti">📊</span>Statistics</a>
-    <a class="tab" href="partner.html#contract"><span class="ti">📜</span>Contract</a>
-  </nav>
 </div>
+<!-- the tab bar lives OUTSIDE the card: inside it (overflow:hidden + rounded corners) iPhone Safari pins it to the card, not the screen (2026-10-25) -->
+<nav class="tabbar">
+  <a class="tab" href="partner.html#overview"><span class="ti">🏠</span>Overview</a>
+  <a class="tab" href="partner.html#bookings"><span class="ti">📅</span>Bookings</a>
+  <a class="tab" href="partner.html#statement"><span class="ti">📄</span>Statement</a>
+  <a class="tab active" href="partner-history.html"><span class="ti">📊</span>Statistics</a>
+  <a class="tab" href="partner.html#contract"><span class="ti">📜</span>Contract</a>
+</nav>
 
 <script src="auth.js?v=a8bf822f"></script>
 <script src="partner-core.js?v=8"></script>
