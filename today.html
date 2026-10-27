@@ -79,7 +79,7 @@ a.tab{font-size:11px;color:var(--red);text-decoration:none;font-weight:700}
 </nav>
 
 <script src="vw1-plan.js?v=1"></script>
-<script src="auth.js?v=db6b7052"></script>
+<script src="auth.js?v=cf3e5be1"></script>
 <script>
 /* CONFIG lives in auth.js: ENDPOINT + the session token. No password or shared
    secret in this file — who you are comes from the signed-in session. */
@@ -186,20 +186,40 @@ function objAdminCard(){
 function dismissElec(keys){ api('props_dismiss_elec',{keys:keys}).then(function(j){ if(j&&j.ok) fetchAlerts(); }).catch(function(){}); }
 function dismissBtn(keys){ return ' <a href="#" onclick=\'dismissElec('+JSON.stringify(keys)+');return false\' style="font-weight:700;white-space:nowrap">✕ dismiss</a>'; }
 /* run the whole pipeline on demand (month-close / snapshot) */
+/* 2026-10-27: the sync starts on Supabase and answers at once; the card shows each step as it finishes (stages run side by side, ~30 s) */
+var SYNC_POLL=null, SYNC_MSG='';
 function syncAll(){
-  var btn=document.getElementById('syncAllBtn'); if(btn){ btn.disabled=true; btn.textContent='⏳ syncing…'; }
+  var btn=document.getElementById('syncAllBtn'); if(btn){ btn.disabled=true; btn.textContent='⏳ starting…'; }
   api('props_sync_all').then(function(j){
-    if(j&&j.ok){ var pc=(j.needsAttention&&j.needsAttention.pendingConfirmations)||0;
-      var el=(j.steps&&j.steps.electricity)||{}, ed=(j.needsAttention&&j.needsAttention.electricityDecisions)||[];
-      var msg='Synced ✓';
-      if(el.applied||el.accrualsAdded) msg+='\n\n⚡ Electricity: '+(el.applied||0)+' bill row(s) applied, '+(el.accrualsAdded||0)+' accrual(s) refreshed.';
-      if(ed.length) msg+='\n\n⚠️ '+ed.length+' electricity bill'+(ed.length>1?'s need':' needs')+' a decision — see "Needs you" below.';
-      if(pc) msg+='\n\n⚠️ '+pc+' item'+(pc>1?'s':'')+' still pending confirmation in WeShare.';
-      if(!pc&&!ed.length) msg+='\n\nEverything confirmed and up to date.';
-      alert(msg);
-      boot();
-    } else { if(btn){btn.disabled=false;btn.textContent='🔄 Sync all';} alert('Sync error: '+((j&&j.error)||'failed')); }
+    if(j&&j.ok&&(j.started||j.already)){ syncFollow(); return; }
+    if(j&&j.ok){ syncDone((j.needsAttention||{}),null); return; }   // the old Hub path answered with the whole result
+    if(btn){btn.disabled=false;btn.textContent='🔄 Sync all';} alert('Sync error: '+((j&&j.error)||'failed'));
   }).catch(function(e){ if(btn){btn.disabled=false;btn.textContent='🔄 Sync all';} alert('Sync failed: '+(e.message||e)); });
+}
+function syncFollow(){
+  clearTimeout(SYNC_POLL);
+  api('props_sync_status').then(function(j){
+    var p=(j&&j.progress)||{}, st=p.state||{}, order=p.order||[], L=p.labels||{}, done=0, now='';
+    order.forEach(function(n){ if(st[n]==='done'||st[n]==='error') done++; if(st[n]==='running') now=now?now+', '+(L[n]||n):(L[n]||n); });
+    var box=document.getElementById('syncProg'); var btn=document.getElementById('syncAllBtn');
+    if(j&&j.running){
+      if(btn) btn.textContent='⏳ '+done+'/'+order.length;
+      if(box) box.innerHTML='<span class="muted">Syncing — '+done+' of '+order.length+' steps done'+(now?' · now: '+esc(now):'')+'</span>';
+      SYNC_POLL=setTimeout(syncFollow,1500); return;
+    }
+    syncDone(null,p.result||{});
+  }).catch(function(){ SYNC_POLL=setTimeout(syncFollow,3000); });
+}
+function syncDone(na,r){
+  var btn=document.getElementById('syncAllBtn'); if(btn){btn.disabled=false;btn.textContent='🔄 Sync all';}
+  var pc=na?(na.pendingConfirmations||0):(r.pending||0), ed=na?((na.electricityDecisions||[]).length):(r.elecDecisions||0), errs=(r&&r.errors)||[];
+  var msg='Synced ✓'+(r&&r.ms?' in '+Math.round(r.ms/1000)+' s':'');
+  if(r&&(r.elecApplied||r.accruals)) msg+=' · ⚡ '+(r.elecApplied||0)+' bill row(s), '+(r.accruals||0)+' accrual(s)';
+  if(ed) msg+=' · '+ed+' electricity decision'+(ed>1?'s':'')+' below';
+  if(pc) msg+=' · '+pc+' pending in WeShare';
+  if(errs.length) msg+=' · ⚠️ '+errs.length+' step(s) failed: '+errs.join(' | ');
+  SYNC_MSG=msg; var box=document.getElementById('syncProg'); if(box) box.innerHTML='<span class="muted">'+esc(msg)+'</span>';
+  boot();
 }
 /* logical stays: contiguous same-guest bookings merge (cleaning + internet + occupancy events; revenue is sheet-side, per booking) */
 function mergeStays(stays){
@@ -722,7 +742,7 @@ function needs(cm,pmY){
   var RA=(ALERTS&&ALERTS.revAlerts)||{}, cancs=RA.cancellations||[], extras=RA.extras||[];
   var vrbos=vrboPending(), vrboAsk=(((ALERTS&&ALERTS.revAlerts)||{}).vrboAwaiting||[]).filter(function(a){ return a.ask; });
   if(!items.length&&!pays.length&&!vrbos.length&&!vrboAsk.length&&!cancs.length&&!extras.length) items.push({t:'ok',txt:'Nothing needs you right now.'});
-  var h='<div class="card"><h3>Needs you<button id="syncAllBtn" onclick="syncAll()" style="float:right;font:inherit;font-size:11px;font-weight:700;border:1px solid var(--line,#ecdede);background:#fff;color:var(--red,#cc5f5f);border-radius:8px;padding:3px 9px;cursor:pointer">🔄 Sync all</button></h3>';
+  var h='<div class="card"><h3>Needs you<button id="syncAllBtn" onclick="syncAll()" style="float:right;font:inherit;font-size:11px;font-weight:700;border:1px solid var(--line,#ecdede);background:#fff;color:var(--red,#cc5f5f);border-radius:8px;padding:3px 9px;cursor:pointer">🔄 Sync all</button></h3><div id="syncProg" style="margin:-2px 0 6px">'+(SYNC_MSG?'<span class="muted">'+esc(SYNC_MSG)+'</span>':'')+'</div>';
   vrbos.forEach(function(s){ h+=vrboRow(s); });   // 📩 VRBO requests waiting for their payout (v234)
   vrboAsk.forEach(function(a){ h+=vrboActualRow(a); });   // 🏦 VRBO payouts still an estimate after check-in (v235)
   pays.forEach(function(s){ h+=payRow(s); });
