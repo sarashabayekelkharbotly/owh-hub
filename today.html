@@ -79,7 +79,7 @@ a.tab{font-size:11px;color:var(--red);text-decoration:none;font-weight:700}
 </nav>
 
 <script src="vw1-plan.js?v=1"></script>
-<script src="auth.js?v=a8bf822f"></script>
+<script src="auth.js?v=db6b7052"></script>
 <script>
 /* CONFIG lives in auth.js: ENDPOINT + the session token. No password or shared
    secret in this file — who you are comes from the signed-in session. */
@@ -682,8 +682,12 @@ function needs(cm,pmY){
       Math.round(d.amount).toLocaleString()+' EGP arrived covering '+d.covers.replace('..',' → ')+' ('+d.span+' months, '+
       Math.round(d.perMonth).toLocaleString()+'/mo); '+d.closedMonths.length+' closed month'+(d.closedMonths.length>1?'s':'')+' accrued '+
       Math.round(d.accrued).toLocaleString()+', so you '+(over?'over':'under')+'-accrued by <b>'+diff.toLocaleString()+'</b>.<br>'+
-      'In the sheet: <b>Electricity — apply new bills</b> puts the whole difference in '+esc(d.postTo||'the current month')+
-      ', or <b>Electricity — restate one bill</b> spreads it over '+d.covers.replace('..',' → ')+' only (closed months get marked).'+
+      '<div class="payctl" style="margin-top:6px">'+
+        '<button class="paybtn" onclick="elecDecide(\''+esc(d.flat)+'\',\''+esc(d.billMonth)+'\',\'restate\')">Restate '+d.covers.replace('..',' → ')+'</button>'+
+        (d.postTo?'<button class="paybtn" style="background:#fff;color:var(--ink);border:1px solid var(--line)" onclick="elecDecide(\''+esc(d.flat)+'\',\''+esc(d.billMonth)+'\',\'apply\')">Put the difference in '+esc(d.postTo)+'</button>':'')+
+        '<span class="paymsg" id="edm_'+esc(d.flat).replace(/\W/g,'')+'"></span></div>'+
+      '<div class="muted" style="margin-top:3px"><b>Restate</b> spreads the bill evenly ('+Math.round(d.perMonth).toLocaleString()+'/mo) over '+d.covers.replace('..',' → ')+' — the closed month changes and is marked «restated». '+
+      (d.postTo?'<b>Put the difference</b> keeps closed months as they are and books the whole '+(over?'−':'+')+diff.toLocaleString()+' in '+esc(d.postTo)+'.':'')+'</div>'+
       (d.key?dismissBtn([d.key]):'')});
   });
   /* ⚡ 8A card depletion (§7 ①): fires when the projection says the card dies before the next
@@ -796,6 +800,21 @@ function adjustCard(){
       '<button class="paybtn" onclick="saveVrbo(\''+id+'\')">Save</button><span class="paymsg" id="vmsg_'+id+'"></span></div></div>';
   }
   return h+'</div>';
+}
+/* ⚡ the bill decision, taken here (2026-10-27 — the sheet menu is gone): same rules as the sheet's two menu items */
+function elecDecide(flat,billMonth,mode){
+  var d=((ALERTS&&ALERTS.elecDecisions)||[]).filter(function(x){ return x.flat===flat&&x.billMonth===billMonth; })[0]; if(!d) return;
+  var msg=document.getElementById('edm_'+flat.replace(/\W/g,''));
+  var q=mode==='restate'
+    ? 'Restate '+flat+': '+Math.round(d.amount).toLocaleString()+' EGP spread over '+d.covers.replace('..',' → ')+' at '+Math.round(d.perMonth).toLocaleString()+'/mo.\n\nClosed month'+(d.closedMonths.length>1?'s':'')+' '+d.closedMonths.join(', ')+' change'+(d.closedMonths.length>1?'':'s')+' from '+Math.round(d.accrued).toLocaleString()+' and '+(d.closedMonths.length>1?'are':'is')+' marked «restated».\n\nGo ahead?'
+    : 'Put the difference in '+d.postTo+': closed months stay as they are, and '+Math.round(d.trueUp).toLocaleString()+' EGP is booked in '+d.postTo+'.\n\nGo ahead?';
+  if(!confirm(q)) return;
+  if(msg) msg.textContent='saving…';
+  api('props_elec_decide',{flat:flat,billMonth:billMonth,mode:mode}).then(function(j){
+    if(!j||!j.ok) throw new Error(j&&j.error||'bad');
+    var r=j.result||{}; if(msg) msg.textContent='done ✓'+((r.restated&&r.restated.length)?' · restated '+r.restated.join(', '):'')+((r.leftManual&&r.leftManual.length)?' · left manual: '+r.leftManual.join(', '):'');
+    setTimeout(boot,1800);
+  }).catch(function(e){ if(msg) msg.textContent='failed: '+(e.message||e); });
 }
 function saveRefund(id,clear){
   var msg=document.getElementById('rfm_'+id), a=document.getElementById('rfa_'+id).value, why=document.getElementById('rfw_'+id).value;
