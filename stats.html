@@ -799,10 +799,13 @@ function secRevenue(){
   return h+bookingsCard('rev')+'</div>';
 }
 /* 2 · What the money goes on — stacked per-month, category + month buttons + time */
-var COST_ORDER=[['rent','rent','#e0a5a5'],['cleaning','cleaning','#b8c9d9'],['supplies','supplies','#8ab48f'],['electricity','electricity','#d9a441'],['maintenance','maintenance','#c77b7b'],['compound-maintenance','compound maint.','#a05f5f'],['tv-phone-internet','internet','#9c86c4'],['laundry','laundry','#c98f8f'],['contingency','contingency','#b0a08e'],['opsmanager','opsMgr','#7d9c9c'],['water','water','#7fb2c9'],['heat-gas','heat/gas','#caa06a'],['subscription','subscription','#9aa7b5']];
+var COST_ORDER=[['rent','rent','#e0a5a5'],['cleaning','cleaning','#b8c9d9'],['supplies','supplies','#8ab48f'],['electricity','electricity','#d9a441'],['maintenance','maintenance','#c77b7b'],['compound-maintenance','compound maint.','#a05f5f'],['tv-phone-internet','internet','#9c86c4'],['laundry','laundry','#c98f8f'],['contingency','contingency','#b0a08e'],['opsmanager','opsMgr','#7d9c9c'],['water','water','#7fb2c9'],['heat-gas','heat/gas','#caa06a'],['subscription','subscription','#9aa7b5'],['furniture','furniture','#b58b6b'],['other','other','#c4bcbc']];
 var FOLD={'cleaning-labor':'cleaning','services-contingency':'contingency','gifts-contingency':'contingency','general-contingency':'contingency'};   // compound maintenance stands on its own, as it does in Close
 function costRow(m){ var by={}; scopeFlats().forEach(function(f){ if(scope==='portfolio'&&partnerCfg(f))return;   // owner-borne costs are not "what OUR money goes on"
-  var c=costsUSD(f,m); for(var k in c.by){ var kk=FOLD[k]||k; by[kk]=(by[kk]||0)+c.by[k]; } }); return by; }
+  var c=costsUSD(f,m); for(var k in c.by){ var kk=FOLD[k]||k; if(!COST_KNOWN[kk]) kk='other'; by[kk]=(by[kk]||0)+c.by[k]; } }); return by; }
+/* EVERY cost lands in a category (Sarah 2026-10-30: July's 32,500 EGP of furniture was missing here while the Revenue chart's Costs
+   counted it — 135k vs 103k). Furniture has its own; anything not in the list folds into «other», so both charts always agree. */
+var COST_KNOWN={}; COST_ORDER.forEach(function(c){ COST_KNOWN[c[0]]=1; });
 function secCosts(){
   var ms=monthsInRange(R.cost);
   var catBtns=[['all','All']].concat(COST_ORDER.map(function(c){return [c[0],c[1]];}));
