@@ -493,7 +493,15 @@ function deltaCell(v,p){ if(p==null||isNaN(p))return ''; var d=v-p; if(Math.abs(
    (commission + payment charge) x 1.14 VAT). TABLE = scan and add up (sorted home > channel > date, a
    subtotal after every home+channel group, a grand total); CARDS = everything about ONE reservation.
    Cancelled stays are dimmed and kept out of every sum, so the sums tie to the invoice. */
-var BK=null, BK_BUSY=false, BK_ERR='', BK_LAYOUT='table', BK_F={ch:'',basis:'out',month:'',from:'',to:'',flat:'',q:'',canc:false};
+var BK=null, BK_BUSY=false, BK_ERR='', BK_LAYOUT='table', BK_F={ch:'',basis:'out',month:'',from:'',to:'',flat:'',bank:'',q:'',canc:false};
+/* WHERE THE MONEY LANDS (Sarah 2026-10-31): the payment route as the bank it reaches — Stripe pays out to Mercury, Airbnb / Booking.com
+   to HSBC (VW1 included), Instapay and cash as themselves. A booking with no route shows «not set». */
+var BK_BANK={'stripe':'Mercury','hsbc':'HSBC','instapay':'Instapay','cash':'Cash','no charge':'No charge'};
+var BK_BANKC={'Mercury':'#5b4bb7','HSBC':'#c0282d','Instapay':'#1c7c84','Cash':'#7a6a2a','No charge':'#8a8a8a','not set':'#b0a6a6'};
+function bkBank(s){ var r=String(s.route||'').toLowerCase(); for(var k in BK_BANK) if(r.indexOf(k)===0) return BK_BANK[k]; return r?s.route:'not set'; }
+function bkBanks(){ var l=[]; (BK||[]).forEach(function(s){ var b=bkBank(s); if(l.indexOf(b)<0) l.push(b); }); return l.sort(function(a,b){ return a==='not set'?1:b==='not set'?-1:(a<b?-1:1); }); }
+/* the reference line: booking ref · Smoobu ID for a Direct booking (it has no channel ref of its own) · the bank */
+function bkRef(s){ return esc(s.conf||'—')+(bkChOf(s.portal)==='Direct'?' · Smoobu '+esc(s.smoobu||s.id||'—'):'')+' · '+esc(bkBank(s)); }
 var BK_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var BK_CH={'Airbnb':'#d6455d','Booking.com':'#1f4e9c','Direct':'#2f8f5b'}, BK_CHORD=['Airbnb','Booking.com','Direct'];
 var BK_HC=['#7a4f9a','#2c7a7b','#b7791f','#9c4221','#2b6cb0','#6b7280','#a0346b'];
@@ -514,17 +522,56 @@ function bkView(){
   var chips='<div class="bkf"><span class="muted" style="min-width:48px">Channel</span>'+bkChip('All',!f.ch,'#4c4040',"bkSet('ch','',1)")+
     BK_CHORD.map(function(c){ return bkChip(c,f.ch===c,BK_CH[c],"bkSet('ch','"+c+"',1)"); }).join('')+'</div>'+
     '<div class="bkf"><span class="muted" style="min-width:48px">Home</span>'+bkChip('All',!f.flat,'#4c4040',"bkSet('flat','',1)")+
-    bkFlats().map(function(h){ return bkChip(h,f.flat===h,bkHomeColor(h),"bkSet('flat','"+h.replace(/'/g,"\\'")+"',1)"); }).join('')+'</div>';
+    bkFlats().map(function(h){ return bkChip(h,f.flat===h,bkHomeColor(h),"bkSet('flat','"+h.replace(/'/g,"\\'")+"',1)"); }).join('')+'</div>'+
+    '<div class="bkf"><span class="muted" style="min-width:48px">Bank</span>'+bkChip('All',!f.bank,'#4c4040',"bkSet('bank','',1)")+
+    bkBanks().map(function(b){ return bkChip(b,f.bank===b,BK_BANKC[b]||'#6b7280',"bkSet('bank','"+b.replace(/'/g,"\\'")+"',1)"); }).join('')+'</div>';
   return '<div class="card"><h1 style="font-size:14px;margin:0 0 6px">Bookings</h1><p class="sub">USD · sorted by home, then channel, then date</p>'+chips+
     '<div class="bkf"><select onchange="bkSet(\'basis\',this.value,1)">'+opt('out','by check-out',f.basis)+opt('in','by check-in',f.basis)+opt('booked','by booked date',f.basis)+opt('rev','by revenue month',f.basis)+'</select>'+
       '<input type="month" id="bk_month" value="'+esc(f.month)+'" onchange="bkSet(\'month\',this.value)">'+
       '<input type="date" id="bk_from" value="'+esc(f.from)+'" onchange="bkSet(\'from\',this.value)"><span class="muted">→</span><input type="date" id="bk_to" value="'+esc(f.to)+'" onchange="bkSet(\'to\',this.value)"></div>'+
     '<div class="bkf"><input id="bk_q" value="'+esc(f.q)+'" placeholder="guest · phone · booking ID" oninput="bkSet(\'q\',this.value)" style="flex:1;min-width:150px">'+
       '<label class="muted"><input type="checkbox"'+(f.canc?' checked':'')+' onchange="bkSet(\'canc\',this.checked,1)"> show cancelled</label>'+
-      '<span class="seg"><button class="'+(BK_LAYOUT==='table'?'on':'')+'" onclick="bkLay(\'table\')">Table</button><button class="'+(BK_LAYOUT==='cards'?'on':'')+'" onclick="bkLay(\'cards\')">Cards</button></span></div></div>'+
+      '<span class="seg"><button class="'+(BK_LAYOUT==='table'?'on':'')+'" onclick="bkLay(\'table\')">Table</button><button class="'+(BK_LAYOUT==='cards'?'on':'')+'" onclick="bkLay(\'cards\')">Cards</button></span>'+
+      '<button class="btn sec" onclick="bkExcel()" style="padding:3px 10px;font-size:11px">⬇ Excel</button><span class="muted" id="bkxmsg"></span></div></div>'+
     '<div id="bkr"></div>';
 }
 function bkLay(l){ BK_LAYOUT=l; bkPaint(); }
+/* ⬇ Excel (Sarah 2026-10-31): the reservations the filters show, one row each, with every money column and a totals row (cancelled ones
+   listed only when «show cancelled» is on, and kept out of the totals). ExcelJS is fetched when the button is pressed. */
+function bkExcelLib(cb){ if(window.ExcelJS) return cb(true); var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+  sc.onload=function(){ cb(!!window.ExcelJS); }; sc.onerror=function(){ cb(false); }; document.head.appendChild(sc); }
+function bkExcel(){
+  var msg=$('#bkxmsg'), rows=bkRows(), f=BK_F, rev=f.basis==='rev';
+  if(!rows.length){ if(msg) msg.textContent=' nothing to download'; return; }
+  if(msg) msg.textContent=' preparing…';
+  bkExcelLib(function(ok){
+    if(!ok){ if(msg) msg.textContent=' could not load the Excel library'; return; }
+    var wb=new ExcelJS.Workbook(), ws=wb.addWorksheet('Bookings');
+    var cols=[['Home',12],['Channel',12],['Bank',10],['Guest',24],['Smoobu ID',12],['Booking ref',14],['Status',11],['Booked',11],['Check-in',11],['Check-out',11],['Nights',7],
+      ['Gross',11],['Commission',11],['Payment charge',11],['VAT',9],['Net',11],['Other services',11],['All-in',11],['Earnings',11],['ADR',9]];
+    if(rev) cols.push(['Nights in range',9],['Revenue in range',12]);
+    ws.columns=cols.map(function(c){ return {header:c[0],width:c[1]}; });
+    ws.getRow(1).font={bold:true}; ws.views=[{state:'frozen',ySplit:1}];
+    var dt=function(d){ return d?new Date(d+'T12:00:00Z'):null; };
+    rows.forEach(function(s){ var cx=/cancel/i.test(s.status||''), earn=s.allIn-s.other, n=s.nights||0;
+      var r=[s.flat,bkChOf(s.portal),bkBank(s),s.guest||'',s.smoobu||s.id||'',s.conf||'',s.status||'',dt(s.booked),dt(s.checkIn),dt(s.checkOut),n,
+        s.gross,s.comm,s.charge,s.vat,s.net,s.other,s.allIn,earn,(!cx&&n)?Math.round(earn/n*100)/100:null];
+      if(rev) r.push(s.nIn||0,s.revIn||0);
+      var row=ws.addRow(r); if(cx) row.font={color:{argb:'FF999999'},strike:true}; });
+    var T=bkSum(rows), tot=['Total ('+T.cnt+' bookings'+(T.cx?', '+T.cx+' cancelled not counted':'')+')','','','','','','','','','',T.n,T.gross,T.comm,T.charge,T.vat,T.net,T.other,T.allIn,T.earn,T.n?Math.round(T.earn/T.n*100)/100:null];
+    if(rev) tot.push(T.nIn,T.rev);
+    var tr=ws.addRow(tot); tr.font={bold:true};
+    ws.getColumn(8).numFmt=ws.getColumn(9).numFmt=ws.getColumn(10).numFmt='yyyy-mm-dd';
+    for(var c=12;c<=cols.length;c++) if(cols[c-1][0]!=='Nights in range') ws.getColumn(c).numFmt='#,##0.00';
+    var bits=['bookings',f.flat||'all-homes',f.ch||'all-channels',f.bank||'all-banks',(f.basis==='out'?'by-checkout':f.basis==='in'?'by-checkin':f.basis==='booked'?'by-booked':'by-revenue-month'),f.month||((f.from||'start')+'-to-'+(f.to||'end'))];
+    var name=bits.join('_').replace(/[^A-Za-z0-9_.-]+/g,'-')+'.xlsx';
+    wb.xlsx.writeBuffer().then(function(buf){
+      var url=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})), a=document.createElement('a');
+      a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); },2000);
+      if(msg) msg.textContent=' downloaded ✓ ('+rows.length+' rows)';
+    }).catch(function(e){ if(msg) msg.textContent=' failed: '+(e.message||e); });
+  });
+}
 function bkPaint(){ $('#app').innerHTML=bkView(); bkRun(); }
 function bkSet(k,v,full){
   BK_F[k]=v;
@@ -546,6 +593,7 @@ function bkRows(){
     if(!f.canc&&/cancel/i.test(s.status||'')) return false;
     if(f.ch&&bkChOf(s.portal)!==f.ch) return false;
     if(f.flat&&s.flat!==f.flat) return false;
+    if(f.bank&&bkBank(s)!==f.bank) return false;
     if(f.basis==='rev'){
       var lo=(from||mon).slice(0,7), hi=(to||mon).slice(0,7);
       if(lo||hi){ if(!(s.months||[]).some(function(x){ return (!lo||x.m>=lo)&&(!hi||x.m<=hi); })) return false; }
@@ -626,7 +674,7 @@ function bkTable(rows){
       body+='<tr class="bkg"><td colspan="8">'+bkBadge(h,hc,true)+' '+bkBadge(c,cc,true)+'</td></tr>';
       list.forEach(function(s){
         var cx=/cancel/i.test(s.status||''), n=s.nights||0;
-        body+='<tr class="'+(cx?'cx':'')+'"><td class="bg1"><bdi>'+esc(s.guest||'—')+'</bdi>'+(cx?' <span style="color:var(--rr);font-size:9px">cancelled</span>':'')+'<div class="bki">'+esc(s.conf||'—')+'</div></td>'+
+        body+='<tr class="'+(cx?'cx':'')+'"><td class="bg1"><bdi>'+esc(s.guest||'—')+'</bdi>'+(cx?' <span style="color:var(--rr);font-size:9px">cancelled</span>':'')+'<div class="bki">'+bkRef(s)+'</div></td>'+
           '<td class="bd">'+bkShort(s.checkIn)+'<br>→ '+bkShort(s.checkOut)+'</td><td class="bn">'+n+'</td>'+
           num(s.gross)+num(s.comm+s.charge)+num(s.vat)+num(s.net)+num(cx?null:bkAdr(s.allIn-s.other,n))+'</tr>';
       });
@@ -653,7 +701,7 @@ function bkTableRev(rows){
       body+='<tr class="bkg"><td colspan="5">'+bkBadge(h,hc,true)+' '+bkBadge(c,cc,true)+'</td></tr>';
       list.forEach(function(s){
         var n=s.nights||0, part=n&&s.nIn<n;
-        body+='<tr><td class="bg1"><bdi>'+esc(s.guest||'—')+'</bdi><div class="bki">'+esc(s.conf||'—')+'</div></td>'+
+        body+='<tr><td class="bg1"><bdi>'+esc(s.guest||'—')+'</bdi><div class="bki">'+bkRef(s)+'</div></td>'+
           '<td class="bd">'+bkShort(s.checkIn)+'<br>→ '+bkShort(s.checkOut)+'</td>'+
           '<td class="bn">'+s.nIn+(part?'<div class="bki">of '+n+'</div>':'')+'</td>'+
           '<td class="bn">'+bkMoney(s.nIn?s.revIn/s.nIn:null)+'<div class="bki">/night</div></td>'+num(s.revIn)+'</tr>';
