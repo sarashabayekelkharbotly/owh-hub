@@ -493,7 +493,11 @@ function deltaCell(v,p){ if(p==null||isNaN(p))return ''; var d=v-p; if(Math.abs(
    (commission + payment charge) x 1.14 VAT). TABLE = scan and add up (sorted home > channel > date, a
    subtotal after every home+channel group, a grand total); CARDS = everything about ONE reservation.
    Cancelled stays are dimmed and kept out of every sum, so the sums tie to the invoice. */
-var BK=null, BK_BUSY=false, BK_ERR='', BK_LAYOUT='table', BK_F={ch:'',basis:'out',month:'',from:'',to:'',flat:'',bank:'',q:'',canc:false};
+var BK=null, BK_BUSY=false, BK_ERR='', BK_LAYOUT='table', BK_F={ch:'',basis:'out',month:'',from:'',to:'',flat:'',bank:'',q:'',canc:false,money:'rev'};
+/* REVENUE vs CASH RECEIVED (Sarah 2026-11-01). A review booking (OWH- or owner-paid, made to earn a review) is no revenue — but its
+   payout really lands in the bank. Revenue = what the P&L counts (review bookings left out, a note says how many); Cash received =
+   every booking whose money landed, review bookings included and marked — what the bank statement shows, for reconciling. */
+function bkRevLbl(s){ return s.review==='owner'?'review · owner paid':s.review==='owh'?'review · OWH paid':''; }
 /* WHERE THE MONEY LANDS (Sarah 2026-10-31): the payment route as the bank it reaches — Stripe pays out to Mercury, Airbnb / Booking.com
    to HSBC (VW1 included), Instapay and cash as themselves. A booking with no route shows «not set». */
 var BK_BANK={'stripe':'Mercury','hsbc':'HSBC','instapay':'Instapay','cash':'Cash','no charge':'No charge'};
@@ -501,7 +505,7 @@ var BK_BANKC={'Mercury':'#5b4bb7','HSBC':'#c0282d','Instapay':'#1c7c84','Cash':'
 function bkBank(s){ var r=String(s.route||'').toLowerCase(); for(var k in BK_BANK) if(r.indexOf(k)===0) return BK_BANK[k]; return r?s.route:'not set'; }
 function bkBanks(){ var l=[]; (BK||[]).forEach(function(s){ var b=bkBank(s); if(l.indexOf(b)<0) l.push(b); }); return l.sort(function(a,b){ return a==='not set'?1:b==='not set'?-1:(a<b?-1:1); }); }
 /* the reference line: booking ref · Smoobu ID for a Direct booking (it has no channel ref of its own) · the bank */
-function bkRef(s){ return esc(s.conf||'—')+(bkChOf(s.portal)==='Direct'?' · Smoobu '+esc(s.smoobu||s.id||'—'):'')+' · '+esc(bkBank(s)); }
+function bkRef(s){ return esc(s.conf||'—')+(bkChOf(s.portal)==='Direct'?' · Smoobu '+esc(s.smoobu||s.id||'—'):'')+' · '+esc(bkBank(s))+(s.review?' · <b style="color:#a0346b">'+bkRevLbl(s)+'</b>':''); }
 var BK_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var BK_CH={'Airbnb':'#d6455d','Booking.com':'#1f4e9c','Direct':'#2f8f5b'}, BK_CHORD=['Airbnb','Booking.com','Direct'];
 var BK_HC=['#7a4f9a','#2c7a7b','#b7791f','#9c4221','#2b6cb0','#6b7280','#a0346b'];
@@ -526,7 +530,8 @@ function bkView(){
     '<div class="bkf"><span class="muted" style="min-width:48px">Bank</span>'+bkChip('All',!f.bank,'#4c4040',"bkSet('bank','',1)")+
     bkBanks().map(function(b){ return bkChip(b,f.bank===b,BK_BANKC[b]||'#6b7280',"bkSet('bank','"+b.replace(/'/g,"\\'")+"',1)"); }).join('')+'</div>';
   return '<div class="card"><h1 style="font-size:14px;margin:0 0 6px">Bookings</h1><p class="sub">USD · sorted by home, then channel, then date</p>'+chips+
-    '<div class="bkf"><select onchange="bkSet(\'basis\',this.value,1)">'+opt('out','by check-out',f.basis)+opt('in','by check-in',f.basis)+opt('booked','by booked date',f.basis)+opt('rev','by revenue month',f.basis)+'</select>'+
+    '<div class="bkf"><span class="seg"><button class="'+(f.money!=='cash'?'on':'')+'" onclick="bkMoneyMode(\'rev\')">Revenue</button><button class="'+(f.money==='cash'?'on':'')+'" onclick="bkMoneyMode(\'cash\')">Cash received</button></span>'+
+      '<select onchange="bkSet(\'basis\',this.value,1)">'+opt('out','by check-out',f.basis)+opt('in','by check-in',f.basis)+opt('booked','by booked date',f.basis)+(f.money==='cash'?'':opt('rev','by revenue month',f.basis))+'</select>'+
       '<input type="month" id="bk_month" value="'+esc(f.month)+'" onchange="bkSet(\'month\',this.value)">'+
       '<input type="date" id="bk_from" value="'+esc(f.from)+'" onchange="bkSet(\'from\',this.value)"><span class="muted">→</span><input type="date" id="bk_to" value="'+esc(f.to)+'" onchange="bkSet(\'to\',this.value)"></div>'+
     '<div class="bkf"><input id="bk_q" value="'+esc(f.q)+'" placeholder="guest · phone · booking ID" oninput="bkSet(\'q\',this.value)" style="flex:1;min-width:150px">'+
@@ -536,6 +541,7 @@ function bkView(){
     '<div id="bkr"></div>';
 }
 function bkLay(l){ BK_LAYOUT=l; bkPaint(); }
+function bkMoneyMode(m){ BK_F.money=m; if(m==='cash'&&BK_F.basis==='rev') BK_F.basis='out'; bkPaint(); }   // cash is by the stay's dates, not by revenue month
 /* ⬇ Excel (Sarah 2026-10-31): the reservations the filters show, one row each, with every money column and a totals row (cancelled ones
    listed only when «show cancelled» is on, and kept out of the totals). ExcelJS is fetched when the button is pressed. */
 function bkExcelLib(cb){ if(window.ExcelJS) return cb(true); var sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
@@ -547,23 +553,23 @@ function bkExcel(){
   bkExcelLib(function(ok){
     if(!ok){ if(msg) msg.textContent=' could not load the Excel library'; return; }
     var wb=new ExcelJS.Workbook(), ws=wb.addWorksheet('Bookings');
-    var cols=[['Home',12],['Channel',12],['Bank',10],['Guest',24],['Smoobu ID',12],['Booking ref',14],['Status',11],['Booked',11],['Check-in',11],['Check-out',11],['Nights',7],
+    var cols=[['Home',12],['Channel',12],['Bank',10],['Review booking',18],['Guest',24],['Smoobu ID',12],['Booking ref',14],['Status',11],['Booked',11],['Check-in',11],['Check-out',11],['Nights',7],
       ['Gross',11],['Commission',11],['Payment charge',11],['VAT',9],['Net',11],['Other services',11],['All-in',11],['Earnings',11],['ADR',9]];
     if(rev) cols.push(['Nights in range',9],['Revenue in range',12]);
     ws.columns=cols.map(function(c){ return {header:c[0],width:c[1]}; });
     ws.getRow(1).font={bold:true}; ws.views=[{state:'frozen',ySplit:1}];
     var dt=function(d){ return d?new Date(d+'T12:00:00Z'):null; };
     rows.forEach(function(s){ var cx=/cancel/i.test(s.status||''), earn=s.allIn-s.other, n=s.nights||0;
-      var r=[s.flat,bkChOf(s.portal),bkBank(s),s.guest||'',s.smoobu||s.id||'',s.conf||'',s.status||'',dt(s.booked),dt(s.checkIn),dt(s.checkOut),n,
+      var r=[s.flat,bkChOf(s.portal),bkBank(s),bkRevLbl(s),s.guest||'',s.smoobu||s.id||'',s.conf||'',s.status||'',dt(s.booked),dt(s.checkIn),dt(s.checkOut),n,
         s.gross,s.comm,s.charge,s.vat,s.net,s.other,s.allIn,earn,(!cx&&n)?Math.round(earn/n*100)/100:null];
       if(rev) r.push(s.nIn||0,s.revIn||0);
       var row=ws.addRow(r); if(cx) row.font={color:{argb:'FF999999'},strike:true}; });
-    var T=bkSum(rows), tot=['Total ('+T.cnt+' bookings'+(T.cx?', '+T.cx+' cancelled not counted':'')+')','','','','','','','','','',T.n,T.gross,T.comm,T.charge,T.vat,T.net,T.other,T.allIn,T.earn,T.n?Math.round(T.earn/T.n*100)/100:null];
+    var T=bkSum(rows), tot=['Total ('+T.cnt+' bookings'+(T.cx?', '+T.cx+' cancelled not counted':'')+')','','','','','','','','','','',T.n,T.gross,T.comm,T.charge,T.vat,T.net,T.other,T.allIn,T.earn,T.n?Math.round(T.earn/T.n*100)/100:null];
     if(rev) tot.push(T.nIn,T.rev);
     var tr=ws.addRow(tot); tr.font={bold:true};
-    ws.getColumn(8).numFmt=ws.getColumn(9).numFmt=ws.getColumn(10).numFmt='yyyy-mm-dd';
-    for(var c=12;c<=cols.length;c++) if(cols[c-1][0]!=='Nights in range') ws.getColumn(c).numFmt='#,##0.00';
-    var bits=['bookings',f.flat||'all-homes',f.ch||'all-channels',f.bank||'all-banks',(f.basis==='out'?'by-checkout':f.basis==='in'?'by-checkin':f.basis==='booked'?'by-booked':'by-revenue-month'),f.month||((f.from||'start')+'-to-'+(f.to||'end'))];
+    ws.getColumn(9).numFmt=ws.getColumn(10).numFmt=ws.getColumn(11).numFmt='yyyy-mm-dd';
+    for(var c=13;c<=cols.length;c++) if(cols[c-1][0]!=='Nights in range') ws.getColumn(c).numFmt='#,##0.00';
+    var bits=['bookings',f.money==='cash'?'cash-received':'revenue',f.flat||'all-homes',f.ch||'all-channels',f.bank||'all-banks',(f.basis==='out'?'by-checkout':f.basis==='in'?'by-checkin':f.basis==='booked'?'by-booked':'by-revenue-month'),f.month||((f.from||'start')+'-to-'+(f.to||'end'))];
     var name=bits.join('_').replace(/[^A-Za-z0-9_.-]+/g,'-')+'.xlsx';
     wb.xlsx.writeBuffer().then(function(buf){
       var url=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})), a=document.createElement('a');
@@ -594,6 +600,7 @@ function bkRows(){
     if(f.ch&&bkChOf(s.portal)!==f.ch) return false;
     if(f.flat&&s.flat!==f.flat) return false;
     if(f.bank&&bkBank(s)!==f.bank) return false;
+    if(f.money!=='cash'&&s.review) return false;   // no revenue — shown under Cash received
     if(f.basis==='rev'){
       var lo=(from||mon).slice(0,7), hi=(to||mon).slice(0,7);
       if(lo||hi){ if(!(s.months||[]).some(function(x){ return (!lo||x.m>=lo)&&(!hi||x.m<=hi); })) return false; }
@@ -640,7 +647,9 @@ function bkRun(){
   if(!BK){ if(BK_ERR){ el.innerHTML='<div class="card"><span class="muted" style="color:var(--rr)">'+esc(BK_ERR)+'</span></div>'; return; }
            el.innerHTML='<div class="card"><span class="muted">loading reservations…</span></div>'; bkLoad(); return; }
   var rows=bkRows();
-  if(!rows.length){ el.innerHTML='<div class="card"><span class="muted">no reservations match</span></div>'; return; }
+  var hidRev=0; if(BK_F.money!=='cash'){ var keep=BK_F.money; BK_F.money='cash'; hidRev=bkRows().filter(function(s){ return !!s.review; }).length; BK_F.money=keep; }
+  var revNote=hidRev?'<div class="bkt" style="background:#fbf3f7">'+hidRev+' review booking'+(hidRev>1?'s':'')+' left out — no revenue, but '+(hidRev>1?'their':'its')+' payout landed in the bank. <a href="#" onclick="bkMoneyMode(\'cash\');return false">Show cash received</a></div>':'';
+  if(!rows.length){ el.innerHTML=revNote+'<div class="card"><span class="muted">no reservations match</span></div>'; return; }
   var T=bkSum(rows), basisL=BK_F.basis==='out'?'check-out':BK_F.basis==='in'?'check-in':BK_F.basis==='booked'?'booked':'revenue';
   function t(l,v){ return '<div><span class="l">'+l+'</span><b>'+bkMoney(v)+'</b></div>'; }
   if(BK_F.basis==='rev'){
@@ -656,7 +665,7 @@ function bkRun(){
       '<a href="#" onclick="bkCsv();return false" style="float:right;font-size:11px">copy as CSV</a><span id="bkmsg" class="muted" style="float:right;margin-right:8px"></span>'+
       '<div class="bkm">'+t('Gross',T.gross)+t('Net',T.net)+t('Commission',T.comm)+t('Pay charge',T.charge)+t('VAT',T.vat)+t('All-in',T.allIn)+t('ADR',bkAdr(T.earn,T.n))+'</div>'+
       '<div style="margin-top:6px;border-top:1px solid var(--line);padding-top:5px">Booking.com invoice = (commission + charge) × 1.14 = <b>'+bkMoney((T.comm+T.charge)*1.14)+'</b> <span class="muted">· commission + charge + VAT = '+bkMoney(T.comm+T.charge+T.vat)+'</span></div></div>';
-  el.innerHTML=top+(BK_LAYOUT==='cards'?bkCards(rows):bkTable(rows));
+  el.innerHTML=revNote+top+(BK_LAYOUT==='cards'?bkCards(rows):bkTable(rows));
 }
 function bkTable(rows){
   /* 7 columns so it fits a vertical phone: Fees = commission + payment charge, which is exactly what
