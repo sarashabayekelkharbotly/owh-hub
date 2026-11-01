@@ -447,7 +447,7 @@ function initControls(){
     render(); };
   $('#curSeg').onclick=function(e){ if(!e.target.dataset.cur)return; CUR=e.target.dataset.cur; seg('#curSeg','cur',CUR); render(); };
 }
-function fillMonths(){ var ms=monthsFor(FLAT),el=$('#monthSel'); el.innerHTML=ms.map(function(m){return '<option'+(m===MONTH?' selected':'')+'>'+m+'</option>';}).join(''); el.onchange=function(){MONTH=el.value;FXMSG='';render();}; }
+function fillMonths(){ var ms=monthsFor(FLAT),el=$('#monthSel'); el.innerHTML=ms.map(function(m){return '<option'+(m===MONTH?' selected':'')+'>'+m+'</option>';}).join(''); el.onchange=function(){MONTH=el.value;FXMSG='';if(typeof BK_F!=='undefined'){ BK_F.month=MONTH; BK_F.from=''; BK_F.to=''; }   /* the bookings list follows the month picked up here (2026-11-01: it kept its own first month) */render();}; }
 function monthsFor(f){ return Object.keys(DATA.pnl[f]||{}).sort(); }
 function seg(sel,attr,val){ document.querySelectorAll(sel+' button').forEach(function(b){ b.classList.toggle('on',b.dataset[attr]===val); }); }
 function prevMonth(m){ var d=new Date(m+'-01'); d.setMonth(d.getMonth()-1); return d.toISOString().slice(0,7); }
