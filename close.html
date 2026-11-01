@@ -499,8 +499,8 @@ var BK=null, BK_BUSY=false, BK_ERR='', BK_LAYOUT='table', BK_F={ch:'',basis:'out
    every booking whose money landed, review bookings included and marked — what the bank statement shows, for reconciling. */
 function bkRevLbl(s){ return s.review==='owner'?'review · owner paid':s.review==='owh'?'review · OWH paid':''; }
 /* WHERE THE MONEY LANDS (Sarah 2026-10-31): the payment route as the bank it reaches — Stripe pays out to Mercury, Airbnb / Booking.com
-   to HSBC (VW1 included), Instapay and cash as themselves. A booking with no route shows «not set». */
-var BK_BANK={'stripe':'Mercury','hsbc':'HSBC','instapay':'Instapay','cash':'Cash','no charge':'No charge'};
+   to HSBC — except VW1's Airbnb, which pays out to Mercury (2026-11-01) — Instapay and cash as themselves. A booking with no route shows «not set». */
+var BK_BANK={'stripe':'Mercury','mercury':'Mercury','hsbc':'HSBC','instapay':'Instapay','cash':'Cash','no charge':'No charge'};
 var BK_BANKC={'Mercury':'#5b4bb7','HSBC':'#c0282d','Instapay':'#1c7c84','Cash':'#7a6a2a','No charge':'#8a8a8a','not set':'#b0a6a6'};
 function bkBank(s){ var r=String(s.route||'').toLowerCase(); for(var k in BK_BANK) if(r.indexOf(k)===0) return BK_BANK[k]; return r?s.route:'not set'; }
 function bkBanks(){ var l=[]; (BK||[]).forEach(function(s){ var b=bkBank(s); if(l.indexOf(b)<0) l.push(b); }); return l.sort(function(a,b){ return a==='not set'?1:b==='not set'?-1:(a<b?-1:1); }); }
