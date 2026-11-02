@@ -553,20 +553,20 @@ function fcHome(f){
   Object.keys(P).sort().forEach(function(m){ if(fcClosed(P[m])){ var r=fcCost(P[m]).rent; if(r>0){ lastRent=r; lastRentM=m; } } });
   for(var m=H.start; m<=H.end; m=fcAddM(m,1)){
     var rec=P[m];
-    if(fcClosed(rec)){ rows.push({m:m, actual:true, rev:rec.revenue.total, net:rec.net}); continue; }
+    if(fcClosed(rec)){ rows.push({m:m, actual:true, rev:rec.revenue.total, net:rec.net, inflow:((rec.revenue&&rec.revenue.total)||0)+((rec.revenue&&rec.revenue.other)||0)}); continue; }
     var base=null, k=0; for(var j=1;j<=6;j++){ var bm=fcAddM(m,-12*j); if(fcClosed(P[bm])){ base=bm; k=j; break; } }
-    if(!base){ rows.push({m:m, actual:false, rev:0, net:0, nobase:true}); continue; }
+    if(!base){ rows.push({m:m, actual:false, rev:0, net:0, nobase:true, inflow:0}); continue; }
     var B=P[base], bc=fcCost(B), rev=B.revenue.total*Math.pow(1+T.rev,k), booked=(rec&&rec.revenue)?(+rec.revenue.total||0):0;
     if(booked>rev) rev=booked;
     var other=(bc.egp-bc.rent)*Math.pow(1+T.cost,k), steps=0;
     for(var s2=fcAddM(lastRentM,1); s2<=m; s2=fcAddM(s2,1)) if(+s2.slice(5,7)===H.rentStep) steps++;
     var rent=lastRent*Math.pow(1+T.rent,steps), rate=fx.r*Math.pow(1+T.dev,fcDiff(fx.m,m)/12);
-    rows.push({m:m, actual:false, rev:rev, net:rev-(other+rent)/rate-bc.usd, rent:rent, rate:rate, base:base});
+    rows.push({m:m, actual:false, rev:rev, net:rev-(other+rent)/rate-bc.usd, rent:rent, rate:rate, base:base, inflow:rev});
   }
   var by=(D.meta.fx&&D.meta.fx.byMonth)||{}, invUsd=H.inv/(by[H.invMonth]||fx.r), flows=[], cum=-invUsd, pay=null;
   flows[0]=-invUsd; rows.forEach(function(r){ var i=fcDiff(H.invMonth,r.m); flows[i]=(flows[i]||0)+r.net; cum+=r.net; r.cum=cum; if(pay===null&&cum>=0) pay=r.m; });
   for(var q=0;q<flows.length;q++) if(flows[q]==null) flows[q]=0;
-  return { rows:rows, inv:invUsd, invEgp:H.inv, invMonth:H.invMonth, start:H.start, end:H.end, payback:pay, irr:fcIrr(flows), total:cum+invUsd };
+  return { rows:rows, inv:invUsd, invEgp:H.inv, invMonth:H.invMonth, start:H.start, end:H.end, payback:pay, irr:fcIrr(flows), total:cum+invUsd, fxBase:fx };
 }
 function fcVw1(d, who){
   var P=VW1_PROPOSAL, T=fcTerms(), cm=(d.meta&&d.meta.commencement&&d.meta.commencement.VW1)||'', start=cm?cm.slice(0,7):VW1_PLAN.START, end=fcAddM(start,47), fx=fcFxBase(), rows=[], i=1;
@@ -577,23 +577,64 @@ function fcVw1(d, who){
     var nights=PC.daysIn(m)*occ, gross=nights*P.rate*P.price[cal]*Math.pow(1+P.rateGrowth,yr), fee=gross*P.fee;
     var egp=(nights/P.stay*(P.cleanPerStay+P.laundryPerStay)+P.supplies+P.internet+P.utilities+P.opsMgr)*(1+P.contingency)*Math.pow(1+P.costInfl,yr);
     var rate=fx.r*Math.pow(1+T.dev,fcDiff(fx.m,m)/12);
-    rows.push({m:m, actual:false, val: who==='owh' ? fee : gross-fee-egp/rate, occ:occ, gross:gross});
+    rows.push({m:m, actual:false, val: who==='owh' ? fee : gross-fee-egp/rate, occ:occ, gross:gross, rate:rate});
   }
-  var out={ rows:rows, start:start, assumedStart:!cm, end:end, who:who }, cum=0;
+  var out={ rows:rows, start:start, assumedStart:!cm, end:end, who:who, fxBase:fx }, cum=0;
   var su=(d.meta&&d.meta.partnerSetup&&d.meta.partnerSetup.VW1)||null;
   if(who==='owner'&&su&&su.amount>0){ var by=(d.meta.fx&&d.meta.fx.byMonth)||{}, sm=String(su.date).slice(0,7), usd=su.currency==='USD'?su.amount:su.amount/(by[sm]||fx.r);
-    out.inv=usd; out.invMonth=sm; cum=-usd; var flows=[], first=sm<start?sm:start; flows[fcDiff(first,sm)]=-usd;
+    out.inv=usd; out.invMonth=sm; out.invEgp=su.currency==='USD'?su.amount*(by[sm]||fx.r):su.amount; cum=-usd; var flows=[], first=sm<start?sm:start; flows[fcDiff(first,sm)]=-usd;
     rows.forEach(function(r){ var k2=fcDiff(first,r.m); flows[k2]=(flows[k2]||0)+r.val; }); for(var q=0;q<flows.length;q++) if(flows[q]==null) flows[q]=0; out.irr=fcIrr(flows); }
   var pay=null; rows.forEach(function(r){ cum+=r.val; r.cum=cum; if(out.inv&&pay===null&&cum>=0) pay=r.m; }); out.payback=pay; out.total=rows.reduce(function(a,r){ return a+r.val; },0);
   return out;
 }
 function setFcView(v){ FC_VIEW=v; render(); }
+/* THE FORECAST IN EGP (Sarah 2026-11-03: "show the numbers in egp and take the fx change into account like the graph above").
+   The Rental-project-return rules carried to the end of the contract: each month's USD result × that month's rate (closed months their
+   closing rate; forecast months the latest closed rate +devaluation/yr, Settings → Deal terms); FX gain/loss = every USD earned so far ×
+   the month's rate change (the dollars are held, as in the chart above — VW1 too, by Sarah's choice); the running total starts at minus
+   the investment in EGP. Reconciles: running total = −investment + Σ net EGP + Σ FX, on every row, and the year table adds up to it. */
+var FC_CUR='USD';
+function setFcCur(c){ FC_CUR=c; render(); if(!FC_HOMES[FC_VIEW]) fcFill(); }
+function fcRateOf(x,r){ if(r.rate) return r.rate; if(r.actual) return retRate(r.m); var b=x.fxBase||fcFxBase(); return b.r*Math.pow(1+fcTerms().dev,fcDiff(b.m,r.m)/12); }
+function fcEgpSeries(x,isVw){
+  var held=0, prev=null, inv=x.invEgp||0, accNet=-inv, accFx=0, pay=null, flows=[], first=x.invMonth&&x.invMonth<x.rows[0].m?x.invMonth:x.rows[0].m;
+  if(inv) flows[fcDiff(first,x.invMonth)]=-inv;
+  var rows=x.rows.map(function(r){
+    var rate=fcRateOf(x,r), usd=isVw?r.val:r.net, net=usd*rate, fx=prev==null?0:held*(rate-prev);
+    accNet+=net; accFx+=fx; held+=isVw?r.val:(r.inflow||0); prev=rate;
+    var k=fcDiff(first,r.m); flows[k]=(flows[k]||0)+net+fx;
+    var e={m:r.m, actual:r.actual, nobase:r.nobase, rate:rate, rev:(r.rev||r.gross||0)*rate, net:net, fx:fx, accNet:accNet, accFx:accFx, cum:accNet+accFx};
+    if(inv&&pay===null&&e.cum>=0) pay=r.m; return e; });
+  for(var q=0;q<flows.length;q++) if(flows[q]==null) flows[q]=0;
+  return { rows:rows, inv:inv, payback:pay, irr:inv?fcIrr(flows):null, sumNet:rows.reduce(function(a,e){ return a+e.net; },0), sumFx:rows.reduce(function(a,e){ return a+e.fx; },0) };
+}
+function fcEgp(n){ n=+n||0; return (n<0?'−':'')+'EGP '+Math.round(Math.abs(n)).toLocaleString('en-US'); }
+function fcRenderEgp(x, view){
+  var T=fcTerms(), isVw=!FC_HOMES[view], owh=view==='VW1-owh', E=fcEgpSeries(x,isVw), lbl=owh?'OWH fee':(isVw?'Owner result':'Net profit');
+  var who=!isVw?('Contract '+fcMon(x.start)+' → '+fcMon(x.end)):('4 years from '+fcMon(x.start)+(x.assumedStart?' (assumed — set the commencement date in Close)':'')+' → '+fcMon(x.end));
+  var head=who+(E.inv?' · invested '+fcEgp(E.inv)+' ('+fcMon(x.invMonth)+')':'')+' · '+lbl.toLowerCase()+' '+fcEgp(E.sumNet)+' + FX '+fcEgp(E.sumFx)+' = <b>'+fcEgp(E.sumNet+E.sumFx)+'</b>'+
+    (E.inv?' · '+(E.payback?'<b>paid back '+fcMon(E.payback)+'</b>':'<b>not paid back '+(isVw?'within 4 years':'within the contract')+'</b>')+(E.irr!=null?' · <b>IRR '+(E.irr*100).toFixed(1)+'% in EGP</b>':''):(owh?' · OWH paid no set-up, so there is no return rate':(isVw?' · <span class="muted">enter her set-up in Close to see her payback and return</span>':'')))+'.';
+  var rows=E.rows.map(function(e){ var v={}; v[e.actual?'Actual':'Forecast']=e.accNet; v['FX gain/loss']=e.accFx; return {m:e.m, vals:v}; });
+  var series=[{k:'Actual',color:'#4a7fb5'},{k:'Forecast',color:'#c9b8b8'},{k:'FX gain/loss',color:'#d9a441'}];
+  var h='<div class="legend" style="margin-bottom:6px">'+head+'</div>'+stackedChart(rows, series, {unit:'', fmt:kk})+
+    '<div class="legend"><span><i style="background:#4a7fb5"></i>'+lbl+' · actual</span><span><i style="background:#c9b8b8"></i>'+lbl+' · forecast</span><span><i style="background:#d9a441"></i>FX gain/loss</span></div>'+
+    '<div class="legend">Each bar\'s total = the running total'+(E.inv?' from minus the investment':'')+' (net + FX), in EGP — as in the chart above.</div>';
+  var yrs=[]; E.rows.forEach(function(e,i){ var yi=Math.floor(i/12); yrs[yi]=yrs[yi]||{from:e.m,to:e.m,rev:0,net:0,fx:0,act:0}; var y=yrs[yi]; y.to=e.m; y.rev+=e.rev; y.net+=e.net; y.fx+=e.fx; if(e.actual) y.act++; });
+  var run=-E.inv, showRev=!(isVw&&owh);
+  h+='<table class="t" style="margin-top:8px"><tr><th style="text-align:left">Year</th>'+(showRev?'<th>Revenue</th>':'')+'<th>'+lbl+'</th><th>FX gain/loss</th><th>Running total</th></tr>'+
+    (E.inv?'<tr><td style="text-align:left">Investment · '+fcMon(x.invMonth)+'</td>'+(showRev?'<td></td>':'')+'<td>'+fcEgp(-E.inv)+'</td><td></td><td>'+fcEgp(-E.inv)+'</td></tr>':'')+
+    yrs.map(function(y,i){ run+=y.net+y.fx; return '<tr><td style="text-align:left">Year '+(i+1)+' · '+fcMon(y.from)+' – '+fcMon(y.to)+(y.act?' <span class="muted">('+y.act+' actual)</span>':'')+'</td>'+(showRev?'<td>'+fcEgp(y.rev)+'</td>':'')+'<td>'+fcEgp(y.net)+'</td><td>'+fcEgp(y.fx)+'</td><td>'+fcEgp(run)+'</td></tr>'; }).join('')+'</table>';
+  h+='<details style="margin-top:6px"><summary class="muted" style="cursor:pointer">Month by month</summary><table class="t"><tr><th style="text-align:left">Month</th><th>Rate</th>'+(showRev?'<th>Revenue</th>':'')+'<th>'+lbl+'</th><th>FX gain/loss</th><th>Running total</th></tr>'+
+    E.rows.map(function(e){ return '<tr'+(e.actual?'':' style="color:#8a7a7a"')+'><td style="text-align:left">'+fcMon(e.m)+(e.actual?'':(e.nobase?' · no base month':' · forecast'))+'</td><td>'+e.rate.toFixed(2)+'</td>'+(showRev?'<td>'+fcEgp(e.rev)+'</td>':'')+'<td>'+fcEgp(e.net)+'</td><td>'+fcEgp(e.fx)+'</td><td>'+fcEgp(e.cum)+'</td></tr>'; }).join('')+'</table></details>';
+  h+='<div class="note">In EGP: closed months at their closing rate; forecast months at the latest closing rate ('+(x.fxBase?x.fxBase.r+', '+fcMon(x.fxBase.m):'')+') +'+Math.round(T.dev*100)+'%/yr. FX gain/loss = all the USD earned so far × the month\'s rate change (the dollars are held, as in the chart above). The USD view shows the same months without FX.</div>';
+  return h;
+}
 function fcUsd(n){ n=+n||0; return (n<0?'−':'')+'$'+Math.round(Math.abs(n)).toLocaleString('en-US'); }
 function fcMon(ym){ return MON[+ym.slice(5,7)-1]+' '+ym.slice(0,4); }
 function secForecast(){
   var opts=[['Zayed 2000','Zayed 2000'],['28A','28A'],['VW1-owh','VW1 · OWH'],['VW1-owner','VW1 · owner']];
-  var h='<div class="card" id="fcCard"><h3>Forecast<span class="rt">only on this screen until verified · USD</span></h3>'+
-    '<div class="rowbtns">'+seg(opts,FC_VIEW,'setFcView')+'</div><div id="fcBody">'+(FC_HOMES[FC_VIEW]?fcRender(fcHome(FC_VIEW),FC_VIEW):'<div class="muted">Loading VW1…</div>')+'</div></div>';
+  var h='<div class="card" id="fcCard"><h3>Forecast<span class="rt">only on this screen until verified · '+FC_CUR+'</span></h3>'+
+    '<div class="rowbtns">'+seg(opts,FC_VIEW,'setFcView')+seg([['USD','USD'],['EGP','EGP + FX']],FC_CUR,'setFcCur')+'</div><div id="fcBody">'+(FC_HOMES[FC_VIEW]?fcRender(fcHome(FC_VIEW),FC_VIEW):'<div class="muted">Loading VW1…</div>')+'</div></div>';
   return h;
 }
 var FC_VW1=null;
@@ -605,6 +646,7 @@ function fcFill(){
   api('props_get_all',{asPartner:'VW1'}).then(function(j){ if(j&&j.ok&&j.data){ FC_VW1=INV_CACHE['VW1']=j.data; put(); } else { var el=document.getElementById('fcBody'); if(el) el.innerHTML='<div class="muted">Could not load VW1.</div>'; } });
 }
 function fcRender(x, view){
+  if(FC_CUR==='EGP') return fcRenderEgp(x, view);
   var T=fcTerms(), isVw=!FC_HOMES[view], owh=view==='VW1-owh', val=function(r){ return isVw?r.val:r.net; };
   var nAct=x.rows.filter(function(r){ return r.actual; }).length, nFc=x.rows.length-nAct;
   var head='';
