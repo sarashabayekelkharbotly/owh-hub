@@ -987,7 +987,7 @@ function secPay(){
   if(payMode==='net') accSet['Instapay']=1;            // the costs account exists in net mode even with no Instapay guest
   var accs=Object.keys(accSet);
   var OTH='Rent, partner share & other';
-  var PC={HSBC:'#4a7fb5',Stripe:'#6f9a76',Instapay:'#d9a441',Cash:'#c98f8f',Mercury:'#2f8f8f','(unconfirmed)':'#bbb'};   // Mercury teal — it read like Cash (2026-11-03)
+  var PC={HSBC:'#4a7fb5',Stripe:'#6f9a76',Instapay:'#d9a441',Cash:'#c98f8f','Cash (EGP)':'#a3626b',Mercury:'#2f8f8f',Airbnb:'#e0806e','No charge':'#8c8c8c','(unconfirmed)':'#bbb'};   // every account its own colour — none falls back to the shared grey   // Mercury teal — it read like Cash (2026-11-03)
   PC[OTH]='#7d6b5d';
   var rows=ms.map(function(m){ var vals={}; accs.forEach(function(a){vals[a]=0;}); scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s)||!channelGroup(s.portal).inRev)return;
     if(payMode==='net'&&scope==='portfolio'&&partnerCfg(f)) return;   // the owner's money — OWH's own result joins below
