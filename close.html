@@ -65,11 +65,13 @@ textarea{width:100%;min-height:90px;font-family:monospace;font-size:11px;border:
 .drill td{background:#fbf7f7;padding:1px 8px;border-bottom:0}
 /* the earnings drill as an eye-scannable table (Sarah 2026-08-31): fixed numeric columns,
    right-aligned, one muted header — compare rows without re-reading prose */
-.dtab{width:100%;border-collapse:collapse;background:#fbf7f7}
+.dtab{width:100%;border-collapse:collapse;background:#fbf7f7;table-layout:fixed}
 .dtab td,.dtab th{padding:3px 8px;border-bottom:1px solid #f0e9e9;font-size:12px}
 .dtab .dth th{color:var(--soft);font-weight:600;font-size:10.5px;text-align:right;border-bottom:1px solid #e8dede;padding-top:5px}
 .dtab .dth th:first-child{text-align:left}
-.dtab .dtg{text-align:left;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dtab .dtg{text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dtab .dsub{color:var(--soft);font-size:10.5px;padding-left:28px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dtab .dtt .dtg{white-space:normal}
 .dtab .dtn{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .dtab .dtp{text-align:left;color:var(--soft);font-size:11px;white-space:nowrap}
 .dtab .dtt td{font-weight:700;border-top:2px solid #e8dcdc;border-bottom:0;padding-top:5px}
@@ -309,26 +311,27 @@ function earnDrillRows(){
     var nn=Number(a.nights), asRec=(a.nights===''||a.nights==null);
     if(!asRec) nIn+=nn;
     rows+='<tr><td class="dtg" title="'+esc((a.guest||'')+'  '+(a.checkIn||'')+' → '+(a.checkOut||'')+'  ·  '+a.accommodation+' over '+a.total+' nights')+'">'+
-      '<span class="ddate">'+dday(a.checkIn)+'</span><bdi class="dname">'+esc(a.guest||a.stayId||'—')+'</bdi></td>'+
-      '<td class="dtp">'+esc(a.portal||'')+'</td>'+
+      '<span class="ddate">'+dday(a.checkIn)+'</span><bdi class="dname">'+esc(a.guest||a.stayId||'—')+'</bdi>'+
+      (a.portal?'<div class="dsub">'+esc(a.portal)+'</div>':'')+'</td>'+
       '<td class="dtn">'+(a.total||'—')+'</td>'+
       '<td class="dtn">'+(asRec?'—':nn)+'</td>'+
       '<td class="dtn">'+((!asRec&&nn>0)?fmt(toCur(a.amount/nn,'USD')):'—')+'</td>'+
       '<td class="dtn">'+fmt(toCur(a.amount,'USD'))+'</td></tr>';
   });
   if(d.rent){ sum+=d.rent;
-    rows+='<tr><td class="dtg">long-term rent</td><td class="dtp"></td><td class="dtn">—</td><td class="dtn">—</td><td class="dtn">—</td>'+
+    rows+='<tr><td class="dtg">long-term rent</td><td class="dtn">—</td><td class="dtn">—</td><td class="dtn">—</td>'+
       '<td class="dtn">'+fmt(toCur(d.rent,'USD'))+'</td></tr>'; }
   if(!rows) return '<tr class="drill"><td class="dnote" colspan="4">no stays and no rent this month</td></tr>';
   /* totals INSIDE the table, each under its own column (Sarah 2026-08-31): Σ nights in month,
      blended ADR (stays only — rent has no nights), Σ earnings under earnings */
   var nSt=(d.accommodation||[]).length;
-  rows+='<tr class="dtt"><td colspan="2" class="dtg">'+nSt+' stay'+(nSt===1?'':'s')+(d.rent?' + rent':'')+' · = earnings</td>'+
+  rows+='<tr class="dtt"><td class="dtg">'+nSt+' stay'+(nSt===1?'':'s')+(d.rent?' + rent':'')+' · = earnings</td>'+
     '<td class="dtn"></td><td class="dtn">'+nIn+'</td>'+
     '<td class="dtn">'+(nIn>0?fmt(toCur((sum-(d.rent||0))/nIn,'USD')):'—')+'</td>'+
     '<td class="dtn">'+fmt(toCur(sum,'USD'))+'</td></tr>';
   var tab='<tr class="drill"><td colspan="4" style="padding:0"><table class="dtab">'+
-    '<tr class="dth"><th></th><th>portal</th><th>total n</th><th>in month</th><th>ADR</th><th>earnings</th></tr>'+rows+'</table></td></tr>';
+    '<colgroup><col><col style="width:46px"><col style="width:50px"><col style="width:42px"><col style="width:64px"></colgroup>'+
+    '<tr class="dth"><th></th><th title="total nights of the stay">nights</th><th title="nights in this month">in mo.</th><th>ADR</th><th>earnings</th></tr>'+rows+'</table></td></tr>';
   var line=rec.revenue?rec.revenue.earnings:sum, gap=line-sum;
   if(Math.abs(gap)>0.005) tab+='<tr class="drill"><td class="ditem"><span class="ddate"></span>'+
     '<b>not explained — check the apportionment</b></td><td class="damt">'+fmt(toCur(gap,'USD'))+'</td><td class="prevcol"></td></tr>';
