@@ -285,3 +285,72 @@ function authLogin() {
     })
     .catch(function () { b.disabled = false; b.textContent = 'Sign in'; m.textContent = "Couldn't reach the server — check your connection."; });
 }
+
+/* ---------- MONTH PICKERS = YEAR + MONTH (Sarah 2026-11-03: "the drop down is becoming very long") ----------
+ * Every Hub screen loads this file, so any <select> whose choices are months (yyyy-mm) is shown as two short selects —
+ * the year, then that year's months — including selects a screen builds later. The original select stays the source of
+ * truth, hidden: picking sets its value and fires its own change event, so each screen's own handler runs untouched.
+ * Choices that are not months (Stats' "previous month", "3-month average") sit at the top of the year list.
+ * A select that must stay as it is carries data-ym="off". */
+(function () {
+  if (typeof document === 'undefined' || !window.MutationObserver) return;
+  var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function isYm(v) { return /^\d{4}-\d{2}$/.test(v); }
+  function optsOf(s) { var o = []; for (var i = 0; i < s.options.length; i++) o.push({ v: s.options[i].value, t: s.options[i].text }); return o; }
+  function qualifies(s) {
+    if (s.multiple || s.getAttribute('data-ym') === 'off' || (s.parentNode && s.parentNode.className === 'ym-pair')) return false;
+    var o = optsOf(s), n = 0; for (var i = 0; i < o.length; i++) if (isYm(o[i].v)) n++;
+    return n >= 2 && o.length - n <= 3;                       // months, plus at most a few special choices
+  }
+  function setSrc(s, v) { if (s.value === v) return; s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); sync(s, true); }
+  function sync(s, force) {
+    var w = s.__ym; if (!w) return;
+    var o = optsOf(s), sig = o.map(function (x) { return x.v; }).join(',') + '|' + s.value;
+    var vis = s.style.display === 'none' ? 'none' : '';
+    if (w.style.display !== vis) w.style.display = vis;
+    if (!force && w.__sig === sig) return; w.__sig = sig;
+    var y = w.firstChild, m = w.lastChild, cur = s.value, years = [], specials = o.filter(function (x) { return !isYm(x.v); });
+    o.forEach(function (x) { if (isYm(x.v) && years.indexOf(x.v.slice(0, 4)) < 0) years.push(x.v.slice(0, 4)); });
+    y.innerHTML = specials.map(function (x) { return '<option value="s:' + x.v.replace(/"/g, '&quot;') + '">' + x.t.replace(/</g, '&lt;') + '</option>'; }).join('') +
+                  years.map(function (yr) { return '<option value="' + yr + '">' + yr + '</option>'; }).join('');
+    if (isYm(cur)) {
+      y.value = cur.slice(0, 4);
+      m.innerHTML = o.filter(function (x) { return isYm(x.v) && x.v.slice(0, 4) === cur.slice(0, 4); })
+                     .map(function (x) { return '<option value="' + x.v + '">' + MN[+x.v.slice(5, 7) - 1] + '</option>'; }).join('');
+      m.value = cur; m.style.display = '';
+    } else { y.value = 's:' + cur; m.style.display = 'none'; }
+  }
+  function enhance(s) {
+    var w = document.createElement('span'); w.className = 'ym-pair';
+    var y = document.createElement('select'), m = document.createElement('select');
+    y.setAttribute('aria-label', 'Year'); m.setAttribute('aria-label', 'Month');
+    [y, m].forEach(function (x) { x.style.cssText = s.style.cssText; x.style.display = ''; x.className = s.className; w.appendChild(x); });
+    y.onchange = function () {
+      if (y.value.indexOf('s:') === 0) { setSrc(s, y.value.slice(2)); return; }
+      var inYr = optsOf(s).filter(function (x) { return isYm(x.v) && x.v.slice(0, 4) === y.value; }).map(function (x) { return x.v; });
+      var same = y.value + (isYm(s.value) ? s.value.slice(4) : '');   // the same month in the other year, when it exists
+      setSrc(s, inYr.indexOf(same) > -1 ? same : inYr[0]);
+    };
+    m.onchange = function () { setSrc(s, m.value); };
+    s.__ym = w; s.classList.add('ym-src'); s.parentNode.insertBefore(w, s.nextSibling);
+    sync(s, true);
+  }
+  var queued = false;
+  function scan() {
+    queued = false;
+    var all = document.querySelectorAll('select');
+    for (var i = 0; i < all.length; i++) { var s = all[i];
+      if (s.__ym) { if (!s.__ym.parentNode && s.parentNode) s.parentNode.insertBefore(s.__ym, s.nextSibling); sync(s); }
+      else if (qualifies(s)) enhance(s); }
+  }
+  function later() { if (!queued) { queued = true; (window.requestAnimationFrame || setTimeout)(scan); } }
+  function start() {
+    var st = document.createElement('style');
+    st.textContent = 'select.ym-src{display:none!important}.ym-pair{display:inline-flex;gap:4px;align-items:center;vertical-align:middle}';
+    document.head.appendChild(st);
+    new MutationObserver(later).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+    setInterval(scan, 1500);                                  // a value a screen sets in code, without a change event
+    scan();
+  }
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();

@@ -104,7 +104,7 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
   <a class="tab" id="tb-contract" href="#contract" onclick="setTab('contract');return false"><span class="ti">📜</span>Contract</a>
 </nav>
 
-<script src="auth.js?v=cf3e5be1"></script>
+<script src="auth.js?v=c5d7281b"></script>
 <script src="partner-core.js?v=8"></script>
 <script>
 /* SCREEN 6 — Partner, this month. Built to the mock-up (OWH_final_2.html §6):
@@ -492,7 +492,7 @@ function render(){
   var yrs=[]; avail.forEach(function(m){ var y=m.slice(0,4); if(yrs.indexOf(y)<0) yrs.push(y); }); yrs.sort().reverse();
   var thisYr=(MONTH||'').slice(0,4), cmCur=(DATA.meta&&DATA.meta.currentMonth)||'9999';
   h+='<div class="ctl" style="margin-top:0"><div class="mp" style="flex:1">'+
-     '<select aria-label="Month" onchange="setMonth(this.value)">'+avail.filter(function(m){ return m.slice(0,4)===thisYr; }).map(function(m){
+     '<select aria-label="Month" data-ym="off" onchange="setMonth(this.value)">'+avail.filter(function(m){ return m.slice(0,4)===thisYr; }).map(function(m){
         return '<option value="'+m+'"'+(m===MONTH?' selected':'')+'>'+MON_FULL[(+m.slice(5,7))-1]+(preLaunch(m)&&m<=cmCur?' · pre-launch':'')+'</option>'; }).join('')+'</select>'+
      '<select aria-label="Year" onchange="pickYear(this.value)">'+yrs.map(function(y){ return '<option value="'+y+'"'+(y===thisYr?' selected':'')+'>'+y+'</option>'; }).join('')+'</select></div>'+
      '<span class="seg"><button class="'+(CUR==='USD'?'on':'')+'" onclick="setCur(\'USD\')">USD</button><button class="'+(CUR==='EGP'?'on':'')+'" onclick="setCur(\'EGP\')">EGP</button></span></div>';
