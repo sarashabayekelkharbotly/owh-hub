@@ -163,7 +163,12 @@ function feePctOf(f){ var c=partnerCfg(f)||{}, v=+(c.sharePctOfTotalRev!=null?c.
 function owhP(f,m){ var p=pnlOf(f,m); if(!p||!partnerCfg(f)) return p;
   var fee=(p.partnerLedger&&p.partnerLedger.fee!=null)?p.partnerLedger.fee
         : Math.round((p.revenue.total||0)*feePctOf(f)*100)/100;   // months without a statement yet (future) estimate at the share
-  return { revenue:{ total:fee, earnings:fee, other:0 }, net:fee, costs:[], attribution:p.attribution, partnerFee:true }; }
+  /* OWH'S OWN RESULT (Sarah 2026-11-03): the fee MINUS the costs OWH bears itself. The P&L net is the whole home's result; the partner
+     statement's monthResult is the owner's part of it; what is left is OWH's: net − monthResult (October: −684.46 − (−403.04) = −281.42).
+     A month with no statement yet keeps the fee estimate. Revenue, Internal attribution and Money by account all read this. */
+  var pl=p.partnerLedger, own=(pl&&pl.monthResult!=null)?Math.round(((+p.net||0)-(+pl.monthResult||0))*100)/100:fee;
+  var shK=(p.attribution&&(+p.net||0)!==0)?(+p.attribution.khaled||0)/(+p.net):0.5;
+  return { revenue:{ total:fee, earnings:fee, other:0 }, net:own, costs:[], attribution:{ khaled:own*shK, sarah:own*(1-shK) }, partnerFee:true }; }
 function moneyP(f,m){ return scope==='portfolio'?owhP(f,m):pnlOf(f,m); }   // single-flat scope = the flat's own full story
 function rawStays(){ return D.stays||[]; }
 function scopeFlats(){ return scope==='portfolio'?allFlats():[scope]; }                          // money
@@ -872,7 +877,7 @@ function secCosts(){
 /* 3 · Attribution — stacked Khaled/Sarah */
 function secAttribution(){
   var ms=monthsInRange(R.attr);
-  var rows=ms.map(function(m){ var k=0,s=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(p&&p.attribution){ k+=p.attribution.khaled; s+=p.attribution.sarah; } }); return {m:m,vals:{khaled:disp(k,m),sarah:disp(s,m)}}; });
+  var rows=ms.map(function(m){ var k=0,s=0; scopeFlats().forEach(function(f){ var p=moneyP(f,m); if(p&&p.attribution){ k+=p.attribution.khaled; s+=p.attribution.sarah; } }); return {m:m,vals:{khaled:disp(k,m),sarah:disp(s,m)}}; });   // partner homes at OWH's own result (2026-11-03)
   var tk=0,ts=0; rows.forEach(function(r){ tk+=r.vals.khaled; ts+=r.vals.sarah; });
   return '<div class="card"><h3>Internal attribution<span class="rt">Khaled '+money(tk)+' · Sarah '+money(ts)+'</span></h3>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div><div class="rowbtns">'+timeSeg('attr')+'</div>'+
@@ -981,15 +986,18 @@ function secPay(){
   var accSet={}; scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; if(!channelGroup(s.portal).inRev)return; accSet[accountOf(s)]=1; }); });
   if(payMode==='net') accSet['Instapay']=1;            // the costs account exists in net mode even with no Instapay guest
   var accs=Object.keys(accSet);
-  var OTH='Rent & other (not a booking)';
+  var OTH='Rent, partner share & other';
   var PC={HSBC:'#4a7fb5',Stripe:'#6f9a76',Instapay:'#d9a441',Cash:'#c98f8f',Mercury:'#2f8f8f','(unconfirmed)':'#bbb'};   // Mercury teal — it read like Cash (2026-11-03)
   PC[OTH]='#7d6b5d';
   var rows=ms.map(function(m){ var vals={}; accs.forEach(function(a){vals[a]=0;}); scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s)||!channelGroup(s.portal).inRev)return;
+    if(payMode==='net'&&scope==='portfolio'&&partnerCfg(f)) return;   // the owner's money — OWH's own result joins below
     if(payMode==='nights'){ vals[accountOf(s)]+=overlapNights(s,m); } else { vals[accountOf(s)]+=disp(earnedIn(s,m),m); } }); });
     /* NET = THE P&L NET (Sarah 2026-11-03: it did not match Internal attribution). The P&L's net also holds 17B's long-let rent and any revenue
        that is not a booking (other revenue, review/refund adjustments); those now sit in their own block, so the bar total = Σ the homes'
        P&L net = Khaled + Sarah in Internal attribution, month by month. */
-    if(payMode==='net'){ var mOut=0, oth=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p) return; var c=costsUSD(f,m).total, e=0;
+    if(payMode==='net'){ var mOut=0, oth=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p) return;
+        if(scope==='portfolio'&&partnerCfg(f)){ oth+=(+(owhP(f,m)||{}).net||0); return; }   // VW1: OWH's own result (fee − OWH's costs)
+        var c=costsUSD(f,m).total, e=0;
         if(!isLongLet(f)) rawStays().forEach(function(s){ if(s.flat===f&&isLive(s)&&channelGroup(s.portal).inRev) e+=earnedIn(s,m); });
         mOut+=c; oth+=(+p.net||0)-(e-c); });
       vals['Instapay']=(vals['Instapay']||0)-disp(mOut,m); if(Math.abs(oth)>0.005) vals[OTH]=disp(oth,m); }
@@ -1000,7 +1008,7 @@ function secPay(){
     '<div class="rowbtns">'+seg([['money','Revenue'],['nights','Nights'],['net','Net profit']],payMode,'setPay')+timeSeg('pay')+'</div>'+
     stackedChart(rows,accs.map(function(a){return {k:a,color:PC[a]||'#9aa7b5'};}),{unit:payMode==='nights'?'':curU()})+
     '<div class="legend">'+accs.map(function(a){return '<span><i style="background:'+(PC[a]||'#9aa7b5')+'"></i>'+esc(a)+'</span>';}).join('')+'</div>'+
-    (payMode==='net'?'<div class="legend">net = each account\'s money in · ALL money out (the scoped flats\' costs) leaves from Instapay · 17B\'s rent and revenue that is not a booking sit in their own block — the bar total is the month\'s P&L net profit, the same as Internal attribution</div>':'')+'</div>';
+    (payMode==='net'?'<div class="legend">net = each account\'s money in · ALL money out (the scoped flats\' costs) leaves from Instapay · 17B\'s rent, OWH\'s own result from partner homes (fee − OWH\'s costs) and revenue that is not a booking sit in their own block — the bar total is the month\'s P&L net profit, the same as Internal attribution</div>':'')+'</div>';
 }
 /* 8 · ADR per channel per flat (table) */
 function secAdrTable(){
