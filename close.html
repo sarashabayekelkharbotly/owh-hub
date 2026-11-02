@@ -1004,6 +1004,11 @@ function mom(curV,prevV,isCost){
 function fxOf(mo){ var b=(DATA.meta.fx&&DATA.meta.fx.byMonth)||null; return b?(b[mo]||null):null; }
 function fxIsCarried(mo){ var c=(DATA.meta.fx&&DATA.meta.fx.carried)||{}; return !!c[mo]; }
 function fxIsSet(mo){ return (DATA.meta.fx&&DATA.meta.fx.byMonth) ? (!!fxOf(mo)&&!fxIsCarried(mo)) : !!DATA.meta.fx.isCurrentMonthSet; }
+/* THE RATE YOU JUST SAVED WINS (Sarah 2026-11-03: October saved at 55.79, the reload still served 54.5 for a moment, and Mark final —
+   which sends whatever is in the box — wrote 54.5 back). The box shows the last rate saved from this screen for that month until the
+   rebuilt figures agree, so Mark final can never re-send the old one. */
+var FXSAVED={};
+function fxBox(mo){ var sv=FXSAVED[mo]; if(sv!=null&&Math.abs((fxOf(mo)||0)-sv)<1e-9) delete FXSAVED[mo]; return FXSAVED[mo]!=null?FXSAVED[mo]:(fxOf(mo)||fx()); }
 var FXMSG='';   // survives the re-render that follows a save, so the confirmation is still readable
 function saveFx(){
   var el=document.getElementById('fxin'), btn=document.getElementById('fxsavebtn'), msg=document.getElementById('fxmsg');
@@ -1012,6 +1017,7 @@ function saveFx(){
   if(btn)btn.disabled=true; if(msg)msg.textContent='saving…';
   // save-then-show: nothing is claimed until the sheet has taken it
   writeCall('props_set_fx',{month:MONTH,rate:rate}).then(function(j){
+    FXSAVED[MONTH]=parseFloat(rate);
     var f=(j.result&&j.result.followed)||[];
     FXMSG='saved ✓ '+MONTH+' = '+rate+(f.length?' · carried into '+f.join(', '):'');
     boot();
@@ -1091,9 +1097,9 @@ function checklist(rec){
   /* Editable for as long as the month is open, and saveable on its own — the rate used to be
      readable only by "Mark final", so recording it and closing the month were the same act and you
      could not put a rate in early or correct one (Sarah 2026-08-14). */
-  h+='<div><span class="'+((fxSet||!isOpen)?'ok':'warn')+'">'+((fxSet||!isOpen)?'✓':'!')+'</span> Closing FX '+
-     (isOpen?'<input class="fxin" id="fxin" value="'+fmt1(fxOf(MONTH)||fx())+'"> '+
-             '<button class="btn sec" id="fxsavebtn" onclick="saveFx()" style="padding:2px 10px;font-size:11px">Save rate</button> '+
+  h+='<div><span class="'+((fxSet||!isOpen)?'ok':'warn')+'">'+((fxSet||!isOpen)?'✓':'!')+'</span> Closing FX for <b>'+MONTH+'</b> '+
+     (isOpen?'<input class="fxin" id="fxin" value="'+String(fxBox(MONTH))+'"> '+
+             '<button class="btn sec" id="fxsavebtn" onclick="saveFx()" style="padding:2px 10px;font-size:11px">Save '+MONTH+' rate</button> '+
              '<span class="muted">EGP/USD '+(fxSet?'':'(carried — confirm)')+'</span> '+
              '<span class="muted" id="fxmsg">'+esc(FXMSG)+'</span>'
             :'used '+fmt1(fxOf(MONTH)||fx()))+'</div>';
