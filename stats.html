@@ -541,7 +541,9 @@ function render(){
    VW1 (until it has its own year): the partnership proposal's model — ramp-up occupancy, seasonal demand and price, costs per stay and
    per month (+15%/yr, +5% contingency), the 25% fee — on today's real rate. The assumptions are Settings → Deal terms. */
 var FC_VIEW='Zayed 2000';
-var FC_HOMES={ 'Zayed 2000':{start:'2025-02',end:'2028-01',inv:513415,invMonth:'2025-01',rentStep:2},
+/* inv = the fallback only: the investment is read from meta.investment, the very figure the Rental-project-return chart uses (Sarah
+   2026-11-03: the Forecast had 513,415 for Zayed, the return chart 423,547 — 423,547 is right; one source so they can never disagree) */
+var FC_HOMES={ 'Zayed 2000':{start:'2025-02',end:'2028-01',inv:423547,invMonth:'2025-01',rentStep:2},
                '28A':{start:'2025-05',end:'2028-04',inv:187600,invMonth:'2025-04',rentStep:5} };
 var VW1_PROPOSAL=VW1_PLAN.P;   // the plan lives in vw1-plan.js, shared with Today's VW1 target
 function fcAddM(ym,n){ var y=+ym.slice(0,4), m=+ym.slice(5,7)-1+n; y+=Math.floor(m/12); m=((m%12)+12)%12; return y+'-'+('0'+(m+1)).slice(-2); }
@@ -556,7 +558,8 @@ function fcCost(rec){ var o={egp:0,rent:0,usd:0}; (rec.costs||[]).forEach(functi
 function fcIrr(flows){ var npv=function(r){ var v=0; for(var k=0;k<flows.length;k++) v+=flows[k]/Math.pow(1+r,k); return v; };
   var lo=-0.99, hi=1; if(npv(lo)*npv(hi)>0) return null; for(var it=0;it<200;it++){ var mid=(lo+hi)/2; if(npv(lo)*npv(mid)<=0) hi=mid; else lo=mid; } return Math.pow(1+(lo+hi)/2,12)-1; }
 function fcHome(f){
-  var H=FC_HOMES[f], T=fcTerms(), P=D.pnl[f]||{}, fx=fcFxBase(), rows=[], lastRent=0, lastRentM=H.start;
+  var H=Object.assign({},FC_HOMES[f]); if(D.meta&&D.meta.investment&&D.meta.investment[f]) H.inv=+D.meta.investment[f];
+  var T=fcTerms(), P=D.pnl[f]||{}, fx=fcFxBase(), rows=[], lastRent=0, lastRentM=H.start;
   Object.keys(P).sort().forEach(function(m){ if(fcClosed(P[m])){ var r=fcCost(P[m]).rent; if(r>0){ lastRent=r; lastRentM=m; } } });
   for(var m=H.start; m<=H.end; m=fcAddM(m,1)){
     var rec=P[m];
