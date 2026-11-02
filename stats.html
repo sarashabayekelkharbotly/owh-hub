@@ -95,6 +95,8 @@ function statDrill(kind,m){ DRILL=(DRILL&&DRILL.kind===kind&&DRILL.m===m)?null:{
 /* booked/blocked/free are viewable alone (Sarah 2026-08-08): small stacked segments are hard to
    read even with hover, so each series is a toggle. At least one always stays on. */
 var nbShow={booked:true,blocked:true,free:true};
+var nbByFlat=false;   // stack by home (Sarah 2026-11-03): each bar split into the homes, for the series switched on above
+function setNbFlat(){ nbByFlat=!nbByFlat; render(); }
 function setNbShow(k){
   var on=Object.keys(nbShow).filter(function(x){return nbShow[x];});
   if(nbShow[k]&&on.length===1) return;                      // never an empty chart
@@ -899,9 +901,10 @@ function secOccAdr(){
 function secNights(){
   var ms=monthsInRange(R.nb);
   var rows=ms.map(function(m){
-    var b=0,bl=0,fr=0,earn=0,nn=0, y=+m.slice(0,4),mo=+m.slice(5,7),dim=daysIn(m);
+    var b=0,bl=0,fr=0,earn=0,nn=0, y=+m.slice(0,4),mo=+m.slice(5,7),dim=daysIn(m), pf={};
     scopeFlats().forEach(function(f){
-      if(isLongLet(f)){ b+=dim; earn+=0; return; }        // let: every night is booked, no per-night rate
+      var b0=b, bl0=bl, fr0=fr, e0=earn;
+      if(isLongLet(f)){ b+=dim; earn+=0; pf[f]={b:dim,bl:0,fr:0,earn:0}; return; }        // let: every night is booked, no per-night rate
       for(var dd=1;dd<=dim;dd++){
         var dt=new Date(y,mo-1,dd), occ=false,blk=false;
         (D.stays||[]).forEach(function(s){
@@ -913,20 +916,28 @@ function secNights(){
         if(occ)b++; else if(blk)bl++; else if(!preOp(f,y+'-'+('0'+mo).slice(-2)+'-'+('0'+dd).slice(-2))) fr++;
       }
       rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; earn+=earnedIn(s,m); nn+=adrN(s,overlapNights(s,m)); });
+      pf[f]={b:b-b0,bl:bl-bl0,fr:fr-fr0,earn:earn-e0};
     });
-    if(nbMode==='nights') return {m:m,vals:{booked:b,blocked:bl,free:fr}};
     var adr=nn>0?earn/nn:0;
+    if(nbByFlat){ var vf={}; Object.keys(pf).forEach(function(f){ var q=pf[f], v=0;     // a home's block = the series switched on, summed
+        if(nbShow.booked) v+=nbMode==='nights'?q.b:disp(q.earn,m); if(nbShow.blocked) v+=nbMode==='nights'?q.bl:disp(q.bl*adr,m); if(nbShow.free) v+=nbMode==='nights'?q.fr:disp(q.fr*adr,m);
+        vf[f]=v; }); return {m:m,vals:vf}; }
+    if(nbMode==='nights') return {m:m,vals:{booked:b,blocked:bl,free:fr}};
     return {m:m,vals:{booked:disp(earn,m),blocked:disp(bl*adr,m),free:disp(fr*adr,m)}};
   });
   var NBall=[{k:'booked',lbl:'booked',color:'var(--g)'},{k:'blocked',lbl:'blocked',color:'#b58a5a'},{k:'free',lbl:'free',color:'#d9c7c7'}];
-  var NB=NBall.filter(function(se){return nbShow[se.k];});
+  var NB=nbByFlat ? scopeFlats().map(function(f){ return {k:f,lbl:f==='Zayed 2000'?'Zayed':f,color:FLAT_COLORS[f]||'#999'}; })
+                  : NBall.filter(function(se){return nbShow[se.k];});
   // the series toggles double as the legend — colour chip + name, dimmed when off
   var chips='<div class="seg">'+NBall.map(function(se){
     return '<button class="'+(nbShow[se.k]?'on':'')+'" onclick="setNbShow(\''+se.k+'\')" style="'+(nbShow[se.k]?'background:'+se.color+';color:#fff;':'')+'">'+se.lbl+'</button>'; }).join('')+'</div>';
   return '<div class="card"><h3>Booked · blocked · free nights<span class="rt">'+(nbMode==='nights'?'nights':'value '+CUR+' — free/blocked at that month\'s ADR')+'</span></h3>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
-    '<div class="rowbtns">'+seg([['nights','Nights'],['value','Value']],nbMode,'setNb')+chips+timeSeg('nb')+'</div>'+
+    '<div class="rowbtns">'+seg([['nights','Nights'],['value','Value']],nbMode,'setNb')+chips+
+      '<div class="seg"><button class="'+(nbByFlat?'on':'')+'" onclick="setNbFlat()">'+(nbByFlat?'▦ stacked by home':'▦ stack by home')+'</button></div>'+timeSeg('nb')+'</div>'+
     stackedChart(rows,NB,{unit:nbMode==='value'?curU():'',drill:'stays'})+
+    (nbByFlat?'<div class="legend">'+NB.map(function(se){ return '<span><i style="background:'+se.color+'"></i>'+esc(se.k)+'</span>'; }).join('')+' · each home\'s block = the '+
+      NBall.filter(function(se){ return nbShow[se.k]; }).map(function(se){ return se.lbl; }).join(' + ')+' nights'+(nbMode==='value'?' (value)':'')+' · switch booked / blocked / free above</div>':'')+
     bookingsCard('stays')+'</div>';
 }
 /* 5 · Nights · stays · dry-clean submissions (grouped) */
@@ -970,17 +981,26 @@ function secPay(){
   var accSet={}; scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; if(!channelGroup(s.portal).inRev)return; accSet[accountOf(s)]=1; }); });
   if(payMode==='net') accSet['Instapay']=1;            // the costs account exists in net mode even with no Instapay guest
   var accs=Object.keys(accSet);
-  var PC={HSBC:'#4a7fb5',Stripe:'#6f9a76',Instapay:'#d9a441',Cash:'#c98f8f','(unconfirmed)':'#bbb'};
+  var OTH='Rent & other (not a booking)';
+  var PC={HSBC:'#4a7fb5',Stripe:'#6f9a76',Instapay:'#d9a441',Cash:'#c98f8f',Mercury:'#2f8f8f','(unconfirmed)':'#bbb'};   // Mercury teal — it read like Cash (2026-11-03)
+  PC[OTH]='#7d6b5d';
   var rows=ms.map(function(m){ var vals={}; accs.forEach(function(a){vals[a]=0;}); scopeStayFlats().forEach(function(f){ rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s)||!channelGroup(s.portal).inRev)return;
     if(payMode==='nights'){ vals[accountOf(s)]+=overlapNights(s,m); } else { vals[accountOf(s)]+=disp(earnedIn(s,m),m); } }); });
-    if(payMode==='net'){ var mOut=0; scopeStayFlats().forEach(function(f){ mOut+=disp(costsUSD(f,m).total,m); }); vals['Instapay']=(vals['Instapay']||0)-mOut; }
+    /* NET = THE P&L NET (Sarah 2026-11-03: it did not match Internal attribution). The P&L's net also holds 17B's long-let rent and any revenue
+       that is not a booking (other revenue, review/refund adjustments); those now sit in their own block, so the bar total = Σ the homes'
+       P&L net = Khaled + Sarah in Internal attribution, month by month. */
+    if(payMode==='net'){ var mOut=0, oth=0; scopeFlats().forEach(function(f){ var p=pnlOf(f,m); if(!p) return; var c=costsUSD(f,m).total, e=0;
+        if(!isLongLet(f)) rawStays().forEach(function(s){ if(s.flat===f&&isLive(s)&&channelGroup(s.portal).inRev) e+=earnedIn(s,m); });
+        mOut+=c; oth+=(+p.net||0)-(e-c); });
+      vals['Instapay']=(vals['Instapay']||0)-disp(mOut,m); if(Math.abs(oth)>0.005) vals[OTH]=disp(oth,m); }
     return {m:m,vals:vals}; });
+  if(payMode==='net'&&rows.some(function(r){ return r.vals[OTH]; })) accs.push(OTH);
   return '<div class="card"><h3>Money by account<span class="rt">'+(payMode==='money'?'revenue '+CUR:(payMode==='net'?'net profit '+CUR:'nights'))+' by account · Test excluded</span></h3>'+
     '<div class="rowbtns">'+scopeSeg()+curSeg()+'</div>'+
     '<div class="rowbtns">'+seg([['money','Revenue'],['nights','Nights'],['net','Net profit']],payMode,'setPay')+timeSeg('pay')+'</div>'+
     stackedChart(rows,accs.map(function(a){return {k:a,color:PC[a]||'#9aa7b5'};}),{unit:payMode==='nights'?'':curU()})+
     '<div class="legend">'+accs.map(function(a){return '<span><i style="background:'+(PC[a]||'#9aa7b5')+'"></i>'+esc(a)+'</span>';}).join('')+'</div>'+
-    (payMode==='net'?'<div class="legend">net = each account\'s money in · ALL money out (the scoped flats\' costs) leaves from Instapay — the bar total is the month\'s net profit</div>':'')+'</div>';
+    (payMode==='net'?'<div class="legend">net = each account\'s money in · ALL money out (the scoped flats\' costs) leaves from Instapay · 17B\'s rent and revenue that is not a booking sit in their own block — the bar total is the month\'s P&L net profit, the same as Internal attribution</div>':'')+'</div>';
 }
 /* 8 · ADR per channel per flat (table) */
 function secAdrTable(){
