@@ -187,7 +187,7 @@ td.damt{font-size:11px;color:#5a4d4d}
 
 var DATA=null, VIEW='review', CUR='USD', FLAT=null, MONTH=null, OPEN={};
 /* P&L cost key -> the category string used in the tx feed */
-var CATMAP={'electricity':'__electricity','subscription':'__subscription','laundry':'laundry','supplies':'supplies','cleaning-labor':'cleaning-labor','opsmanager':'opsManager','services-contingency':'Services','maintenance':'Maintenance','tv-phone-internet':'TV/Phone/Internet','water':'Water','heat-gas':'Heat/gas','rent':'rent','compound-maintenance':'compound maintenance','contingency':'contingency','gifts-contingency':'Gifts','general-contingency':'General'};
+var CATMAP={'electricity':'__electricity','subscription':'__subscription','laundry':'laundry','supplies':'supplies','cleaning-labor':'cleaning-labor','opsmanager':'opsManager','services-contingency':'Services','furniture':'Furniture','maintenance':'Maintenance','tv-phone-internet':'TV/Phone/Internet','water':'Water','heat-gas':'Heat/gas','rent':'rent','compound-maintenance':'compound maintenance','contingency':'contingency','gifts-contingency':'Gifts','general-contingency':'General'};
 function esc(s){return (s||'').toString().replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
 function dday(d){d=(d||'').toString();var m=d.match(/^\d{4}-\d{2}-(\d{2})/);return m?m[1]:'';}
 function trunc(s,n){s=(s||'').toString();return s.length>n?s.slice(0,n-1)+'…':s;}
