@@ -56,6 +56,8 @@ table.d tr.net td{font-weight:700;border-top:2px solid var(--ink);border-bottom:
 tr.cat td:first-child{padding-left:16px}
 .btn{font-family:inherit;font-size:11.5px;font-weight:600;border:1px solid var(--line);background:var(--white);color:var(--ink);border-radius:8px;padding:6px 10px;cursor:pointer}
 .btn:hover{background:#faf5f5}
+.drill tr.hasit{cursor:pointer}.drill tr.hasit td:first-child:before{content:'▸ ';color:var(--soft)}.drill tr.hasit.op td:first-child:before{content:'▾ '}
+.drill tr.it td{font-size:10px;color:#7a6b6b;padding:1px 7px}.drill tr.it td:nth-child(2){padding-left:18px}
 .drill tr.foot2 td{font-weight:700;border-top:1px solid var(--line);padding-bottom:4px}
 .note{font-size:10px;color:var(--soft);line-height:1.55;margin:7px 0 0}
 .muted{color:var(--soft);font-size:11px}
@@ -414,11 +416,16 @@ function drillBlock(key){
     var sum=list.reduce(function(a,t){ return a+(conv(t.amount,t.currency,rr)||0); },0);
     out+='<tr class="foot"><td colspan="3">'+monLabel(ym).toUpperCase()+' — '+
          (list.length===1 ? fmt(sum) : list.length+' entries · '+fmt(sum/list.length)+' each → '+fmt(sum))+'</td></tr>';
-    list.forEach(function(t){
+    list.forEach(function(t,ix){
+      var ik='it|'+key+'|'+ym+'|'+ix, has=!!(t.items&&t.items.length), op=has&&!!OPEN[ik];
       var big=((t.currency==='USD')?t.amount:(rr?t.amount/rateFor(rr):0))>100;
-      out+='<tr><td style="white-space:nowrap">'+dayLabel(t.date)+'</td><td>'+esc(shortDesc(t.desc))+
+      out+='<tr'+(has?' class="hasit'+(op?' op':'')+'" onclick="toggleDrill(\''+ik+'\')" title="'+(op?'Hide':'Show')+' the items"':'')+'><td style="white-space:nowrap">'+dayLabel(t.date)+'</td><td>'+esc(shortDesc(t.desc))+(has?' <span style="color:var(--soft);font-size:9.5px">· '+t.items.length+' item'+(t.items.length===1?'':'s')+'</span>':'')+
            (big?' <a href="#" style="color:var(--red);font-size:9.5px;white-space:nowrap" onclick="event.stopPropagation();askDoc(\''+encodeURIComponent('Please send the supporting document for the '+monLabel(ym)+' entry: '+dayLabel(t.date)+' · '+shortDesc(t.desc)+' · '+fmt(conv(t.amount,t.currency,rr))+' '+CUR)+'\');return false">request document</a>':'')+
            '</td><td style="text-align:right">'+fmt(conv(t.amount,t.currency,rr))+'</td></tr>';
+      /* the items under the entry (2026-11-06): name · qty × unit price, value — they add up to the entry */
+      if(op) t.items.forEach(function(x){
+        out+='<tr class="it"><td></td><td>'+esc(x[0])+' · '+x[1]+' × '+fmt(conv(x[2],t.currency,rr))+'</td><td style="text-align:right">'+fmt(conv(x[3],t.currency,rr))+'</td></tr>';
+      });
     });
   });
   return out ? '<tr><td colspan="3" style="padding:2px 4px"><div class="drill"><table>'+out+'</table></div></td></tr>' : '';
