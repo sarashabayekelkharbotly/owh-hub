@@ -262,7 +262,7 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
   bs.forEach(function(s){
     var w=(s.allIn||0)-(s.other||0), g=(s.gross>0&&s.gross>=w)?s.gross:w;
     w3.addRow([s.guest||'',s.portal||'Direct',s.status||'',xlDate(s.booked),xlDate(s.checkIn),xlDate(s.checkOut),s.nights||null,r2d(g),r2d(g-w),r2d(w),r2d(s.other||0),
-      s.review==='owh'?'OWH-funded (outside revenue)':(s.review==='owner'?'owner-funded (outside revenue)':''),s.review==='owner'?r2d(s.reviewGross||0):null]); });
+      s.review==='owh'?'OWH-funded (outside revenue)':(s.review==='owner'?'owner-funded (outside revenue)':''),s.review==='owner'?r2d(s.reviewNet||0):null]); });
   var h3=w3.getRow(1); h3.height=34; h3.eachCell(function(c,n){ c.font={name:'Calibri',size:10,bold:true,color:{argb:'FFFFFFFF'}}; c.fill=fill('FF4A7FB5'); c.alignment={vertical:'middle',wrapText:true,horizontal:(n>=7&&n!==12)?'right':'left'}; });
   for(var r3=2;r3<=bs.length+1;r3++){ var b=w3.getRow(r3), flagged=!!b.getCell(12).value;
     [4,5,6].forEach(function(n){ b.getCell(n).numFmt='dd mmm yyyy'; b.getCell(n).alignment={horizontal:'left'}; });

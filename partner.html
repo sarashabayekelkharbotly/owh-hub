@@ -551,7 +551,7 @@ function render(){
       var rv=s.review||'';
       if(rv) anyReview=true;
       var tag=rv==='owh'?'<br><span class="pill pa">review booking · OWH-funded · no revenue</span>'
-             :(rv==='owner'?'<br><span class="pill pa">review booking · you paid · '+(s.reviewGross>0?sym()+fmt(conv(s.reviewGross,'USD',r))+' returned to you':'returned to you')+'</span>':'');
+             :(rv==='owner'?'<br><span class="pill pa">review booking · you paid · '+(s.reviewNet>0?sym()+fmt(conv(s.reviewNet,'USD',r))+' returned to you (after platform fees)':'returned to you')+'</span>':'');
       vb+='<tr><td>'+esc(s.guest||'—')+tag+'</td><td style="white-space:nowrap">'+dayLabel(s.checkIn)+' → '+dayLabel(s.checkOut)+'</td>'+
          '<td class="c">'+nm+'</td><td style="white-space:nowrap"><span class="dot '+dotFor(s.portal)+'"></span>'+esc(s.portal||'Direct')+'</td>'+
          (rv?'<td class="r">—</td><td class="r">—</td><td class="r">—</td></tr>'
