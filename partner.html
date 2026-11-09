@@ -121,7 +121,7 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
 </nav>
 
 <script src="auth.js?v=c5d7281b"></script>
-<script src="partner-core.js?v=8"></script>
+<script src="partner-core.js?v=10"></script>
 <script>
 /* SCREEN 6 — Partner, this month. Built to the mock-up (OWH_final_2.html §6):
    4 KPIs · the month's stays · statement with this month beside last month · drill-down per cost line.
@@ -419,7 +419,7 @@ function amt(r,key){ if(!r) return null; var c=(r.costs||[]).filter(function(x){
 function curOf(r,key){ if(!r) return null; var c=(r.costs||[]).filter(function(x){return x.key===key;})[0]; return c?c.currency:null; }
 
 function txFor(ym,key){ var cat=CATMAP[key]; if(!cat) return [];
-  return (DATA.tx||[]).filter(function(t){ return t.flat===myFlat() && t.ym===ym && t.cat===cat; }); }
+  return (DATA.tx||[]).filter(function(t){ return t.flat===myFlat() && t.ym===ym && t.cat===cat && !t.setup; }); }   // set-up → the settlement (2026-11-09)
 function toggleDrill(k){ OPEN[k]=!OPEN[k]; render(); }
 function drillBlock(key){
   var out='', pm=prevMonth();
@@ -636,6 +636,14 @@ function render(){
       if(d.sub){ vb+='<tr><th colspan="2">'+d.sub+'</th></tr>'; return; }
       var v=d.get(cm), cls=(d.cls==='sub'?'subrow':(d.cls||'')), val=PLAIN[d.id]?pL(v):sL(v);
       if(d.id==='f_after') val=pL(v)+' of '+pL(cm.led.target);
+      if(d.id==='b_setup'&&cm.setup&&(cm.setup.items||[]).length){
+        var sit=cm.setup.items;
+        vb+='<tr class="drillable" onclick="toggleDrill(\'__setup\')"><td>'+d.label+' · '+sit.length+' item'+(sit.length===1?'':'s')+' '+(OPEN['__setup']?'▾':'▸')+'</td><td class="r">'+val+'</td></tr>';
+        if(OPEN['__setup']) vb+='<tr><td colspan="2" style="padding:2px 4px"><div class="drill"><table>'+sit.map(function(x){
+          return '<tr><td style="white-space:nowrap">'+dayLabel(x[0])+'</td><td>'+esc(shortDesc(x[1]))+' <span class="muted">· '+esc(LABEL[x[4]]||x[4])+'</span></td><td style="text-align:right">'+fmt(conv(x[2],x[3],cm.r))+'</td></tr>'; }).join('')+
+          '<tr class="foot2"><td colspan="2">Total set-up '+monShort(MONTH)+'</td><td style="text-align:right">'+fmt(conv(cm.setup.usd,'USD',cm.r))+'</td></tr></table></div></td></tr>';
+        return;
+      }
       if(d.id==='bal'){
         vb+='<tr class="net drillable" onclick="toggleDrill(\'__bal\')"><td>'+d.label+' '+(OPEN['__bal']?'▾':'▸')+'</td><td class="r">'+balWords(v,cm.r)+'</td></tr>';
         if(OPEN['__bal']) vb+='<tr><td colspan="2" style="padding:2px 4px"><div class="drill">'+balanceBreakdown(MONTH)+'</div></td></tr>';

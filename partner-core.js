@@ -74,24 +74,28 @@ var PC = (function () {
     });
     var E = r.revenue.earnings || 0, O = r.revenue.other || 0, T = r.revenue.total || 0;
     var fee = pv.managementFee || 0, ret = pv.reviewReturn || 0;                 // owner-funded review bookings, returned to her (outside revenue, no fee)
-    var res = (pv.netPayout != null ? pv.netPayout : r.net) + ret;
+    /* SET-UP (Sarah 2026-11-09): costs paid before the launch are not the month's — they go to the balance in the settlement (r.setup) */
+    var su = r.setup || null, suUsd = su ? (su.usd || 0) : 0;
+    var res = (pv.netPayout != null ? pv.netPayout : r.net) + ret + suUsd;
     var cost = {}, costNative = {};
     (r.costs || []).forEach(function (c) {
       if (c.key === 'subscription') return;                                    // OWH's own cost, never shown
       costNative[c.key] = { amt: c.amount, cur: c.currency };
-      cost[c.key] = c.amount ? (c.currency === 'USD' ? c.amount : c.amount / rate) : 0;
+      var amt = c.amount - ((su && su.byKey && su.byKey[c.key]) || 0); if (Math.abs(amt) < 0.005) amt = 0;
+      costNative[c.key] = { amt: amt, cur: c.currency };
+      cost[c.key] = amt ? (c.currency === 'USD' ? amt : amt / rate) : 0;
     });
     var all = monthsOf(D, f), i = all.indexOf(ym), pr = i > 0 ? recOf(D, f, all[i - 1]) : null, ppl = pr && pr.partnerLedger, pl = r.partnerLedger, led = null;
     if (pl) {
       var openBal = ppl ? ppl.balanceAfter : 0, prep = pl.prepay || 0;
-      led = { result: pl.monthResult, applied: r2(pl.balanceAfter - openBal - prep), retained: pl.floatRetained || 0, drawn: pl.floatDrawn || 0, payable: pl.payable || 0,
+      led = { result: pl.monthResult, setup: pl.setup || 0, applied: r2(pl.balanceAfter - openBal - prep + (pl.setup || 0)), retained: pl.floatRetained || 0, drawn: pl.floatDrawn || 0, payable: pl.payable || 0,
               openBal: openBal, prep: prep, balAfter: pl.balanceAfter, floatOpen: r2(pl.floatAfter - (pl.floatRetained || 0) + (pl.floatDrawn || 0)),
               floatAfter: pl.floatAfter, target: pl.floatTarget, paid: pl.paidToDate || 0, still: pl.outstanding || 0 };
     }
     return { ym: ym, r: r, rate: rate, status: r.status, closedAt: r.closedAt || null, pct: pv.managementFeePct || 0,
              k: { stays: done, turn: turnoversOf(D, f, ym), nights: nights, nightsAdr: nightsAdr, occ: nights / daysIn(ym), adr: nightsAdr ? E / nightsAdr : null },
              v: { G: G, F: G - N, adj: E - N, E: E, O: O, T: T, fee: fee, share: T - fee, ret: ret, res: res, costs: (T - fee) + ret - res },
-             cost: cost, costNative: costNative, led: led };
+             cost: cost, costNative: costNative, led: led, setup: su };
   }
 
   /* every category the owner can be charged, zero ones included; anything new in the sheet still appears */
@@ -159,6 +163,8 @@ var PC = (function () {
       rows.push({ sub: '2 · Your balance with OWH (minus = owed to OWH)' });
       rows.push({ id: 'b_open', label: 'brought forward', t: 'm', get: L(function (l) { return l.openBal; }) });
       rows.push({ id: 'b_prep', label: 'your prepayments received', t: 'm', get: L(function (l) { return l.prep; }) });
+      if (any(function (m) { return m.led && m.led.setup > 0.005; }))
+        rows.push({ id: 'b_setup', label: 'set-up costs paid by OWH before the launch', t: 'm', get: L(function (l) { return l.setup ? -l.setup : null; }) });
       rows.push({ id: 'b_applied', label: 'from the month result', t: 'm', get: L(function (l) { return l.applied; }) });
       rows.push({ id: 'bal', label: 'Balance after the month', cls: 'net', t: 'm', get: L(function (l) { return l.balAfter; }) });
       rows.push({ sub: '3 · Security float (target ' + (ms.length && ms[ms.length - 1].led ? '$' + Math.round(ms[ms.length - 1].led.target) : '') + ')' });
@@ -281,13 +287,16 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
      against each month's result as the statement shows it. USD, the statement's basis; an EGP set-up converts at its month's rate.
      Used by the owner's Overview and by OWH's Statistics, so the two always agree. ---- */
   function investReturn(D, f) {
-    var su = D.meta && D.meta.partnerSetup && D.meta.partnerSetup[f]; if (!su || !(su.amount > 0)) return null;
-    var sm = String(su.date).slice(0, 7), fx = (D.meta && D.meta.fx) || {}, rate = (fx.byMonth && fx.byMonth[sm]) || fx.current || 1;
-    var setupUsd = su.currency === 'USD' ? su.amount : su.amount / rate, cm = (D.meta && D.meta.currentMonth) || '9999-99';
-    var ms = monthsOf(D, f).filter(function (m) { return m <= cm; });
-    var first = ms.length && ms[0] < sm ? ms[0] : sm, rows = [], acc = -setupUsd, back = null, flows = [];
+    /* her investment = what she paid herself for the set-up (Settings → PARTNER_SETUP) + the set-up costs OWH paid before the launch
+       (2026-11-09: "set-up counts as her investment" — repaid through her balance, so each is an outflow in the month it was paid) */
+    var su = D.meta && D.meta.partnerSetup && D.meta.partnerSetup[f], fx = (D.meta && D.meta.fx) || {}, cm = (D.meta && D.meta.currentMonth) || '9999-99';
+    var ms = monthsOf(D, f).filter(function (m) { return m <= cm; }), own = su && su.amount > 0, sm = own ? String(su.date).slice(0, 7) : null;
+    var rate = own ? ((fx.byMonth && fx.byMonth[sm]) || fx.current || 1) : null, ownUsd = own ? (su.currency === 'USD' ? su.amount : su.amount / rate) : 0;
+    var owhSet = {}, owhUsd = 0; ms.forEach(function (m) { var rr = recOf(D, f, m); if (rr && rr.setup && rr.setup.usd > 0) { owhSet[m] = rr.setup.usd; owhUsd += rr.setup.usd; } });
+    var setupUsd = r2(ownUsd + owhUsd); if (!(setupUsd > 0)) return null;
+    var setM = Object.keys(owhSet).sort(), first = [ms[0], sm, setM[0]].filter(Boolean).sort()[0], rows = [], acc = -setupUsd, back = null, flows = [];
     var idx = function (m) { return (+m.slice(0, 4) - +first.slice(0, 4)) * 12 + (+m.slice(5, 7) - +first.slice(5, 7)); };
-    flows[idx(sm)] = -setupUsd;
+    if (own) flows[idx(sm)] = -ownUsd; setM.forEach(function (m) { flows[idx(m)] = (flows[idx(m)] || 0) - owhSet[m]; });
     ms.forEach(function (m) {
       var md = model(D, f, m); if (!md) return; var res = r2(md.v.res || 0);
       acc = r2(acc + res); flows[idx(m)] = (flows[idx(m)] || 0) + res;
@@ -300,7 +309,8 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
       var npv = function (r) { var v = 0; for (var k = 0; k < flows.length; k++) v += flows[k] / Math.pow(1 + r, k); return v; };
       var lo = -0.99, hi = 1; if (npv(lo) * npv(hi) < 0) { for (var it = 0; it < 200; it++) { var mid = (lo + hi) / 2; if (npv(lo) * npv(mid) <= 0) hi = mid; else lo = mid; } irr = Math.pow(1 + (lo + hi) / 2, 12) - 1; }
     }
-    return { amount: su.amount, currency: su.currency, date: su.date, rate: su.currency === 'USD' ? null : rate, setupUsd: r2(setupUsd),
+    return { amount: own ? su.amount : r2(setupUsd), currency: own ? su.currency : 'USD', date: own ? su.date : (setM[0] || '') + '-01', rate: own && su.currency !== 'USD' ? rate : null, setupUsd: r2(setupUsd),
+             ownUsd: r2(ownUsd), owhSetupUsd: r2(owhUsd),
              rows: rows, got: got, acc: acc, recovered: setupUsd ? got / setupUsd : 0, payback: back, irr: irr };
   }
   function investCard(x, opts) {
@@ -309,8 +319,11 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
     if (!x) return '';
     var lastRow = x.rows.length ? x.rows[x.rows.length - 1] : null, pct = Math.max(0, Math.min(1, x.recovered));
     var h = '<div class="card"><h3>' + (you ? 'Your investment and return' : 'The owner\'s investment and return') + '</h3>' +
-      '<table class="d"><tr><td>Set-up ' + (you ? 'you paid' : 'the owner paid') + ' · ' + monLabelP(String(x.date).slice(0, 7)) + '</td><td class="r">' + fm(-x.setupUsd) + '</td></tr>' +
-      (x.currency === 'EGP' ? '<tr class="subrow"><td>EGP ' + Math.round(x.amount).toLocaleString('en-US') + ' at ' + x.rate + ' EGP per USD</td><td class="r"></td></tr>' : '') +
+      '<table class="d">' +
+      (x.ownUsd > 0 ? '<tr><td>Set-up ' + (you ? 'you paid yourself' : 'the owner paid') + ' · ' + monLabelP(String(x.date).slice(0, 7)) + '</td><td class="r">' + fm(-x.ownUsd) + '</td></tr>' +
+        (x.currency === 'EGP' ? '<tr class="subrow"><td>EGP ' + Math.round(x.amount).toLocaleString('en-US') + ' at ' + x.rate + ' EGP per USD</td><td class="r"></td></tr>' : '') : '') +
+      (x.owhSetupUsd > 0 ? '<tr><td>Set-up OWH paid before the launch · charged to ' + (you ? 'your' : 'the owner\'s') + ' balance</td><td class="r">' + fm(-x.owhSetupUsd) + '</td></tr>' : '') +
+      (x.ownUsd > 0 && x.owhSetupUsd > 0 ? '<tr class="tot"><td>Total set-up</td><td class="r">' + fm(-x.setupUsd) + '</td></tr>' : '') +
       '<tr><td>Month results to date · ' + x.rows.length + ' month' + (x.rows.length === 1 ? '' : 's') + (lastRow && !lastRow.final ? ' (the last one in progress)' : '') + '</td><td class="r">' + fm(x.got) + '</td></tr>' +
       '<tr class="net"><td>Where ' + (you ? 'you stand' : 'the owner stands') + '</td><td class="r">' + fm(x.acc) + '</td></tr></table>' +
       '<div style="margin:9px 0 3px;height:9px;border-radius:5px;background:#f0e6e6;overflow:hidden"><div style="height:100%;width:' + Math.round(pct * 100) + '%;background:#3a7d4d"></div></div>' +
@@ -320,7 +333,7 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
       h += '<details style="margin-top:6px"><summary class="note" style="cursor:pointer">Month by month</summary><table class="d" style="font-size:11.5px"><tr><th>Month</th><th class="r">Month result</th><th class="r">Running total</th></tr>' +
         x.rows.map(function (r) { return '<tr><td>' + monLabelP(r.m) + (r.final ? '' : ' <span class="muted">· in progress</span>') + '</td><td class="r">' + fm(r.res) + '</td><td class="r">' + fm(r.acc) + '</td></tr>'; }).join('') + '</table></details>';
     }
-    h += '<p class="note" style="margin-top:6px">' + (you ? 'Your' : 'The owner\'s') + ' own set-up spend only, in USD (the statement\'s basis). Costs OWH paid before the start are repaid from the month results (clause 5.3), so they are already counted there.</p></div>';
+    h += '<p class="note" style="margin-top:6px">' + (you ? 'Your' : 'The owner\'s') + ' set-up — what ' + (you ? 'you' : 'the owner') + ' paid directly and what OWH paid before the launch (repaid through the balance, clause 5.3) — in USD, the statement\'s basis. The month results exclude the set-up, so nothing is counted twice.</p></div>';
     return h;
   }
 

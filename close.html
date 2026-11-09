@@ -833,6 +833,7 @@ function renderReview(){
     rows+=sec('Owner settlement');
     rows+=r3('Management fee ('+Math.round(pl.feePct*100)+'%)',-pl.fee,'USD',null,'attr');
     rows+=r3('Month result (owner share − costs)',pl.monthResult,'USD',null,'attr');
+    if(pl.setup>0.005) rows+=r3('Set-up costs before the launch → owner balance',-pl.setup,'USD',null,'attr');   // out of the month result (2026-11-09)
     if(pl.prepay>0.005) rows+=r3('Owner prepayment received',pl.prepay,'USD',null,'attr');
     rows+=r3('Balance carried '+(pl.balanceAfter<-0.005?'(owed to manager)':pl.balanceAfter>0.005?'(owner funds held)':''),pl.balanceAfter,'USD',null,'attr');
     rows+=r3('Float · target '+fmt(pl.floatTarget)+(pl.floatRetained>0.005?' · retained '+fmt(pl.floatRetained):'')+(pl.floatDrawn>0.005?' · drawn '+fmt(pl.floatDrawn):''),pl.floatAfter,'USD',null,'attr');
