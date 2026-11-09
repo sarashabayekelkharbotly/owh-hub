@@ -611,6 +611,28 @@ function render(){
     if(d.cat && OPEN[d.key]) vb+=drillBlock(d.key);
   });
   vb+='</table>';
+  /* SET-UP PAID BY OWH BEFORE THE LAUNCH (2026-11-09: "they need the detailed drill downs, not the lump sum by category").
+     Out of the month result, charged to her balance in the settlement — here each category opens to its items, like the costs above. */
+  (function(){
+    var sc=cm.setup, sp=cp&&cp.setup; if(!(sc&&sc.items&&sc.items.length)&&!(sp&&sp.items&&sp.items.length)) return;
+    var keys=[]; [sc,sp].forEach(function(s){ (s&&s.items||[]).forEach(function(x){ if(keys.indexOf(x[4])<0) keys.push(x[4]); }); });
+    keys.sort(function(a,b){ var ia=ORDER.indexOf(a), ib=ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); });
+    var amtOf=function(s,m,k){ if(!s) return null; var v=0, any=false; (s.items||[]).forEach(function(x){ if(x[4]===k){ v+=conv(x[2],x[3],m.r)||0; any=true; } }); return any?v:null; };
+    var cell=function(v){ return v==null?'—':fmt(-v); };
+    vb+='<h3 style="margin:12px 0 4px">Set-up paid by OWH before the launch</h3><table class="d"><tr><th>Category</th><th class="r">'+monShort(MONTH)+'</th>'+(pm?'<th class="r">'+monShort(pm)+'</th>':'')+'</tr>';
+    keys.forEach(function(k){
+      var ok='su:'+k, op=!!OPEN[ok];
+      vb+='<tr class="cat drillable" onclick="toggleDrill(\''+ok+'\')"><td>'+esc(LABEL[k]||k)+' '+(op?'▾':'▸')+'</td><td class="r">'+cell(amtOf(sc,cm,k))+'</td>'+(pm?'<td class="r">'+cell(amtOf(sp,cp,k))+'</td>':'')+'</tr>';
+      if(op){ var out='';
+        [[sc,cm,MONTH],[sp,cp,pm]].forEach(function(z){ var s=z[0], m=z[1]; if(!s||!m) return; var its=(s.items||[]).filter(function(x){ return x[4]===k; }); if(!its.length) return;
+          var tot=its.reduce(function(a,x){ return a+(conv(x[2],x[3],m.r)||0); },0);
+          out+='<tr class="foot"><td colspan="3">'+monLabel(z[2]).toUpperCase()+' — '+(its.length===1?fmt(tot):its.length+' entries → '+fmt(tot))+'</td></tr>';
+          its.forEach(function(x){ out+='<tr><td style="white-space:nowrap">'+dayLabel(x[0])+'</td><td>'+esc(shortDesc(x[1]))+'</td><td style="text-align:right">'+fmt(conv(x[2],x[3],m.r))+'</td></tr>'; }); });
+        vb+='<tr><td colspan="'+ncol+'" style="padding:2px 4px"><div class="drill"><table>'+out+'</table></div></td></tr>'; }
+    });
+    vb+='<tr class="tot"><td>Total set-up — charged to your balance</td><td class="r">'+cell(sc?conv(sc.usd,'USD',cm.r):null)+'</td>'+(pm?'<td class="r">'+cell(sp?conv(sp.usd,'USD',cp.r):null)+'</td>':'')+'</tr></table>';
+    vb+='<p class="note" style="margin-top:4px">Costs paid before the commencement date are set-up, not the month\'s costs: they are not in the month result above, but charged to your balance with OWH in the Settlement, and they count as your investment.</p>';
+  })();
 
 
       vb+='<p class="note">Tap a cost category to see what it is made of — date, description, amount. '+
