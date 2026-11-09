@@ -421,6 +421,15 @@ function curOf(r,key){ if(!r) return null; var c=(r.costs||[]).filter(function(x
 function txFor(ym,key){ var cat=CATMAP[key]; if(!cat) return [];
   return (DATA.tx||[]).filter(function(t){ return t.flat===myFlat() && t.ym===ym && t.cat===cat && !t.setup; }); }   // set-up → the settlement (2026-11-09)
 function toggleDrill(k){ OPEN[k]=!OPEN[k]; render(); }
+/* a set-up item row; x = [date, desc, amount, currency, key, items|null]. With items it opens like the cost entries do (2026-11-09) */
+function suItemRow(x, ik, rec, showCat){
+  var has=!!(x[5]&&x[5].length), op=has&&!!OPEN[ik];
+  var h='<tr'+(has?' class="hasit'+(op?' op':'')+'" onclick="event.stopPropagation();toggleDrill(\''+ik+'\')"':'')+'><td style="white-space:nowrap">'+dayLabel(x[0])+'</td><td>'+esc(shortDesc(x[1]))+
+        (showCat?' <span class="muted">· '+esc(LABEL[x[4]]||x[4])+'</span>':'')+(has?' <span style="color:var(--soft);font-size:9.5px">· '+x[5].length+' item'+(x[5].length===1?'':'s')+'</span>':'')+
+        '</td><td style="text-align:right">'+fmt(conv(x[2],x[3],rec))+'</td></tr>';
+  if(op) x[5].forEach(function(y){ h+='<tr class="it"><td></td><td>'+esc(y[0])+' · '+y[1]+' × '+fmt(conv(y[2],x[3],rec))+'</td><td style="text-align:right">'+fmt(conv(y[3],x[3],rec))+'</td></tr>'; });
+  return h;
+}
 function drillBlock(key){
   var out='', pm=prevMonth();
   [[MONTH,'THIS MONTH'],[pm,'PREVIOUS MONTH']].forEach(function(pair){
@@ -627,7 +636,7 @@ function render(){
         [[sc,cm,MONTH],[sp,cp,pm]].forEach(function(z){ var s=z[0], m=z[1]; if(!s||!m) return; var its=(s.items||[]).filter(function(x){ return x[4]===k; }); if(!its.length) return;
           var tot=its.reduce(function(a,x){ return a+(conv(x[2],x[3],m.r)||0); },0);
           out+='<tr class="foot"><td colspan="3">'+monLabel(z[2]).toUpperCase()+' — '+(its.length===1?fmt(tot):its.length+' entries → '+fmt(tot))+'</td></tr>';
-          its.forEach(function(x){ out+='<tr><td style="white-space:nowrap">'+dayLabel(x[0])+'</td><td>'+esc(shortDesc(x[1]))+'</td><td style="text-align:right">'+fmt(conv(x[2],x[3],m.r))+'</td></tr>'; }); });
+          its.forEach(function(x,ix){ out+=suItemRow(x,'sui|'+k+'|'+z[2]+'|'+ix,m.r,false); }); });
         vb+='<tr><td colspan="'+ncol+'" style="padding:2px 4px"><div class="drill"><table>'+out+'</table></div></td></tr>'; }
     });
     vb+='<tr class="tot"><td>Total set-up — charged to your balance</td><td class="r">'+cell(sc?conv(sc.usd,'USD',cm.r):null)+'</td>'+(pm?'<td class="r">'+cell(sp?conv(sp.usd,'USD',cp.r):null)+'</td>':'')+'</tr></table>';
@@ -661,8 +670,8 @@ function render(){
       if(d.id==='b_setup'&&cm.setup&&(cm.setup.items||[]).length){
         var sit=cm.setup.items;
         vb+='<tr class="drillable" onclick="toggleDrill(\'__setup\')"><td>'+d.label+' · '+sit.length+' item'+(sit.length===1?'':'s')+' '+(OPEN['__setup']?'▾':'▸')+'</td><td class="r">'+val+'</td></tr>';
-        if(OPEN['__setup']) vb+='<tr><td colspan="2" style="padding:2px 4px"><div class="drill"><table>'+sit.map(function(x){
-          return '<tr><td style="white-space:nowrap">'+dayLabel(x[0])+'</td><td>'+esc(shortDesc(x[1]))+' <span class="muted">· '+esc(LABEL[x[4]]||x[4])+'</span></td><td style="text-align:right">'+fmt(conv(x[2],x[3],cm.r))+'</td></tr>'; }).join('')+
+        if(OPEN['__setup']) vb+='<tr><td colspan="2" style="padding:2px 4px"><div class="drill"><table>'+sit.map(function(x,ix){
+          return suItemRow(x,'sus|'+MONTH+'|'+ix,cm.r,true); }).join('')+
           '<tr class="foot2"><td colspan="2">Total set-up '+monShort(MONTH)+'</td><td style="text-align:right">'+fmt(conv(cm.setup.usd,'USD',cm.r))+'</td></tr></table></div></td></tr>';
         return;
       }
