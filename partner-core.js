@@ -67,10 +67,19 @@ var PC = (function () {
     var r = recOf(D, f, ym); if (!r) return null;
     var rate = rateOf(D, r), pv = r.partnerView || {};
     var st = staysIn(D, f, ym), G = 0, N = 0, nights = 0, nightsAdr = 0, done = 0;
+    /* NIGHTS AND OCCUPANCY COUNT FROM THE LAUNCH (Sarah 2026-11-16, VW1 launch 15 Nov): nights before the commencement date are not
+       operating nights — the launch month's occupancy is nights ÷ the days from the launch to the month end; months before it have none.
+       The money is untouched (revenue follows its own rules). */
+    var L = String((D.meta && D.meta.commencement && D.meta.commencement[f]) || '').slice(0, 10), Ld = /^\d{4}-\d{2}-\d{2}$/.test(L) ? new Date(L + 'T00:00:00') : null;
+    var lo0 = new Date(ym + '-01T00:00:00'), hi0 = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 1);
+    var avail = !Ld || Ld <= lo0 ? daysIn(ym) : (Ld >= hi0 ? 0 : Math.round((hi0 - Ld) / 86400000));
+    var opN = function (s) { if (!Ld || Ld <= lo0) return nightsOf(s, ym); if (Ld >= hi0) return 0;
+      var ci = new Date(s.checkIn.slice(0, 10) + 'T00:00:00'), co = new Date(s.checkOut.slice(0, 10) + 'T00:00:00'), n = 0;
+      for (var d = new Date(Math.max(ci, Ld)); d < co && d < hi0; d.setDate(d.getDate() + 1)) n++; return n; };
     st.forEach(function (s) {
-      var p = parts(s, ym), n = nightsOf(s, ym);
+      var p = parts(s, ym), n = opN(s);
       G += p.gross; N += p.net; nights += n; if (!s.review) nightsAdr += n;
-      if ((s.checkOut || '').slice(0, 7) === ym) done++;
+      if ((s.checkOut || '').slice(0, 7) === ym && (!Ld || new Date(s.checkOut.slice(0, 10) + 'T00:00:00') > Ld)) done++;
     });
     var E = r.revenue.earnings || 0, O = r.revenue.other || 0, T = r.revenue.total || 0;
     var fee = pv.managementFee || 0, ret = pv.reviewReturn || 0;                 // owner-funded review bookings, returned to her (outside revenue, no fee)
@@ -93,7 +102,7 @@ var PC = (function () {
               floatAfter: pl.floatAfter, target: pl.floatTarget, paid: pl.paidToDate || 0, still: pl.outstanding || 0 };
     }
     return { ym: ym, r: r, rate: rate, status: r.status, closedAt: r.closedAt || null, pct: pv.managementFeePct || 0,
-             k: { stays: done, turn: turnoversOf(D, f, ym), nights: nights, nightsAdr: nightsAdr, occ: nights / daysIn(ym), adr: nightsAdr ? E / nightsAdr : null },
+             k: { stays: done, turn: turnoversOf(D, f, ym), nights: nights, nightsAdr: nightsAdr, occ: avail ? nights / avail : 0, availDays: avail, adr: nightsAdr ? E / nightsAdr : null },
              v: { G: G, F: G - N, adj: E - N, E: E, O: O, T: T, fee: fee, share: T - fee, ret: ret, res: res, costs: (T - fee) + ret - res },
              cost: cost, costNative: costNative, led: led, setup: su };
   }
