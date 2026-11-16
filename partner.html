@@ -276,7 +276,9 @@ function turnoversIn(ym){ var m=PC.model(DATA,myFlat(),ym); return m&&m.k.turn!=
 function budgetFor(ym){
   var r=recFor(ym); if(!r) return null;
   var tn=turnoversIn(ym), ceil=45*tn+60, spent=0;
-  (r.costs||[]).forEach(function(c){ if(!c.amount||c.key==='furniture') return; spent+=(c.currency==='USD')?c.amount:c.amount/rateFor(r); });
+  /* from the launch (2026-11-16): turnovers on/after the commencement date (server), and the statement's operating costs — set-up excluded */
+  var su=(r.setup&&r.setup.byKey)||{};
+  (r.costs||[]).forEach(function(c){ var a=(c.amount||0)-(su[c.key]||0); if(!(Math.abs(a)>0.005)||c.key==='furniture') return; spent+=(c.currency==='USD')?a:a/rateFor(r); });
   return { r:r, tn:tn, ceil:ceil, spent:spent, left:ceil-spent };
 }
 /* ---- publication and objection (clauses 8.2.2, 8.4): binding unless she objects within 7 Business Days of
