@@ -527,7 +527,7 @@ function secReturn(){
 function render(){
   if(!allMonths().length){ document.getElementById('app').innerHTML='<div class="card muted">No months yet.</div>'; return; }
   var h='<div class="scope" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+scopeSeg()+curSeg()+'</div>';
-  h+=secDelta()+secRevenue()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs()+secReturn()+'<div class="inv" id="invPartner"></div>'+secForecast();
+  h+=secDelta()+secRevenue()+secTarget()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs()+secReturn()+'<div class="inv" id="invPartner"></div>'+secForecast();
   document.getElementById('app').innerHTML=h;
   invPartnerFill(); fcFill();
 }
@@ -849,6 +849,48 @@ function secRevenue(){
     h+=lineChart(rows1,{color:col,unit:curU(),drill:'rev'});
   }
   return h+bookingsCard('rev')+'</div>';
+}
+/* 1b · REVENUE VS TARGET (Sarah 2026-11-16: "a graph of revenue vs target for all flats, target A and target B").
+   The same figures as Today: actual = the month's earnings (a partner home at OUR 25% share), targets = the Targets tab's 30-day
+   A and B scaled to the month's days; VW1 = the partnership plan's revenue at 25%, from its launch (the launch month prorated to its
+   open days). Homes without a target (long-let) are left out. Portfolio scope = every home with a target, summed; a home scope = that home. */
+R.tgt = R.tgt || '12M';
+function setR_tgt(r){ R.tgt = r; render(); }
+function tgFlats(){ return allFlats().filter(function(f){ return !isLongLet(f) && ((D.targets && D.targets.byFlat && D.targets.byFlat[f]) || (f === 'VW1' && typeof VW1_PLAN !== 'undefined')); }); }
+function tgShare(f){ var p = partnerCfg(f); if (!p) return 1; var s = +p.sharePctOfTotalRev; return s > 0 && s < 1 ? s : 0.25; }
+function tgDays(ym){ return new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(); }
+function tgOpenDays(f, ym){   // days the home is open in the month (a partner home from its commencement date)
+  var dim = tgDays(ym); if (!partnerCfg(f)) return dim;
+  var c = ((D.meta && D.meta.commencement) || {})[f]; if (!c) return 0;
+  var k = String(c).slice(0, 10), ck = k.slice(0, 7); if (ck < ym) return dim; if (ck > ym) return 0;
+  return dim - (+k.slice(8, 10)) + 1;
+}
+function tgTarget(f, ym, which){   // USD
+  var t = D.targets && D.targets.byFlat && D.targets.byFlat[f];
+  if (t) return (+t[which] || 0) * tgDays(ym) / (D.targets.daysBasis || 30);
+  if (f === 'VW1' && typeof VW1_PLAN !== 'undefined') { var p = VW1_PLAN.month(ym); if (!p) return 0; return p.gross * tgShare(f) * tgOpenDays(f, ym) / tgDays(ym); }
+  return 0;
+}
+function tgActual(f, ym){ var p = pnlOf(f, ym); return p ? (p.revenue.earnings || 0) * tgShare(f) : 0; }
+function secTarget(){
+  var fl = scope === 'portfolio' ? tgFlats() : tgFlats().filter(function(f){ return f === scope; });
+  var h = '<div class="card"><h3>Revenue vs target<span class="rt">' + CUR + '</span></h3>' +
+    '<div class="rowbtns">' + scopeSeg() + curSeg() + '</div><div class="rowbtns">' + timeSeg('tgt') + '</div>';
+  if (!fl.length) return h + '<div class="muted">This home has no revenue target (a long-let home).</div></div>';
+  var cm = D.meta.currentMonth, ms = monthsInRange(R.tgt).filter(function(m){ return m <= cm; });
+  var rows = ms.map(function(m){ var a = 0, tA = 0, tB = 0;
+    fl.forEach(function(f){ a += tgActual(f, m); tA += tgTarget(f, m, 'A'); tB += tgTarget(f, m, 'B'); });
+    return { m: m, vals: { actual: disp(a, m), B: disp(tB, m), A: disp(tA, m) } }; });
+  h += lineMulti(rows, [{ k: 'actual', lbl: 'Revenue', color: 'var(--c-earn)' }, { k: 'B', lbl: 'Target B', color: '#d9a441' }, { k: 'A', lbl: 'Target A', color: '#6f9a76' }], {}) +
+    '<div class="legend"><span><i style="background:var(--c-earn)"></i>Revenue (earnings)</span><span><i style="background:#d9a441"></i>Target B</span><span><i style="background:#6f9a76"></i>Target A</span></div>';
+  var pct = function(a, t){ return t > 0.005 ? Math.round(100 * a / t) + '%' : '—'; }, sa = 0, sb = 0, sA = 0;
+  h += '<table class="t" style="margin-top:8px"><tr><th style="text-align:left">Month</th><th>Revenue</th><th>Target B</th><th>vs B</th><th>Target A</th><th>vs A</th></tr>';
+  rows.slice().reverse().forEach(function(r){ var v = r.vals; sa += v.actual; sb += v.B; sA += v.A;
+    h += '<tr><td style="text-align:left">' + r.m + (r.m === cm ? ' <span class="muted">· so far</span>' : '') + '</td><td>' + money(v.actual) + '</td><td>' + money(v.B) + '</td><td><b>' + pct(v.actual, v.B) + '</b></td><td>' + money(v.A) + '</td><td><b>' + pct(v.actual, v.A) + '</b></td></tr>'; });
+  h += '<tr style="font-weight:700;border-top:2px solid #333"><td style="text-align:left">Total</td><td>' + money(sa) + '</td><td>' + money(sb) + '</td><td>' + pct(sa, sb) + '</td><td>' + money(sA) + '</td><td>' + pct(sa, sA) + '</td></tr></table>';
+  h += '<div class="muted" style="margin-top:4px;font-size:11px">Targets: the Targets tab\'s 30-day A and B, scaled to each month\'s days. VW1: the partnership plan\'s revenue, counted from its launch' +
+       ' (the launch month prorated to its open days), and VW1 counts at our 25% share — its revenue and its target. The current month is to date. Homes: ' + fl.map(esc).join(', ') + '.</div>';
+  return h + '</div>';
 }
 /* 2 · What the money goes on — stacked per-month, category + month buttons + time */
 var COST_ORDER=[['rent','rent','#e0a5a5'],['cleaning','cleaning','#b8c9d9'],['supplies','supplies','#8ab48f'],['electricity','electricity','#d9a441'],['maintenance','maintenance','#c77b7b'],['compound-maintenance','compound maint.','#a05f5f'],['tv-phone-internet','internet','#9c86c4'],['laundry','laundry','#c98f8f'],['contingency','contingency','#b0a08e'],['opsmanager','opsMgr','#7d9c9c'],['water','water','#7fb2c9'],['heat-gas','heat/gas','#caa06a'],['subscription','subscription','#9aa7b5'],['furniture','furniture','#b58b6b'],['other','other','#c4bcbc']];
