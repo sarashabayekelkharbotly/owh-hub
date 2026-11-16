@@ -282,8 +282,8 @@ function lineChart(rows, opt){ opt=opt||{}; var col=opt.color||'var(--c-earn)', 
   var s=open_()+(opt.drill?drillRects(rows.map(function(r){return r.m;}), cx, step||W-2*PAD, opt.drill):'')+
         zeroLine(sc)+'<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2.2"/>';
   pts.forEach(function(p,i){ var v=rows[i].value, neg=v<0;
-    s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="2.3" fill="'+(neg?'var(--red)':col)+'"><title>'+rows[i].m+': '+(opt.unit||'')+fmt(v)+'</title></circle>'+
-    '<text x="'+p[0].toFixed(1)+'" y="'+(neg?(p[1]+10):(p[1]-5)).toFixed(1)+'" font-size="8" font-weight="700" fill="'+(neg?'var(--red)':'#333')+'" text-anchor="middle">'+(v<0?'-':'')+(opt.unit||'')+kf(Math.abs(v))+'</text>'; });
+    s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="2.3" fill="'+(neg?'var(--red)':col)+'"><title>'+rows[i].m+': '+(opt.unit||'')+fmt(v)+(opt.suf||'')+'</title></circle>'+
+    '<text x="'+p[0].toFixed(1)+'" y="'+(neg?(p[1]+10):(p[1]-5)).toFixed(1)+'" font-size="8" font-weight="700" fill="'+(neg?'var(--red)':'#333')+'" text-anchor="middle">'+(v<0?'-':'')+(opt.unit||'')+(opt.suf?Math.round(Math.abs(v)):kf(Math.abs(v)))+(opt.suf||'')+'</text>'; });   // suf: '%' for the % views (2026-11-16)
   s+=xlabels(rows.map(function(r){return r.m;}), cx);
   return s+'</svg>';
 }
@@ -856,6 +856,7 @@ function secRevenue(){
    open days). Homes without a target (long-let) are left out. Portfolio scope = every home with a target, summed; a home scope = that home. */
 R.tgt = R.tgt || '12M';
 function setR_tgt(r){ R.tgt = r; render(); }
+var tgView = 'value'; function setTgView(v){ tgView = v; render(); }
 function tgFlats(){ return allFlats().filter(function(f){ return !isLongLet(f) && ((D.targets && D.targets.byFlat && D.targets.byFlat[f]) || (f === 'VW1' && typeof VW1_PLAN !== 'undefined')); }); }
 function tgShare(f){ var p = partnerCfg(f); if (!p) return 1; var s = +p.sharePctOfTotalRev; return s > 0 && s < 1 ? s : 0.25; }
 function tgDays(ym){ return new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(); }
@@ -881,15 +882,19 @@ function secTarget(){
   var rows = ms.map(function(m){ var a = 0, tA = 0, tB = 0;
     fl.forEach(function(f){ a += tgActual(f, m); tA += tgTarget(f, m, 'A'); tB += tgTarget(f, m, 'B'); });
     return { m: m, vals: { actual: disp(a, m), B: disp(tB, m), A: disp(tA, m) } }; });
-  h += lineMulti(rows, [{ k: 'actual', lbl: 'Revenue', color: 'var(--c-earn)' }, { k: 'B', lbl: 'Target B', color: '#d9a441' }, { k: 'A', lbl: 'Target A', color: '#6f9a76' }], {}) +
-    '<div class="legend"><span><i style="background:var(--c-earn)"></i>Revenue (earnings)</span><span><i style="background:#d9a441"></i>Target B</span><span><i style="background:#6f9a76"></i>Target A</span></div>';
-  var pct = function(a, t){ return t > 0.005 ? Math.round(100 * a / t) + '%' : '—'; }, sa = 0, sb = 0, sA = 0;
-  h += '<table class="t" style="margin-top:8px"><tr><th style="text-align:left">Month</th><th>Revenue</th><th>Target B</th><th>vs B</th><th>Target A</th><th>vs A</th></tr>';
-  rows.slice().reverse().forEach(function(r){ var v = r.vals; sa += v.actual; sb += v.B; sA += v.A;
-    h += '<tr><td style="text-align:left">' + r.m + (r.m === cm ? ' <span class="muted">· so far</span>' : '') + '</td><td>' + money(v.actual) + '</td><td>' + money(v.B) + '</td><td><b>' + pct(v.actual, v.B) + '</b></td><td>' + money(v.A) + '</td><td><b>' + pct(v.actual, v.A) + '</b></td></tr>'; });
-  h += '<tr style="font-weight:700;border-top:2px solid #333"><td style="text-align:left">Total</td><td>' + money(sa) + '</td><td>' + money(sb) + '</td><td>' + pct(sa, sb) + '</td><td>' + money(sA) + '</td><td>' + pct(sa, sA) + '</td></tr></table>';
-  h += '<div class="muted" style="margin-top:4px;font-size:11px">Targets: the Targets tab\'s 30-day A and B, scaled to each month\'s days. VW1: the partnership plan\'s revenue, counted from its launch' +
-       ' (the launch month prorated to its open days), and VW1 counts at our 25% share — its revenue and its target. The current month is to date. Homes: ' + fl.map(esc).join(', ') + '.</div>';
+  /* the view (2026-11-16): the amounts, or the % achieved of Target A or Target B — no table */
+  h += '<div class="rowbtns">' + seg([['value', 'Amounts'], ['pctB', '% of Target B'], ['pctA', '% of Target A']], tgView, 'setTgView') + '</div>';
+  if (tgView === 'value') {
+    h += lineMulti(rows, [{ k: 'actual', lbl: 'Revenue', color: 'var(--c-earn)' }, { k: 'B', lbl: 'Target B', color: '#d9a441' }, { k: 'A', lbl: 'Target A', color: '#6f9a76' }], {}) +
+      '<div class="legend"><span><i style="background:var(--c-earn)"></i>Revenue (earnings)</span><span><i style="background:#d9a441"></i>Target B</span><span><i style="background:#6f9a76"></i>Target A</span></div>';
+  } else {
+    var kT = tgView === 'pctA' ? 'A' : 'B';
+    var prow = rows.map(function(r){ var t = r.vals[kT]; return { m: r.m, value: t > 0.005 ? Math.round(1000 * r.vals.actual / t) / 10 : 0 }; });
+    h += lineChart(prow, { color: kT === 'A' ? '#6f9a76' : '#d9a441', suf: '%' }) +
+      '<div class="legend"><span><i style="background:' + (kT === 'A' ? '#6f9a76' : '#d9a441') + '"></i>Revenue as % of Target ' + kT + ' (100% = on target)</span></div>';
+  }
+  h += '<div class="muted" style="margin-top:4px;font-size:11px">Targets: the Targets tab\'s 30-day A and B, scaled to each month\'s number of days (28–31). VW1: the partnership plan\'s revenue from its launch' +
+       ' (the launch month counts only its open days), VW1 at our 25% share — its revenue and its target. The current month counts every night already booked in it. Homes: ' + fl.map(esc).join(', ') + '.</div>';
   return h + '</div>';
 }
 /* 2 · What the money goes on — stacked per-month, category + month buttons + time */
