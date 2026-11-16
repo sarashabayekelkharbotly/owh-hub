@@ -85,7 +85,8 @@ var PC = (function () {
     var fee = pv.managementFee || 0, ret = pv.reviewReturn || 0;                 // owner-funded review bookings, returned to her (outside revenue, no fee)
     /* SET-UP (Sarah 2026-11-09): costs paid before the launch are not the month's — they go to the balance in the settlement (r.setup) */
     var su = r.setup || null, suUsd = su ? (su.usd || 0) : 0;
-    var res = (pv.netPayout != null ? pv.netPayout : r.net) + ret + suUsd;
+    /* the review-booking return is settled through the balance, not the month result (Sarah 2026-11-16) */
+    var res = (pv.netPayout != null ? pv.netPayout : r.net) + suUsd;
     var cost = {}, costNative = {};
     (r.costs || []).forEach(function (c) {
       if (c.key === 'subscription') return;                                    // OWH's own cost, never shown
@@ -97,13 +98,13 @@ var PC = (function () {
     var all = monthsOf(D, f), i = all.indexOf(ym), pr = i > 0 ? recOf(D, f, all[i - 1]) : null, ppl = pr && pr.partnerLedger, pl = r.partnerLedger, led = null;
     if (pl) {
       var openBal = ppl ? ppl.balanceAfter : 0, prep = pl.prepay || 0;
-      led = { result: pl.monthResult, setup: pl.setup || 0, applied: r2(pl.balanceAfter - openBal - prep + (pl.setup || 0)), retained: pl.floatRetained || 0, drawn: pl.floatDrawn || 0, payable: pl.payable || 0,
+      led = { result: pl.monthResult, setup: pl.setup || 0, rvBack: pl.reviewBack || 0, applied: r2(pl.balanceAfter - openBal - prep + (pl.setup || 0) - (pl.reviewBack || 0)), retained: pl.floatRetained || 0, drawn: pl.floatDrawn || 0, payable: pl.payable || 0,
               openBal: openBal, prep: prep, balAfter: pl.balanceAfter, floatOpen: r2(pl.floatAfter - (pl.floatRetained || 0) + (pl.floatDrawn || 0)),
               floatAfter: pl.floatAfter, target: pl.floatTarget, paid: pl.paidToDate || 0, still: pl.outstanding || 0 };
     }
     return { ym: ym, r: r, rate: rate, status: r.status, closedAt: r.closedAt || null, pct: pv.managementFeePct || 0,
              k: { stays: done, turn: turnoversOf(D, f, ym), nights: nights, nightsAdr: nightsAdr, occ: avail ? nights / avail : 0, availDays: avail, adr: nightsAdr ? E / nightsAdr : null },
-             v: { G: G, F: G - N, adj: E - N, E: E, O: O, T: T, fee: fee, share: T - fee, ret: ret, res: res, costs: (T - fee) + ret - res },
+             v: { G: G, F: G - N, adj: E - N, E: E, O: O, T: T, fee: fee, share: T - fee, ret: ret, res: res, costs: (T - fee) - res },
              cost: cost, costNative: costNative, led: led, setup: su };
   }
 
@@ -154,8 +155,6 @@ var PC = (function () {
     rows.push({ id: 'net', label: 'Net revenue', cls: 'tot', t: 'm', get: function (m) { return m.v.T; } });
     rows.push({ id: 'fee', label: 'management fee — ' + Math.round(pct * 100) + '% of net revenue', t: 'm', get: function (m) { return -m.v.fee; } });
     rows.push({ id: 'share', label: 'Your share — ' + Math.round((1 - pct) * 100) + '% of net revenue', cls: 'tot', t: 'm', get: function (m) { return m.v.share; } });
-    if (any(function (m) { return Math.abs(m.v.ret) > 0.005; }))
-      rows.push({ id: 'ret', label: 'Review bookings you paid — returned to you (no fee)', t: 'm', get: function (m) { return m.v.ret; } });
     rows.push({ id: 'costs', label: 'Costs paid on your behalf', cls: 'tot', t: 'm', get: function (m) { return m.v.costs; }, group: 'costs' });
     costKeys(ms).forEach(function (k) {
       rows.push({ id: 'cost:' + k, key: k, label: LABEL[k] || k, cls: 'cat', t: 'm', cat: true, get: function (m) { return m.cost[k] ? m.cost[k] : null; } });
@@ -174,6 +173,8 @@ var PC = (function () {
       rows.push({ id: 'b_prep', label: 'your prepayments received', t: 'm', get: L(function (l) { return l.prep; }) });
       if (any(function (m) { return m.led && m.led.setup > 0.005; }))
         rows.push({ id: 'b_setup', label: 'set-up costs paid by OWH before the launch', t: 'm', get: L(function (l) { return l.setup ? -l.setup : null; }) });
+      if (any(function (m) { return m.led && m.led.rvBack > 0.005; }))
+        rows.push({ id: 'b_rv', label: 'review bookings you paid — returned to you (net, no fee)', t: 'm', get: L(function (l) { return l.rvBack ? l.rvBack : null; }) });
       rows.push({ id: 'b_applied', label: 'from the month result', t: 'm', get: L(function (l) { return l.applied; }) });
       rows.push({ id: 'bal', label: 'Balance after the month', cls: 'net', t: 'm', get: L(function (l) { return l.balAfter; }) });
       rows.push({ sub: '3 · Security float (target ' + (ms.length && ms[ms.length - 1].led ? '$' + Math.round(ms[ms.length - 1].led.target) : '') + ')' });
