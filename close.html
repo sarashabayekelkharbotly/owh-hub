@@ -184,6 +184,7 @@ td.damt{font-size:11px;color:#5a4d4d}
 </nav>
 
 <script src="auth.js?v=c5d7281b"></script>
+<script src="partner-core.js?v=12"></script>
 <script>
 /* CONFIG (ENDPOINT + session) lives in auth.js — no shared secret in this file */
 
@@ -429,7 +430,7 @@ function fetchOnce(){
 function tryCache(){ try{var c=localStorage.getItem('owh_close');if(c)onData(JSON.parse(c),true);}catch(e){} }
 function showFetchHelp(e){ if(DATA)return; $('#err').style.display='block'; $('#err').innerHTML='<div class="err">Couldn\'t reach the endpoint'+(noAuthJs()?' — <b>auth.js did not load</b> (it must sit next to this file)':'')+'. Paste the JSON below to preview.<br><span class="muted">'+(e&&e.message||'')+'</span></div>'; var pf=document.getElementById('pasteFallback'); if(pf)pf.style.display='block'; }
 function loadPasted(){ try{ var j=JSON.parse($('#pasteBox').value); onData(j.data?j:{ok:true,data:j,generatedAt:new Date().toISOString()}); }catch(e){ alert('Not valid JSON'); } }
-function onData(j,fromCache){ DATA=j.data; DATA._gen=j.generatedAt; __rateCache={}; /* rates derive from the payload — never carry them across a reload */ try{ if(!fromCache) localStorage.setItem('owh_close',JSON.stringify(j)); }catch(e){} $('#loader').style.display='none'; $('#err').style.display='none'; var pf=document.getElementById('pasteFallback'); if(pf)pf.style.display='none'; initControls(); render(); }
+function onData(j,fromCache){ DATA=j.data; DATA._gen=j.generatedAt; __rateCache={}; try{ owhAttrFix_(); }catch(e){} /* rates derive from the payload — never carry them across a reload */ try{ if(!fromCache) localStorage.setItem('owh_close',JSON.stringify(j)); }catch(e){} $('#loader').style.display='none'; $('#err').style.display='none'; var pf=document.getElementById('pasteFallback'); if(pf)pf.style.display='none'; initControls(); render(); }
 
 /* ---------- controls ---------- */
 function initControls(){
@@ -453,7 +454,7 @@ function initControls(){
 function fillMonths(){ var ms=monthsFor(FLAT),el=$('#monthSel'); el.innerHTML=ms.map(function(m){return '<option'+(m===MONTH?' selected':'')+'>'+m+'</option>';}).join(''); el.onchange=function(){MONTH=el.value;FXMSG='';if(typeof BK_F!=='undefined'){ BK_F.month=MONTH; BK_F.from=''; BK_F.to=''; }   /* the bookings list follows the month picked up here (2026-11-01: it kept its own first month) */render();}; }
 function monthsFor(f){ return Object.keys(DATA.pnl[f]||{}).sort(); }
 function seg(sel,attr,val){ document.querySelectorAll(sel+' button').forEach(function(b){ b.classList.toggle('on',b.dataset[attr]===val); }); }
-function prevMonth(m){ var d=new Date(m+'-01'); d.setMonth(d.getMonth()-1); return d.toISOString().slice(0,7); }
+function prevMonth(m){ var y=+m.slice(0,4), mo=+m.slice(5,7)-1; if(mo<1){ y--; mo=12; } return y+'-'+('0'+mo).slice(-2); }   // arithmetic, no timezone (2026-11-17: Nov compared with Sep)
 
 /* ---------- currency: convert EVERYTHING to the selected display currency ---------- */
 function fx(){ return (DATA.meta.fx&&DATA.meta.fx.current)||1; }
@@ -774,8 +775,10 @@ function render(){ ribbon();
    submissions: this flat's count over everyone's, and that ratio is what splits the pooled
    cleaning and supplies. One line says all of it. */
 function allocLine(){
-  var mine=0, tot=0;
-  (DATA.tx||[]).forEach(function(t){ if(t.ym!==MONTH||t.cat!=='laundry')return; tot++; if(t.flat===FLAT)mine++; });
+  var mine=0, tot=0, al=DATA.pnl[FLAT]&&DATA.pnl[FLAT][MONTH]&&DATA.pnl[FLAT][MONTH].alloc;
+  /* the P&L's own counts (2026-11-17): prep washes and a partner home's washes before its launch don't share the pool, so they don't count here either */
+  if(al&&al.all>0){ mine=al.turn||0; tot=al.all; }
+  else (DATA.tx||[]).forEach(function(t){ if(t.ym!==MONTH||t.cat!=='laundry')return; tot++; if(t.flat===FLAT)mine++; });
   if(!tot) return '';
   var share=mine/tot, pc=Math.round(share*1000)/10;
   var pools={'cleaning-labor':'cleaning','supplies':'supplies'}, parts=[];
@@ -784,11 +787,95 @@ function allocLine(){
     if(p>0.005) parts.push(pools[cat]+' '+fmt(toCur(p,'EGP'))+' → '+fmt(toCur(p*share,'EGP')));
   });
   return '<div style="background:#fbf7f7;border:1px solid var(--line);border-radius:9px;padding:6px 10px;margin-bottom:8px;font-size:11.5px;color:#5a4d4d"><b>Allocation basis:</b> '+
-    mine+' of '+tot+' laundry submissions → <b>'+pc+'%</b> of pooled costs'+
+    mine+' of '+tot+' washes that share the pool → <b>'+pc+'%</b> of pooled costs'+
     (parts.length?' ('+parts.join(' · ')+')':'')+'</div>';
+}
+/* ============ A PARTNER HOME IN CLOSE (Sarah 2026-11-17: "I can't understand VW1's P&L in Close — a P&L of the operations since the
+   launch, a settlement that includes the set-up, what the partner sees and what we see; the Sarah and Khaled section is wrong").
+   Owner view = HER statement, drawn by partner-core.js (the code of her portal), so the two cannot differ: Operations · Statement (from
+   the launch; a month before it shows —) · Settlement (balance, set-up, float, payment).
+   OWH view = the same, plus OWH's own result from the home: the 25% fee − the costs OWH carries itself (Smoobu + Dani's channel management,
+   rent if any, the platform fees of review bookings OWH paid for) → Sarah ½ · Khaled ½. The owner's balance is money OWH advanced, not income. */
+var PVIEW='owh'; function setPView(v){ PVIEW=v; render(); }
+function pcModel_(f,ym){ var r=DATA.pnl[f]&&DATA.pnl[f][ym]; if(!r||typeof PC==='undefined') return null;
+  if(r.partnerLedger&&!r.partnerView){ var pl=r.partnerLedger;   // the admin payload carries the ledger; partner-core reads the owner's view of it
+    r.partnerView={ managementFee:pl.fee, managementFeePct:pl.feePct, netPayout:pl.monthResult-(pl.setup||0), reviewReturn:pl.reviewBack||0, _fromClose:true }; }
+  var mo=PC.model(DATA,f,ym); if(mo&&mo.k.turn==null&&r.alloc) mo.k.turn=r.alloc.turn;   // turnovers = the washes after the launch
+  return mo; }
+function launchOf_(f){ return String(((DATA.meta&&DATA.meta.commencement)||{})[f]||'').slice(0,10); }
+/* OWH's lines on a partner home, USD */
+function owhLines_(f,ym){
+  var r=DATA.pnl[f]&&DATA.pnl[f][ym]; if(!r||!r.partnerLedger) return null;
+  var pl=r.partnerLedger, rate=(fx()||1), lines=[];
+  (r.costs||[]).forEach(function(c){ if(!c.amount||(c.key!=='subscription'&&c.key!=='rent')) return;
+    lines.push({ id:'c:'+c.key, label:c.key==='subscription'?'Channel management (Smoobu + Dani)':'Rent', usd:c.currency==='USD'?c.amount:c.amount/rate, key:c.key }); });
+  var rv=(DATA.stays||[]).filter(function(s){ return s.flat===f&&s.review==='owh'&&String(s.checkOut||'').slice(0,7)===ym&&(s.reviewGross||0)>(s.reviewNet||0); });
+  if(rv.length) lines.push({ id:'rv', label:'Review bookings OWH paid — platform fees', usd:rv.reduce(function(a,s){ return a+(s.reviewGross-s.reviewNet); },0), items:rv });
+  var own=Math.round((pl.fee-lines.reduce(function(a,x){ return a+x.usd; },0))*100)/100;
+  return { fee:pl.fee, pct:pl.feePct, lines:lines, own:own, bal:pl.balanceAfter };
+}
+function owhAttrFix_(){ Object.keys(DATA.pnl||{}).forEach(function(f){ Object.keys(DATA.pnl[f]).forEach(function(ym){
+  var r=DATA.pnl[f][ym], o=owhLines_(f,ym); if(!o) return; r.attribution={ khaled:Math.round(o.own*50)/100, sarah:Math.round(o.own*50)/100, owh:true }; }); }); }
+
+function renderPartnerReview(rec){
+  var pm=prevMonth(MONTH), L=launchOf_(FLAT), Lm=L.slice(0,7), live=function(ym){ return !Lm||ym>=Lm; };
+  var cur=pcModel_(FLAT,MONTH), prv=pcModel_(FLAT,pm);
+  if(!cur) return '<div class="frame port"><div class="card">partner-core.js did not load — reload the page.</div></div>';
+  var defs=PC.rowDefs([prv,cur]), rows='', inSet=false;
+  var cell=function(d,mo,ym){ if(!mo) return '';
+    if(!inSet&&d.t!=='r'&&!live(ym)) return '<span class="muted">—</span>';   // the P&L starts at the launch
+    var v=d.get(mo); if(v==null) return '<span class="muted">—</span>';
+    if(d.t==='n') return String(v); if(d.t==='p') return Math.round(v*100)+'%'; if(d.t==='r') return (+v).toFixed(2);
+    return m(toCur(v,'USD',ym)); };
+  var num=function(d,mo,ym){ if(!mo||(!inSet&&!live(ym))) return null; var v=d.get(mo); return (v==null||d.t!=='m')?null:toCur(v,'USD',ym); };
+  var drillOf={ earn:'__earnings', other:'__other', b_setup:'__setup' };
+  defs.forEach(function(d){
+    if(d.sec){ if(/^Settlement/.test(d.sec)) inSet=true;
+      var title=d.sec==='Operations'?'Operations'+(L?' · from the launch, '+esc(L):''):d.sec==='Statement'?'P&amp;L · from the launch':esc(d.sec);
+      rows+=sec(title); return; }
+    if(d.sub){ rows+='<tr><td colspan="4" style="padding:8px 0 2px;font-weight:700;font-style:italic;color:#7a6a6a;font-size:11.5px">'+esc(d.sub)+'</td></tr>'; return; }
+    var key=d.cat?d.key:drillOf[d.id], id=key?FLAT+'|'+MONTH+'|'+key:null;
+    var canDrill=!!id&&(d.cat?!!CATMAP[d.key]:(d.id!=='b_setup'||(rec.setup&&rec.setup.items&&rec.setup.items.length))), open=canDrill&&!!OPEN[id];
+    var vc=num(d,cur,MONTH), vp=num(d,prv,pm);
+    if(d.cat&&!(Math.abs(vc||0)>0.005||Math.abs(vp||0)>0.005)) return;   // categories with nothing either month stay out of Close (her portal lists them all)
+    var cls=d.cls==='tot'?'tot':d.cls==='net'?'net':'';
+    var ind=(d.cls==='sub'||d.cls==='cat')?'padding-left:'+(canDrill?4:16)+'px;':'';
+    var cl=((canDrill?'drillable ':'')+cls).trim();
+    rows+='<tr'+(cl?' class="'+cl+'"':'')+(canDrill?' onclick="toggleDrill(\''+id+'\')"':'')+'><td style="'+ind+'">'+(canDrill?'<span class="tri">'+(open?'▾':'▸')+'</span>':'')+esc(d.label)+'</td>'+
+      '<td>'+cell(d,cur,MONTH)+'</td><td class="prevcol">'+cell(d,prv,pm)+'</td>'+(d.t==='m'&&!inSet&&vp!=null&&vc!=null?mom(vc,vp,d.cat||d.id==='costs'):'<td></td>')+'</tr>';
+    if(open){ if(d.id==='earn') rows+=earnDrillRows(); else if(d.id==='other') rows+=otherDrillRows();
+      else if(d.id==='b_setup') rec.setup.items.forEach(function(x){ rows+='<tr class="drill"><td style="padding-left:22px">'+esc(String(x[0]).slice(5,10))+' · '+esc(x[1])+' <span class="muted">('+esc(x[4])+')</span></td><td>'+m(toCur(x[2],x[3]))+'</td><td class="prevcol"></td><td></td></tr>'; });
+      else rows+=drillRows(d.key); }
+  });
+  if(PVIEW==='owh'){
+    var o=owhLines_(FLAT,MONTH), op=owhLines_(FLAT,pm), ids={};
+    (o?o.lines:[]).concat(op?op.lines:[]).forEach(function(x){ ids[x.id]=x.label; });
+    var lineOf=function(oo,lid){ if(!oo) return null; var x=oo.lines.filter(function(y){ return y.id===lid; })[0]; return x?x.usd:0; };
+    rows+=sec('OWH · what the home earns us');
+    rows+=r3('Management fee — '+Math.round((o?o.pct:0.25)*100)+'% of net revenue',o?o.fee:0,'USD',op?op.fee:null,'');
+    Object.keys(ids).forEach(function(lid){
+      var rid=FLAT+'|'+MONTH+'|__owh'+lid, xo=o&&o.lines.filter(function(y){ return y.id===lid; })[0], canD=!!(xo&&xo.items), opn=canD&&!!OPEN[rid];
+      var vc2=-(lineOf(o,lid)||0), vp2=op?-(lineOf(op,lid)||0):null;
+      rows+='<tr'+(canD?' class="drillable" onclick="toggleDrill(\''+rid+'\')"':'')+'><td style="padding-left:'+(canD?4:16)+'px">'+(canD?'<span class="tri">'+(opn?'▾':'▸')+'</span>':'')+'− '+esc(ids[lid])+'</td><td>'+m(toCur(vc2,'USD'))+'</td><td class="prevcol">'+m(vp2==null?null:toCur(vp2,'USD',pm))+'</td>'+mom(toCur(vc2,'USD'),vp2==null?null:toCur(vp2,'USD',pm),false)+'</tr>';
+      if(opn) xo.items.forEach(function(s){ rows+='<tr class="drill"><td style="padding-left:22px">'+esc(String(s.checkIn).slice(5,10))+' → '+esc(String(s.checkOut).slice(5,10))+' · '+esc(s.portal||'')+' · paid '+fmt(toCur(s.reviewGross,'USD'))+', payout '+fmt(toCur(s.reviewNet,'USD'))+'</td><td>'+m(toCur(-(s.reviewGross-s.reviewNet),'USD'))+'</td><td class="prevcol"></td><td></td></tr>'; });
+    });
+    rows+=r3('OWH result from '+esc(FLAT),o?o.own:0,'USD',op?op.own:null,'net');
+    rows+=sec('Sarah &amp; Khaled — OWH result ÷ 2');
+    rows+=r3('Sarah',o?o.own/2:0,'USD',op?op.own/2:null,'attr');
+    rows+=r3('Khaled',o?o.own/2:0,'USD',op?op.own/2:null,'attr');
+    if(o&&Math.abs(o.bal)>0.005) rows+='<tr class="attr"><td colspan="4" style="padding-top:8px;font-size:11.5px">'+(o.bal<0?'Memo · '+esc(FLAT)+'\'s owner owes OWH <b>'+fmt(toCur(-o.bal,'USD'))+'</b> — money OWH advanced (set-up and costs), recovered from her month results; not income.':'Memo · OWH holds <b>'+fmt(toCur(o.bal,'USD'))+'</b> of the owner\'s money.')+'</td></tr>';
+  }
+  var badge=rec.status==='final'?'<span class="badge b-final">final</span>':'<span class="badge b-open">'+(rec.status==='open'?'open':'in&nbsp;progress')+'</span>';
+  var tog='<div class="seg" style="display:inline-flex;margin:4px 0 8px">'+[['owh','OWH view'],['owner','Owner view — what she sees']].map(function(x){ return '<button class="'+(PVIEW===x[0]?'on':'')+'" onclick="setPView(\''+x[0]+'\')">'+x[1]+'</button>'; }).join('')+'</div>';
+  return '<div class="frame port"><span class="orient o-port">portrait · phone-first</span>'
+    +'<div class="card"><h1>'+FLAT+' · '+MONTH+badge+'</h1><p class="sub">all values in '+CUR+(L?' · launched '+esc(L):'')+'</p>'+tog
+    +(PVIEW==='owh'?allocLine():'<div class="muted" style="font-size:11.5px;margin-bottom:6px">Exactly her statement — the same code as her portal (categories with nothing in either month are left out here).</div>')
+    +'<table><thead><tr><th>Line</th><th>'+MONTH+'</th><th>'+pm+'</th><th>Δ MoM</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +checklist(rec)+'<div id="stripeBox"></div><div id="orevBox"></div><div id="recurBox"></div></div>';
 }
 function renderReview(){
   var rec=DATA.pnl[FLAT][MONTH]; if(!rec)return '<div class="frame port"><div class="card">No data.</div></div>';
+  if(rec.partnerLedger) return renderPartnerReview(rec);   // a partner home reads as her statement + OWH's own result (2026-11-17)
   var pm=prevMonth(MONTH), prev=DATA.pnl[FLAT][pm]||null;
   var rows='';
   /* Revenue drills where the money actually comes from: Earnings opens the stays behind it, Other

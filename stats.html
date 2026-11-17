@@ -167,8 +167,10 @@ function owhP(f,m){ var p=pnlOf(f,m); if(!p||!partnerCfg(f)) return p;
      statement's monthResult is the owner's part of it; what is left is OWH's: net − monthResult (October: −684.46 − (−403.04) = −281.42).
      A month with no statement yet keeps the fee estimate. Revenue, Internal attribution and Money by account all read this. */
   var pl=p.partnerLedger, own=(pl&&pl.monthResult!=null)?Math.round(((+p.net||0)-(+pl.monthResult||0)+(+pl.setup||0))*100)/100:fee;   // set-up is hers too (2026-11-09)
-  var shK=(p.attribution&&(+p.net||0)!==0)?(+p.attribution.khaled||0)/(+p.net):0.5;
-  return { revenue:{ total:fee, earnings:fee, other:0 }, net:own, costs:[], attribution:{ khaled:own*shK, sarah:own*(1-shK) }, partnerFee:true }; }
+  /* the platform fees of review bookings OWH paid for are OWH's too (Sarah 2026-11-17 — the same figure Close shows); OWH's result splits ½ · ½ */
+  (D.stays||[]).forEach(function(s){ if(s.flat===f&&s.review==='owh'&&String(s.checkOut||'').slice(0,7)===m&&(s.reviewGross||0)>(s.reviewNet||0)) own-=(s.reviewGross-s.reviewNet); });
+  own=Math.round(own*100)/100;
+  return { revenue:{ total:fee, earnings:fee, other:0 }, net:own, costs:[], attribution:{ khaled:own/2, sarah:own/2 }, partnerFee:true }; }
 function moneyP(f,m){ return scope==='portfolio'?owhP(f,m):pnlOf(f,m); }   // single-flat scope = the flat's own full story
 function rawStays(){ return D.stays||[]; }
 function scopeFlats(){ return scope==='portfolio'?allFlats():[scope]; }                          // money
