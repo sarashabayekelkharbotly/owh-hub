@@ -208,7 +208,7 @@ function costLineOf(flat,ym,key){
 }
 function txFor(flat,ym,key){
   var cat=CATMAP[key]; if(!cat) return [];
-  var own=(DATA.tx||[]).filter(function(t){return t.flat===flat&&t.ym===ym&&t.cat===cat;});
+  var own=(DATA.tx||[]).filter(function(t){return t.flat===flat&&t.ym===ym&&t.cat===cat&&!t.setup;});   // set-up has its own line (2026-11-17)
   var pool=(DATA.tx||[]).filter(function(t){return t.flat===POOL_FLAT&&t.ym===ym&&t.cat===cat;});
   if(!pool.length) return own;
   var poolTot=pool.reduce(function(a,t){return a+(t.amount||0);},0); if(!poolTot) return own;
@@ -808,8 +808,12 @@ function renderReview(){
   rows+=r3('Total revenue', rec.revenue.total,'USD', prev?prev.revenue.total:null,'tot');
   rows+=sec('Costs');
   var opexC=0,opexP=0,opexXC=0,opexXP=0;   // total opex, and excl. every →contingency line (Sarah 2026-09-03)
-  rec.costs.forEach(function(c){
-    var pc=prev?(prev.costs.find(function(x){return x.key===c.key;})||{}):{};
+  /* SET-UP OUT OF THE COST LINES (Sarah 2026-11-17: VW1's pre-launch laundry and stock still showed in Close — it must read like the
+     owner's statement). Each line is the operating cost; the set-up gets its own line, so the total still lands on Net. */
+  var suC=(rec.setup&&rec.setup.byKey)||{}, suP=(prev&&prev.setup&&prev.setup.byKey)||{};
+  rec.costs.forEach(function(c0){
+    var c={key:c0.key,label:c0.label,currency:c0.currency,amount:(c0.amount||0)-(suC[c0.key]||0)};
+    var pc0=prev?(prev.costs.find(function(x){return x.key===c.key;})||{}):{}, pc={amount:pc0.amount==null?null:(pc0.amount||0)-(suP[c.key]||0)};
     var cv=toCur(c.amount,c.currency)||0, pv=pc.amount==null?0:(toCur(pc.amount,c.currency,prevMonth(MONTH))||0);
     opexC+=cv; opexP+=pv;
     if(String(c.key).indexOf('contingency')<0){ opexXC+=cv; opexXP+=pv; }
@@ -822,6 +826,13 @@ function renderReview(){
     rows+='<tr'+(canDrill?' class="drillable" onclick="toggleDrill(\''+id+'\')"':'')+'><td>'+lbl+'</td><td>'+m(toCur(c.amount,c.currency))+'</td><td class="prevcol">'+m(pc.amount==null?null:toCur(pc.amount,c.currency,prevMonth(MONTH)))+'</td>'+mom(toCur(c.amount,c.currency),pc.amount==null?null:toCur(pc.amount,c.currency,prevMonth(MONTH)),true)+'</tr>';
     if(open) rows+=drillRows(c.key);
   });
+  if((rec.setup&&rec.setup.usd>0.005)||(prev&&prev.setup&&prev.setup.usd>0.005)){
+    var suId=FLAT+'|'+MONTH+'|__setup', suOpen=!!OPEN[suId], suv=rec.setup?rec.setup.usd:0, sup=prev&&prev.setup?prev.setup.usd:0;
+    rows+='<tr class="drillable" onclick="toggleDrill(\''+suId+'\')"><td><span class="tri">'+(suOpen?'▾':'▸')+'</span>Set-up before the launch <span class="muted" style="font-size:10px">→ owner\'s balance</span></td>'+
+      '<td>'+m(toCur(suv,'USD'))+'</td><td class="prevcol">'+m(prev?toCur(sup,'USD',prevMonth(MONTH)):null)+'</td>'+mom(toCur(suv,'USD'),prev?toCur(sup,'USD',prevMonth(MONTH)):null,true)+'</tr>';
+    if(suOpen&&rec.setup) rec.setup.items.forEach(function(x){ rows+='<tr class="drill"><td style="padding-left:22px">'+esc(String(x[0]).slice(5,10))+' · '+esc(x[1])+' <span class="muted">('+esc(x[4])+')</span></td><td>'+m(toCur(x[2],x[3]))+'</td><td class="prevcol"></td><td></td></tr>'; });
+    opexC+=toCur(suv,'USD')||0; opexP+=prev?(toCur(sup,'USD',prevMonth(MONTH))||0):0; opexXC+=toCur(suv,'USD')||0; opexXP+=prev?(toCur(sup,'USD',prevMonth(MONTH))||0):0;
+  }
   rows+=r3('Total opex', opexC, CUR, prev?opexP:null, 'tot', true);
   rows+=r3('Total opex excl. contingency', opexXC, CUR, prev?opexXP:null, 'tot', true);
   rows+=r3('Net', rec.net,'USD', prev?prev.net:null,'net');
@@ -1136,7 +1147,13 @@ function renderCompare(){
   h+=cmp('Other',flats,pm,function(r){return r?r.revenue.other:0;},'USD');
   h+=cmp('Total revenue',flats,pm,function(r){return r?r.revenue.total:0;},'USD','tot');
   h+=csec('Costs',flats.length);
-  costKeys.forEach(function(ck){ h+=cmp(ck.label,flats,pm,function(r){if(!r)return 0;var c=r.costs.find(function(x){return x.key===ck.key;});return c?c.amount:0;},ck.cur); });
+  costKeys.forEach(function(ck){ h+=cmp(ck.label,flats,pm,function(r){if(!r)return 0;var c=r.costs.find(function(x){return x.key===ck.key;});return c?(c.amount||0)-((r.setup&&r.setup.byKey&&r.setup.byKey[ck.key])||0):0;},ck.cur); });
+  if(flats.some(function(f){ var r=DATA.pnl[f][MONTH]; return r&&r.setup&&r.setup.usd>0.005; }))
+    h+=cmp('Set-up before the launch (→ owner\'s balance)',flats,pm,function(r){return r&&r.setup?r.setup.usd:0;},'USD');
+  /* TURNOVERS + ALLOCATION (Sarah 2026-11-17): how the shared supplies and Amal's salary were split — a home's washes ÷ all washes */
+  h+=csec('Allocation of shared costs',flats.length);
+  h+=cntRow('Turnovers (washes)',flats,function(r){ return r&&r.alloc?r.alloc.turn:null; },function(r){ return r&&r.alloc?r.alloc.all:null; });
+  h+=pctRow('Share of supplies & Amal',flats);
   h+=cmp('Net',flats,pm,function(r){return r?r.net:0;},'USD','net');
   if(flats.some(isPartnerFlat))
     h+=cmp('OWH fee from partner flats',flats,pm,function(r){return r&&r.partnerLedger?r.partnerLedger.fee:0;},'USD','tot',true);
@@ -1147,6 +1164,11 @@ function renderCompare(){
   h+='<div class="card"><p class="muted">Attribution is a view, not a settlement — cash lives in WeShare. 8A / 28A / Zayed split net 50/50; 17A is Khaled 20% of revenue, Sarah the rest; 17B is 100% Sarah (long-let). A شراكة (partner) column shows the flat\'s full anatomy for analysis but stays OUT of the Total/Δ columns — OWH\'s take from it is the fee row.</p></div></div>';
   return h;
 }
+/* a count row and a % row for the allocation block — every home counts here, partner or not */
+function cntRow(label,flats,get,getAll){ var row='<tr><td>'+label+'</td>', all=null; flats.forEach(function(f){ var r=DATA.pnl[f][MONTH], v=get(r); if(all==null) all=getAll(r); row+='<td>'+(v==null?'—':v)+'</td>'; });
+  return row+'<td><b>'+(all==null?'—':all)+'</b></td><td></td></tr>'; }
+function pctRow(label,flats){ var row='<tr class="tot"><td>'+label+'</td>', sum=0; flats.forEach(function(f){ var r=DATA.pnl[f][MONTH], a=r&&r.alloc; var p=a&&a.all>0?100*a.turn/a.all:null; if(p!=null) sum+=p;
+    row+='<td>'+(p==null?'—':(Math.round(p*10)/10)+'%')+'</td>'; }); return row+'<td><b>'+(Math.round(sum*10)/10)+'%</b></td><td></td></tr>'; }
 function csec(t,n){ return '<tr class="sec"><td colspan="'+(n+3)+'">'+t+'</td></tr>'; }
 /* PARTNER FLATS (Sarah 2026-09-17): their columns stay — the per-flat anatomy is analysis —
    but the Total/Δ columns are OWH's money, so a partner flat's owner-side figures never enter
