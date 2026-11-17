@@ -200,10 +200,16 @@ function mergeStays(stays){
 function allMonths(){ var set={}; Object.keys(D.pnl).forEach(function(f){ Object.keys(D.pnl[f]).forEach(function(m){ set[m]=1; }); });
   return Object.keys(set).sort(); }
 function monthsPast_(){ var cm=D.meta.currentMonth; return allMonths().filter(function(m){ return !cm||m<=cm; }); }
-function monthsInRange(rng){ var all=allMonths(), past=monthsPast_(), cm=D.meta.currentMonth;
+/* EVERY RANGE ALSO SHOWS THE FUTURE MONTHS THAT ALREADY HAVE A BOOKING (Sarah 2026-11-17) — the lens still anchors on today: 3M/6M/12M/15M
+   are the last N calendar months up to now, plus every booked month after it */
+function futureBooked_(){ var cm=D.meta.currentMonth, set={};
+  (D.stays||[]).forEach(function(s){ if(!isLive(s)||!s.checkIn||!s.checkOut) return; var a=String(s.checkIn).slice(0,7), b=String(s.checkOut).slice(0,7); if(String(s.checkOut).slice(8,10)==='01'&&b>a){ var d=new Date(String(s.checkOut).slice(0,10)+'T12:00:00'); d.setDate(0); b=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2); }
+    for(var m=a; m<=b; ){ if(m>cm) set[m]=1; var y=+m.slice(0,4), mo=+m.slice(5,7)+1; if(mo>12){ y++; mo=1; } m=y+'-'+('0'+mo).slice(-2); } });
+  return allMonths().filter(function(m){ return set[m]; }); }
+function monthsInRange(rng){ var all=allMonths(), past=monthsPast_(), cm=D.meta.currentMonth, fut=futureBooked_();
   if(rng==='all') return all;
-  if(rng==='YTD'){ var y=cm.slice(0,4); return past.filter(function(m){ return m.slice(0,4)===y; }); }
-  var n=rng==='3M'?3:(rng==='6M'?6:12); return past.slice(-n); }
+  if(rng==='YTD'){ var y=cm.slice(0,4); return past.filter(function(m){ return m.slice(0,4)===y; }).concat(fut); }
+  var n=rng==='3M'?3:(rng==='6M'?6:(rng==='15M'?15:12)); return past.slice(-n).concat(fut); }
 function daysIn(m){ var y=+m.slice(0,4),mo=+m.slice(5,7); return Math.round((new Date(y,mo,1)-new Date(y,mo-1,1))/DAYMS); }
 
 /* ---------- pnl aggregation ---------- */
@@ -409,7 +415,7 @@ function hbars(rows, opt){ opt=opt||{}; var fmtV=opt.fmt||fmt, unit=opt.unit||''
 /* ---------- controls ---------- */
 function seg(opts, cur, fn){ return '<div class="seg">'+opts.map(function(o){ var v=Array.isArray(o)?o[0]:o, lbl=Array.isArray(o)?o[1]:o;
   return '<button class="'+(cur===v?'on':'')+'" onclick="'+fn+'(\''+esc(v)+'\')">'+esc(lbl)+'</button>'; }).join('')+'</div>'; }
-function timeSeg(chart){ return seg(['3M','6M','YTD','12M','all'], R[chart], 'setR_'+chart); }
+function timeSeg(chart){ return seg(['3M','6M','YTD','12M','15M','all'], R[chart], 'setR_'+chart); }
 function setR_rev(r){R.rev=r;render();} function setR_cost(r){R.cost=r;render();} function setR_attr(r){R.attr=r;render();}
 function setR_occ(r){R.occ=r;render();} function setR_vol(r){R.vol=r;render();} function setR_chan(r){R.chan=r;render();}
 function setR_pay(r){R.pay=r;render();} function setR_adr(r){R.adr=r;render();} function setR_vc(r){R.vc=r;render();} function setR_rep(r){R.rep=r;render();}
@@ -527,7 +533,7 @@ function secReturn(){
 function render(){
   if(!allMonths().length){ document.getElementById('app').innerHTML='<div class="card muted">No months yet.</div>'; return; }
   var h='<div class="scope" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+scopeSeg()+curSeg()+'</div>';
-  h+=secDelta()+secRevenue()+secTarget()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs()+secReturn()+'<div class="inv" id="invPartner"></div>'+secForecast();
+  h+=secDelta()+secCalendar()+secRevenue()+secTarget()+secCosts()+secAttribution()+secOccAdr()+secNights()+secVolumes()+secChannel()+secPay()+secAdrTable()+secMargin()+secVarCost()+secUnitTrend()+secFx()+secRepairs()+secReturn()+'<div class="inv" id="invPartner"></div>'+secForecast();
   document.getElementById('app').innerHTML=h;
   invPartnerFill(); fcFill();
 }
@@ -932,7 +938,7 @@ function secTarget(){
   var h = '<div class="card"><h3>Revenue vs target<span class="rt">' + CUR + '</span></h3>' +
     '<div class="rowbtns">' + scopeSeg() + curSeg() + '</div><div class="rowbtns">' + timeSeg('tgt') + '</div>';
   if (!fl.length) return h + '<div class="muted">This home has no revenue target (a long-let home).</div></div>';
-  var cm = D.meta.currentMonth, ms = monthsInRange(R.tgt).filter(function(m){ return m <= cm; });
+  var cm = D.meta.currentMonth, ms = monthsInRange(R.tgt);   // booked future months show too (2026-11-17)
   var rows = ms.map(function(m){ var a = 0, tA = 0, tB = 0;
     fl.forEach(function(f){ a += tgActual(f, m); tA += tgTarget(f, m, 'A'); tB += tgTarget(f, m, 'B'); });
     return { m: m, vals: { actual: disp(a, m), B: disp(tB, m), A: disp(tA, m) } }; });
@@ -944,6 +950,70 @@ function secTarget(){
     '<span style="cursor:pointer" onclick="setTgBars()"><i style="background:'+TG_COL.a+';opacity:'+(tgBars?'.35':'.08')+'"></i>'+(tgBars?'☑':'☐')+' revenue amount bars</span></div>';
   h += '<div class="muted" style="margin-top:4px;font-size:11px">Targets: the Targets tab\'s 30-day A and B, scaled to each month\'s number of days (28–31). VW1: the partnership plan\'s revenue from its launch' +
        ' (the launch month counts only its open days), VW1 at our 25% share — its revenue and its target. The current month counts every night already booked in it. Homes: ' + fl.map(esc).join(', ') + '.</div>';
+  return h + '</div>';
+}
+/* 📅 BOOKING CALENDAR (Sarah 2026-11-17: "a visual map / calendar of future bookings to see the gaps, so I can plan promotions ahead").
+   One row per short-stay home, one cell per night from today; booked nights in the channel's colour, review bookings amber, blocks grey,
+   FREE nights white — and the gaps listed underneath, longest first, so a promotion can be aimed at them. A partner home counts from its
+   launch. Tap a cell for what is there. */
+var calDays = 90; function setCalDays(n){ calDays = +n; render(); }
+function calFlats(){ return D.meta.flatsOrder.filter(function(f){ return !isLongLet(f); }); }
+function calOpenFrom(f){ var c = partnerCfg(f) ? (((D.meta && D.meta.commencement) || {})[f] || '') : ''; return String(c).slice(0, 10); }
+function calCellOf(f, k){
+  var st = null, bl = null;
+  (D.stays || []).forEach(function(s){ if (s.flat !== f || !s.checkIn || !s.checkOut) return; var ci = String(s.checkIn).slice(0, 10), co = String(s.checkOut).slice(0, 10);
+    if (!(ci <= k && k < co)) return; var stt = String(s.status || '').toLowerCase();
+    if (stt.indexOf('cancel') > -1) return; if (stt.indexOf('block') > -1 || s.portal === 'Blocked') { bl = s; return; } if (stt === 'pending') return; st = s; });
+  if (st) return { k: st.review ? 'review' : (/airbnb/i.test(st.portal) ? 'air' : /booking/i.test(st.portal) ? 'bkg' : /vrbo/i.test(st.portal) ? 'vrbo' : 'dir'), s: st };
+  if (bl) return { k: 'block' };
+  return { k: 'free' };
+}
+var CAL_COL = { air: '#e0565b', bkg: '#3f6fb5', vrbo: '#2f8f8f', dir: '#5a9a5a', review: '#d9a441', block: '#b8b8b8', free: '#ffffff', closed: '#e9e4e4' };
+function secCalendar(){
+  var t0 = new Date((D.meta.asOf || new Date().toISOString().slice(0, 10)) + 'T12:00:00'), days = [];
+  for (var i = 0; i < calDays; i++) { var d = new Date(t0.getTime() + i * DAYMS); days.push(d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2)); }
+  var fl = calFlats(), CW = calDays > 120 ? 9 : 13;
+  var h = '<div class="card"><h3>Booking calendar<span class="rt">next ' + calDays + ' days</span></h3>' +
+    '<div class="rowbtns">' + seg([['30', '30 days'], ['60', '60 days'], ['90', '90 days'], ['180', '180 days']], String(calDays), 'setCalDays') + '</div>';
+  // the grid
+  var g = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:6px"><table style="border-collapse:collapse;font-size:9px">';
+  // month row
+  g += '<tr><td style="position:sticky;left:0;background:#fff;z-index:1"></td>';
+  var runM = '', span = 0, monthsRow = '';
+  days.forEach(function(k, i){ var mo = k.slice(0, 7); if (mo !== runM) { if (span) monthsRow += '<td colspan="' + span + '" style="font-weight:700;color:#555;padding:0 2px;border-left:1px solid #ccc">' + MON[+runM.slice(5, 7) - 1] + ' ' + runM.slice(2, 4) + '</td>'; runM = mo; span = 0; } span++; });
+  monthsRow += '<td colspan="' + span + '" style="font-weight:700;color:#555;padding:0 2px;border-left:1px solid #ccc">' + MON[+runM.slice(5, 7) - 1] + ' ' + runM.slice(2, 4) + '</td>';
+  g += monthsRow + '</tr>';
+  // day row
+  g += '<tr><td style="position:sticky;left:0;background:#fff;z-index:1"></td>' + days.map(function(k){ var wd = new Date(k + 'T12:00:00').getDay(), we = wd === 4 || wd === 5;
+    return '<td style="width:' + CW + 'px;min-width:' + CW + 'px;text-align:center;color:' + (we ? '#a0346b' : '#999') + ';' + (we ? 'font-weight:700;' : '') + (k.slice(8) === '01' ? 'border-left:1px solid #ccc;' : '') + '">' + (+k.slice(8)) + '</td>'; }).join('') + '</tr>';
+  var gaps = [];
+  fl.forEach(function(f){
+    var open = calOpenFrom(f), row = '<tr><td style="position:sticky;left:0;background:#fff;z-index:1;font-weight:700;padding:2px 6px 2px 0;white-space:nowrap">' + esc(f === 'Zayed 2000' ? 'Zayed' : f) + '</td>', run = null;
+    days.forEach(function(k, i){
+      var c = (open && k < open) ? { k: 'closed' } : calCellOf(f, k), col = CAL_COL[c.k], wd = new Date(k + 'T12:00:00').getDay(), we = wd === 4 || wd === 5;
+      var tip = k + ' · ' + (c.k === 'free' ? 'FREE' : c.k === 'block' ? 'blocked' : c.k === 'closed' ? 'not launched' : ((c.s.guest || '') + ' · ' + (c.s.portal || '') + (c.s.review ? ' (review)' : '')));
+      row += '<td title="' + esc(tip) + '" style="height:16px;background:' + col + ';border:1px solid ' + (c.k === 'free' ? (we ? '#e7b3c9' : '#e6dede') : '#fff') + (k.slice(8) === '01' ? ';border-left:1px solid #999' : '') + '"></td>';
+      if (c.k === 'free') { if (!run) run = { f: f, from: k, n: 0, we: 0 }; run.n++; if (we) run.we++; }
+      else if (run) { gaps.push(run); run = null; }
+    });
+    if (run) { run.open = true; gaps.push(run); }
+    g += row + '</tr>';
+  });
+  g += '</table></div>';
+  h += g + '<div class="legend" style="margin-top:6px">' +
+    [['air', 'Airbnb'], ['bkg', 'Booking.com'], ['vrbo', 'Vrbo'], ['dir', 'Direct'], ['review', 'Review booking'], ['block', 'Blocked'], ['free', 'Free'], ['closed', 'Not launched']]
+      .map(function(x){ return '<span><i style="background:' + CAL_COL[x[0]] + ';border:1px solid #ddd"></i>' + x[1] + '</span>'; }).join('') + '<span style="color:#a0346b">Thu/Fri in pink</span></div>';
+  // the gaps, longest first
+  var toLabel = function(k){ return (+k.slice(8)) + ' ' + MON[+k.slice(5, 7) - 1]; };
+  var end = function(r){ var e = new Date(r.from + 'T12:00:00'); e.setDate(e.getDate() + r.n); return e.getFullYear() + '-' + ('0' + (e.getMonth() + 1)).slice(-2) + '-' + ('0' + e.getDate()).slice(-2); };
+  var useful = gaps.filter(function(r){ return r.n >= 2; }).sort(function(a, b){ return b.n - a.n || (a.from < b.from ? -1 : 1); });
+  var tot = {}; gaps.forEach(function(r){ tot[r.f] = (tot[r.f] || 0) + r.n; });
+  h += '<div style="margin-top:8px;font-size:12px"><b>Free nights in the next ' + calDays + ' days:</b> ' + fl.map(function(f){ return esc(f === 'Zayed 2000' ? 'Zayed' : f) + ' ' + (tot[f] || 0); }).join(' · ') + '</div>';
+  if (useful.length) h += '<table class="t" style="margin-top:6px"><tr><th style="text-align:left">Gap to fill</th><th style="text-align:left">Home</th><th>Nights</th><th>Thu/Fri</th></tr>' +
+    useful.slice(0, 25).map(function(r){ return '<tr><td style="text-align:left">' + toLabel(r.from) + ' → ' + toLabel(end(r)) + (r.open ? ' <span class="muted">(and beyond)</span>' : '') + '</td><td style="text-align:left">' + esc(r.f) + '</td><td>' + r.n + '</td><td>' + (r.we || '—') + '</td></tr>'; }).join('') + '</table>' +
+    (useful.length > 25 ? '<div class="muted" style="font-size:11px">+ ' + (useful.length - 25) + ' shorter gaps</div>' : '') +
+    '<div class="muted" style="font-size:11px;margin-top:4px">Gaps of 2+ free nights, longest first — single nights are left out (the minimum stay is 2). Arrival = the first date, departure = the second.</div>';
+  else h += '<div class="muted" style="margin-top:6px">No gaps of 2+ nights in this window.</div>';
   return h + '</div>';
 }
 /* 2 · What the money goes on — stacked per-month, category + month buttons + time */
