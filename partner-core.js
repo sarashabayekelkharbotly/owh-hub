@@ -76,10 +76,11 @@ var PC = (function () {
     var opN = function (s) { if (!Ld || Ld <= lo0) return nightsOf(s, ym); if (Ld >= hi0) return 0;
       var ci = new Date(s.checkIn.slice(0, 10) + 'T00:00:00'), co = new Date(s.checkOut.slice(0, 10) + 'T00:00:00'), n = 0;
       for (var d = new Date(Math.max(ci, Ld)); d < co && d < hi0; d.setDate(d.getDate() + 1)) n++; return n; };
+    var today = String((D.meta && D.meta.asOf) || new Date().toISOString().slice(0, 10)).slice(0, 10);
     st.forEach(function (s) {
       var p = parts(s, ym), n = opN(s);
       G += p.gross; N += p.net; nights += n; if (!s.review) nightsAdr += n;
-      if ((s.checkOut || '').slice(0, 7) === ym && (!Ld || new Date(s.checkOut.slice(0, 10) + 'T00:00:00') > Ld)) done++;
+      if ((s.checkOut || '').slice(0, 7) === ym && (!Ld || new Date(s.checkOut.slice(0, 10) + 'T00:00:00') > Ld) && s.checkOut.slice(0, 10) <= today) done++;   // completed = checked out by today (2026-11-17: a stay still in the house counted)
     });
     var E = r.revenue.earnings || 0, O = r.revenue.other || 0, T = r.revenue.total || 0;
     var fee = pv.managementFee || 0, ret = pv.reviewReturn || 0;                 // owner-funded review bookings, returned to her (outside revenue, no fee)
