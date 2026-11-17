@@ -873,6 +873,57 @@ function tgTarget(f, ym, which){   // USD
   return 0;
 }
 function tgActual(f, ym){ var p = pnlOf(f, ym); return p ? (p.revenue.earnings || 0) * tgShare(f) : 0; }
+/* THE TARGET CHART (Sarah 2026-11-17: "barely visible — make the lines further apart, change the yellow, bars for the amounts in the %
+   chart that I can switch on and off"). Its own, taller drawing: the amounts on a scale zoomed to their range (not from zero), so the
+   three lines separate; the % view has an optional bar per month for the revenue amount, on its own scale behind the % line. */
+var TG_COL = { a: '#c0504d', B: '#7a5cc4', A: '#2e8b57' };   // revenue · Target B (purple, was yellow) · Target A
+var tgBars = true; function setTgBars(){ tgBars = !tgBars; render(); }
+function tgChart(rows, mode){
+  var n = rows.length; if (!n) return '<div class="muted">No data.</div>';
+  var TW = 820, TH = 270, L = 46, Rr = 40, T = 22, B = 34, plotH = TH - T - B, base = TH - B;
+  var step = n > 1 ? (TW - L - Rr) / (n - 1) : 0, cx = function(i){ return n > 1 ? L + i * step : (L + TW - Rr) / 2; };
+  var s = '<svg viewBox="0 0 ' + TW + ' ' + TH + '" preserveAspectRatio="xMinYMid meet" style="width:100%;height:auto">';
+  var grid = function(y, lbl){ return '<line x1="' + L + '" x2="' + (TW - Rr) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" stroke="#ececec" stroke-width="1"/>' +
+    '<text x="' + (L - 6) + '" y="' + (y + 3).toFixed(1) + '" font-size="9" fill="#888" text-anchor="end">' + lbl + '</text>'; };
+  var line = function(pts, col, w){ return '<path d="' + pts.map(function(p, i){ return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' ') + '" fill="none" stroke="' + col + '" stroke-width="' + w + '" stroke-linejoin="round"/>'; };
+  if (mode === 'value') {
+    var all = []; rows.forEach(function(r){ all.push(r.vals.actual, r.vals.A, r.vals.B); });
+    var mn = Math.min.apply(null, all), mx = Math.max.apply(null, all), span = Math.max(mx - mn, mx * 0.08, 1);
+    var lo = Math.max(0, mn - span * 0.25), hi = mx + span * 0.2, y = function(v){ return base - plotH * (v - lo) / (hi - lo); };
+    for (var g = 0; g <= 4; g++) { var gv = lo + (hi - lo) * g / 4; s += grid(y(gv), (CUR === 'USD' ? '$' : '') + kf(gv)); }
+    [['B', 2.4], ['A', 2.4], ['actual', 3.2]].forEach(function(sp){
+      var k = sp[0], col = k === 'actual' ? TG_COL.a : TG_COL[k], pts = rows.map(function(r, i){ return [cx(i), y(r.vals[k])]; });
+      s += line(pts, col, sp[1]);
+      pts.forEach(function(p, i){
+        var v = rows[i].vals[k], above = k === 'actual' ? rows[i].vals.actual >= Math.max(rows[i].vals.A, rows[i].vals.B) : (k === 'A' ? rows[i].vals.A >= rows[i].vals.B : rows[i].vals.B > rows[i].vals.A);
+        s += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="' + (k === 'actual' ? 3.6 : 2.8) + '" fill="' + col + '"><title>' + (k === 'actual' ? 'Revenue' : 'Target ' + k) + ' · ' + rows[i].m + ': ' + money(v) + '</title></circle>' +
+             '<text x="' + p[0].toFixed(1) + '" y="' + (above ? p[1] - 7 : p[1] + 14).toFixed(1) + '" font-size="' + (k === 'actual' ? 10 : 8.5) + '" font-weight="700" fill="' + col + '" text-anchor="middle">' + kf(v) + '</text>';
+      });
+    });
+  } else {
+    var kT = mode === 'pctA' ? 'A' : 'B', col = TG_COL[kT];
+    var pct = rows.map(function(r){ var t = r.vals[kT]; return t > 0.005 ? 100 * r.vals.actual / t : 0; });
+    var pmx = Math.max(110, Math.max.apply(null, pct) + 10), pmn = Math.max(0, Math.min(90, Math.min.apply(null, pct) - 10));
+    var yp = function(v){ return base - plotH * (v - pmn) / (pmx - pmn); };
+    for (var g2 = 0; g2 <= 4; g2++) { var pv = pmn + (pmx - pmn) * g2 / 4; s += grid(yp(pv), Math.round(pv) + '%'); }
+    if (tgBars) {                                  // the revenue amount per month, on its own scale (0 → the highest month), behind the line
+      var amx = Math.max.apply(null, rows.map(function(r){ return r.vals.actual; })) || 1, bw = Math.min(46, (n > 1 ? step : 200) * 0.55);
+      rows.forEach(function(r, i){ var hgt = plotH * 0.85 * r.vals.actual / amx;
+        s += '<rect x="' + (cx(i) - bw / 2).toFixed(1) + '" y="' + (base - hgt).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + hgt.toFixed(1) + '" rx="3" fill="' + TG_COL.a + '" opacity="0.16"><title>Revenue ' + r.m + ': ' + money(r.vals.actual) + '</title></rect>' +
+             '<text x="' + cx(i).toFixed(1) + '" y="' + (base - 4).toFixed(1) + '" font-size="8.5" fill="#8a4a48" text-anchor="middle">' + (CUR === 'USD' ? '$' : '') + kf(r.vals.actual) + '</text>'; });
+    }
+    var y100 = yp(100); s += '<line x1="' + L + '" x2="' + (TW - Rr) + '" y1="' + y100.toFixed(1) + '" y2="' + y100.toFixed(1) + '" stroke="#999" stroke-width="1.2" stroke-dasharray="5 4"/>' +
+      '<text x="' + (TW - Rr + 4) + '" y="' + (y100 + 3).toFixed(1) + '" font-size="9" fill="#777">100%</text>';
+    var pts = pct.map(function(v, i){ return [cx(i), yp(v)]; });
+    s += line(pts, col, 3);
+    pts.forEach(function(p, i){ var v = pct[i];
+      s += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3.6" fill="' + (v >= 100 ? col : '#c0392b') + '"><title>' + rows[i].m + ': ' + Math.round(v) + '% of Target ' + kT + '</title></circle>' +
+           '<text x="' + p[0].toFixed(1) + '" y="' + (p[1] - 8).toFixed(1) + '" font-size="10.5" font-weight="700" fill="' + (v >= 100 ? col : '#c0392b') + '" text-anchor="middle">' + Math.round(v) + '%</text>'; });
+  }
+  rows.forEach(function(r, i){ s += '<text x="' + cx(i).toFixed(1) + '" y="' + (TH - 16) + '" font-size="9.5" fill="#555" text-anchor="middle">' + MON[+r.m.slice(5, 7) - 1] + '</text>' +
+    (i === 0 || r.m.slice(5, 7) === '01' ? '<text x="' + cx(i).toFixed(1) + '" y="' + (TH - 4) + '" font-size="8.5" font-weight="700" fill="#333" text-anchor="middle">' + r.m.slice(0, 4) + '</text>' : ''); });
+  return s + '</svg>';
+}
 function secTarget(){
   var fl = scope === 'portfolio' ? tgFlats() : tgFlats().filter(function(f){ return f === scope; });
   var h = '<div class="card"><h3>Revenue vs target<span class="rt">' + CUR + '</span></h3>' +
@@ -884,15 +935,10 @@ function secTarget(){
     return { m: m, vals: { actual: disp(a, m), B: disp(tB, m), A: disp(tA, m) } }; });
   /* the view (2026-11-16): the amounts, or the % achieved of Target A or Target B — no table */
   h += '<div class="rowbtns">' + seg([['value', 'Amounts'], ['pctB', '% of Target B'], ['pctA', '% of Target A']], tgView, 'setTgView') + '</div>';
-  if (tgView === 'value') {
-    h += lineMulti(rows, [{ k: 'actual', lbl: 'Revenue', color: 'var(--c-earn)' }, { k: 'B', lbl: 'Target B', color: '#d9a441' }, { k: 'A', lbl: 'Target A', color: '#6f9a76' }], {}) +
-      '<div class="legend"><span><i style="background:var(--c-earn)"></i>Revenue (earnings)</span><span><i style="background:#d9a441"></i>Target B</span><span><i style="background:#6f9a76"></i>Target A</span></div>';
-  } else {
-    var kT = tgView === 'pctA' ? 'A' : 'B';
-    var prow = rows.map(function(r){ var t = r.vals[kT]; return { m: r.m, value: t > 0.005 ? Math.round(1000 * r.vals.actual / t) / 10 : 0 }; });
-    h += lineChart(prow, { color: kT === 'A' ? '#6f9a76' : '#d9a441', suf: '%' }) +
-      '<div class="legend"><span><i style="background:' + (kT === 'A' ? '#6f9a76' : '#d9a441') + '"></i>Revenue as % of Target ' + kT + ' (100% = on target)</span></div>';
-  }
+  h += tgChart(rows, tgView);
+  if (tgView === 'value') h += '<div class="legend"><span><i style="background:'+TG_COL.a+'"></i>Revenue (earnings)</span><span><i style="background:'+TG_COL.B+'"></i>Target B</span><span><i style="background:'+TG_COL.A+'"></i>Target A</span></div>';
+  else h += '<div class="legend"><span><i style="background:'+TG_COL[tgView==='pctA'?'A':'B']+'"></i>Revenue as % of Target '+(tgView==='pctA'?'A':'B')+' (dashed line = 100%)</span>' +
+    '<span style="cursor:pointer" onclick="setTgBars()"><i style="background:'+TG_COL.a+';opacity:'+(tgBars?'.35':'.08')+'"></i>'+(tgBars?'☑':'☐')+' revenue amount bars</span></div>';
   h += '<div class="muted" style="margin-top:4px;font-size:11px">Targets: the Targets tab\'s 30-day A and B, scaled to each month\'s number of days (28–31). VW1: the partnership plan\'s revenue from its launch' +
        ' (the launch month counts only its open days), VW1 at our 25% share — its revenue and its target. The current month counts every night already booked in it. Homes: ' + fl.map(esc).join(', ') + '.</div>';
   return h + '</div>';
