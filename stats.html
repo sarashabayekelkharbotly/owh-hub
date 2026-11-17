@@ -959,6 +959,8 @@ function secTarget(){
    FREE nights white — and the gaps listed underneath, longest first, so a promotion can be aimed at them. A partner home counts from its
    launch. Tap a cell for what is there. */
 var calDays = 90; function setCalDays(n){ calDays = +n; render(); }
+/* the gaps list (Sarah 2026-11-17): sort by date (what needs filling first) or by length, and folded away until opened */
+var calGapSort = 'date', calGapOpen = false; function setGapSort(v){ calGapSort = v; render(); } function toggleGaps(){ calGapOpen = !calGapOpen; render(); }
 function calFlats(){ return D.meta.flatsOrder.filter(function(f){ return !isLongLet(f); }); }
 function calOpenFrom(f){ var c = partnerCfg(f) ? (((D.meta && D.meta.commencement) || {})[f] || '') : ''; return String(c).slice(0, 10); }
 function calCellOf(f, k){
@@ -1008,13 +1010,18 @@ function secCalendar(){
   // the gaps, longest first
   var toLabel = function(k){ return (+k.slice(8)) + ' ' + MON[+k.slice(5, 7) - 1]; };
   var end = function(r){ var e = new Date(r.from + 'T12:00:00'); e.setDate(e.getDate() + r.n); return e.getFullYear() + '-' + ('0' + (e.getMonth() + 1)).slice(-2) + '-' + ('0' + e.getDate()).slice(-2); };
-  var useful = gaps.filter(function(r){ return r.n >= 2; }).sort(function(a, b){ return b.n - a.n || (a.from < b.from ? -1 : 1); });
+  var useful = gaps.filter(function(r){ return r.n >= 2; }).sort(calGapSort === 'date'
+    ? function(a, b){ return a.from < b.from ? -1 : a.from > b.from ? 1 : b.n - a.n; }
+    : function(a, b){ return b.n - a.n || (a.from < b.from ? -1 : 1); });
   var tot = {}; gaps.forEach(function(r){ tot[r.f] = (tot[r.f] || 0) + r.n; });
   h += '<div style="margin-top:8px;font-size:12px"><b>Free nights in the next ' + calDays + ' days:</b> ' + fl.map(function(f){ return esc(f === 'Zayed 2000' ? 'Zayed' : f) + ' ' + (tot[f] || 0); }).join(' · ') + '</div>';
-  if (useful.length) h += '<table class="t" style="margin-top:6px"><tr><th style="text-align:left">Gap to fill</th><th style="text-align:left">Home</th><th>Nights</th><th>Thu/Fri</th></tr>' +
+  if (useful.length) h += '<div class="drillable" onclick="toggleGaps()" style="margin-top:8px;cursor:pointer;font-weight:700;font-size:12.5px">' + (calGapOpen ? '▾' : '▸') + ' Gaps to fill · ' + useful.length + ' of 2+ nights' +
+      (useful.length ? ' · next from ' + toLabel(useful.slice().sort(function(a, b){ return a.from < b.from ? -1 : 1; })[0].from) : '') + '</div>' + (!calGapOpen ? '' :
+    '<div class="rowbtns" style="margin-top:6px">Sort ' + seg([['date', 'by date — soonest first'], ['len', 'by length — longest first']], calGapSort, 'setGapSort') + '</div>' +
+    '<table class="t" style="margin-top:6px"><tr><th style="text-align:left">Gap to fill</th><th style="text-align:left">Home</th><th>Nights</th><th>Thu/Fri</th></tr>' +
     useful.slice(0, 25).map(function(r){ return '<tr><td style="text-align:left">' + toLabel(r.from) + ' → ' + toLabel(end(r)) + (r.open ? ' <span class="muted">(and beyond)</span>' : '') + '</td><td style="text-align:left">' + esc(r.f) + '</td><td>' + r.n + '</td><td>' + (r.we || '—') + '</td></tr>'; }).join('') + '</table>' +
-    (useful.length > 25 ? '<div class="muted" style="font-size:11px">+ ' + (useful.length - 25) + ' shorter gaps</div>' : '') +
-    '<div class="muted" style="font-size:11px;margin-top:4px">Gaps of 2+ free nights, longest first — single nights are left out (the minimum stay is 2). Arrival = the first date, departure = the second.</div>';
+    (useful.length > 25 ? '<div class="muted" style="font-size:11px">+ ' + (useful.length - 25) + ' more gaps</div>' : '') +
+    '<div class="muted" style="font-size:11px;margin-top:4px">Gaps of 2+ free nights, ' + (calGapSort === 'date' ? 'soonest first' : 'longest first') + ' — single nights are left out (the minimum stay is 2). Arrival = the first date, departure = the second.</div>');
   else h += '<div class="muted" style="margin-top:6px">No gaps of 2+ nights in this window.</div>';
   return h + '</div>';
 }
