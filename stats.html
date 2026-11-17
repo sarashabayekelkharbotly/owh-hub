@@ -860,15 +860,18 @@ var tgView = 'value'; function setTgView(v){ tgView = v; render(); }
 function tgFlats(){ return allFlats().filter(function(f){ return !isLongLet(f) && ((D.targets && D.targets.byFlat && D.targets.byFlat[f]) || (f === 'VW1' && typeof VW1_PLAN !== 'undefined')); }); }
 function tgShare(f){ var p = partnerCfg(f); if (!p) return 1; var s = +p.sharePctOfTotalRev; return s > 0 && s < 1 ? s : 0.25; }
 function tgDays(ym){ return new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(); }
-function tgOpenDays(f, ym){   // days the home is open in the month (a partner home from its commencement date)
-  var dim = tgDays(ym); if (!partnerCfg(f)) return dim;
+/* when each of our own homes started taking guests (Sarah 2026-11-17): before it, no target; its first month counts only its open days */
+var TG_LAUNCH = { '28A': '2025-05-15', 'Zayed 2000': '2025-03-15' };
+function tgOpenDays(f, ym){   // days the home is open in the month (a partner home from its commencement date, ours from TG_LAUNCH)
+  var dim = tgDays(ym);
+  if (!partnerCfg(f)) { var l = TG_LAUNCH[f]; if (!l) return dim; var lk = l.slice(0, 7); if (lk < ym) return dim; if (lk > ym) return 0; return dim - (+l.slice(8, 10)) + 1; }
   var c = ((D.meta && D.meta.commencement) || {})[f]; if (!c) return 0;
   var k = String(c).slice(0, 10), ck = k.slice(0, 7); if (ck < ym) return dim; if (ck > ym) return 0;
   return dim - (+k.slice(8, 10)) + 1;
 }
 function tgTarget(f, ym, which){   // USD
   var t = D.targets && D.targets.byFlat && D.targets.byFlat[f];
-  if (t) return (+t[which] || 0) * tgDays(ym) / (D.targets.daysBasis || 30);
+  if (t) return (+t[which] || 0) * tgOpenDays(f, ym) / (D.targets.daysBasis || 30);   // only the days it was open
   if (f === 'VW1' && typeof VW1_PLAN !== 'undefined') { var p = VW1_PLAN.month(ym); if (!p) return 0; return p.gross * tgShare(f) * tgOpenDays(f, ym) / tgDays(ym); }
   return 0;
 }
