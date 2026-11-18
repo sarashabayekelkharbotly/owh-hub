@@ -65,7 +65,9 @@ var PC = (function () {
 
   function model(D, f, ym) {
     var r = recOf(D, f, ym); if (!r) return null;
-    var rate = rateOf(D, r), pv = r.partnerView || {};
+    /* the month's own rate from the FX table when it has one (2026-11-18: a month with one small EGP cost recovered 55.80 from rounded
+       figures, so December opened at 15,136 against November's 15,132) — else recovered from the figures as before */
+    var bmR = (D.meta && D.meta.fx && D.meta.fx.byMonth) || {}, rate = (+bmR[ym] > 0 ? +bmR[ym] : rateOf(D, r)), pv = r.partnerView || {};
     var st = staysIn(D, f, ym), G = 0, N = 0, nights = 0, nightsAdr = 0, done = 0;
     /* NIGHTS AND OCCUPANCY COUNT FROM THE LAUNCH (Sarah 2026-11-16, VW1 launch 15 Nov): nights before the commencement date are not
        operating nights — the launch month's occupancy is nights ÷ the days from the launch to the month end; months before it have none.
