@@ -566,8 +566,10 @@ function fcDiff(a,b){ return (+b.slice(0,4)-+a.slice(0,4))*12+(+b.slice(5,7)-+a.
 function fcTerms(){ var tt=(D.meta&&D.meta.dealTerms)||{}, g=function(k,d){ return tt[k]!=null?tt[k]:d; };
   return { rev:g('Revenue growth (annual, USD)',0.03), cost:g('Cost inflation (annual)',0.10), rent:g('Rent increase (annual)',0.10), dev:g('EGP devaluation (annual)',0.07) }; }
 function fcClosed(rec){ return !!(rec&&rec.status==='final'); }
-function fcFxBase(){ var by=(D.meta.fx&&D.meta.fx.byMonth)||{}, P=D.pnl['Zayed 2000']||{}, best=null;
-  Object.keys(by).forEach(function(m){ if(by[m]&&fcClosed(P[m])&&(!best||m>best)) best=m; });
+/* THE FORECAST STARTS FROM THE LAST RATE ENTERED (Sarah 2026-11-18: November set at 53.75, below October, showed as an FX GAIN — the base
+   was the last CLOSED month, October 55.79, so open November was projected at ~56.1). Base = the latest month up to now with a rate. */
+function fcFxBase(){ var by=(D.meta.fx&&D.meta.fx.byMonth)||{}, cmF=(D.meta&&D.meta.currentMonth)||'9999-99', best=null;
+  Object.keys(by).forEach(function(m){ if(by[m]&&m<=cmF&&(!best||m>best)) best=m; });
   return best?{m:best,r:by[best]}:{m:D.meta.currentMonth,r:(D.meta.fx&&D.meta.fx.current)||50}; }
 function fcCost(rec){ var o={egp:0,rent:0,usd:0}; (rec.costs||[]).forEach(function(c){ var a=+c.amount||0; if(c.currency==='USD') o.usd+=a; else { o.egp+=a; if(c.key==='rent') o.rent+=a; } }); return o; }
 function fcIrr(flows){ var npv=function(r){ var v=0; for(var k=0;k<flows.length;k++) v+=flows[k]/Math.pow(1+r,k); return v; };
