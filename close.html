@@ -58,7 +58,8 @@ thead th{font-size:10.5px;color:var(--soft);font-weight:700}
 textarea{width:100%;min-height:90px;font-family:monospace;font-size:11px;border:1px solid var(--line);border-radius:9px;padding:8px}
 .muted{color:var(--soft);font-size:11px}
 .cmp-wrap{overflow-x:auto}
-.cmp td,.cmp th{white-space:nowrap;padding:5px 9px}
+.cmp td,.cmp th{white-space:nowrap;padding:5px 7px}
+.cmp td:first-child,.cmp th:first-child{white-space:normal;width:150px;min-width:120px;max-width:170px;line-height:1.25}   /* the line names wrap so every column fits (2026-11-18) */
 .drillable{cursor:pointer}
 .drillable:hover{background:#faf5f5}
 .tri{display:inline-block;width:12px;color:var(--soft)}
@@ -1229,10 +1230,33 @@ function doMarkFinal(){
 }
 
 /* 4b — Compare all flats: LANDSCAPE (wide, scrolls on mobile) */
+/* COMPARE ALL — OWH VIEW / OWNER VIEW (Sarah 2026-11-18). A partner home's column:
+   · OWH view (default): what the home earns OWH — revenue = the 25% fee, costs = OWH's own (channel management, rent, platform fees of the
+     review bookings OWH paid), net = OWH's result; it COUNTS in the totals, so the totals are OWH's true net across all flats.
+   · Owner view: the owner's statement — full revenue, her operating costs, the 25% fee as a line, net = her month result; out of the totals. */
+var CMPV='owh'; function setCmpV(v){ CMPV=v; render(); }
+function cmpRec(f,ym){
+  var r=DATA.pnl[f]&&DATA.pnl[f][ym]; if(!r||!r.partnerLedger) return r;
+  var pl=r.partnerLedger, c={}; for(var k in r) c[k]=r[k];
+  if(CMPV==='owh'){
+    var o=owhLines_(f,ym)||{fee:0,own:0,lines:[]}, rv=0; (o.lines||[]).forEach(function(x){ if(x.id==='rv') rv=x.usd; });
+    c.revenue={earnings:o.fee,other:0,total:o.fee};
+    c.costs=(r.costs||[]).map(function(x){ var y={}; for(var j in x) y[j]=x[j]; if(x.key!=='subscription'&&x.key!=='rent') y.amount=0; return y; })
+      .concat([{key:'__rvfees',label:'Review bookings OWH paid — platform fees',currency:'USD',amount:Math.round(rv*100)/100}]);
+    c.setup=null; c.net=o.own;
+  } else {
+    c.costs=(r.costs||[]).map(function(x){ var y={}; for(var j in x) y[j]=x[j]; if(x.key==='subscription'||x.key==='rent') y.amount=0; return y; })
+      .concat([{key:'__fee',label:'Management fee '+Math.round((pl.feePct||0.25)*100)+'% → OWH',currency:'USD',amount:pl.fee||0}]);
+    c.net=(pl.monthResult||0)-((r.setup&&r.setup.usd>0.005)?r.setup.usd:0);   // the Net row adds the set-up back → her month result
+  }
+  return c;
+}
 function renderCompare(){
   var flats=DATA.meta.flatsOrder, pm=prevMonth(MONTH), costKeys=[];
   for(var i=0;i<flats.length;i++){var r=DATA.pnl[flats[i]][MONTH];if(r){costKeys=r.costs.map(function(c){return{key:c.key,label:c.label.replace(/\s*\((EGP|USD)\)/,''),cur:c.currency};});break;}}
-  var h='<div class="frame land"><span class="orient o-land">landscape · wide table</span><div class="card cmp-wrap"><h1>Compare · '+MONTH+'</h1><p class="sub">all flats · all values in '+CUR+' · Δ vs '+pm+'</p><table class="cmp"><thead><tr><th>Line</th>';
+  if(flats.some(isPartnerFlat)) costKeys.push(CMPV==='owh'?{key:'__rvfees',label:'Review bookings OWH paid — platform fees',cur:'USD'}:{key:'__fee',label:'Management fee → OWH (partner homes)',cur:'USD'});
+  var h='<div class="frame land"><span class="orient o-land">landscape · wide table</span><div class="card cmp-wrap"><h1>Compare · '+MONTH+'</h1><p class="sub">all flats · all values in '+CUR+' · Δ vs '+pm+'</p>'+
+    (flats.some(isPartnerFlat)?'<div class="seg" style="display:inline-flex;margin:2px 0 8px">'+[['owh','OWH view — our 25% and our net'],['owner','Owner view — her statement']].map(function(x){ return '<button class="'+(CMPV===x[0]?'on':'')+'" onclick="setCmpV(\''+x[0]+'\')">'+x[1]+'</button>'; }).join('')+'</div>':'')+'<table class="cmp"><thead><tr><th>Line</th>';
   flats.forEach(function(f){h+='<th>'+f+(isPartnerFlat(f)?' <span style="font-weight:400;font-size:9px">شراكة</span>':'')+'</th>';}); h+='<th>Total</th><th>Δ</th></tr></thead><tbody>';
   h+=csec('Revenue',flats.length);
   h+=cmp('Earnings',flats,pm,function(r){return r?r.revenue.earnings:0;},'USD');
@@ -1247,7 +1271,7 @@ function renderCompare(){
   h+=cmp('Net',flats,pm,function(r){return r?(r.net||0)+(r.setup&&r.setup.usd>0.005?r.setup.usd:0):0;},'USD','net');   // set-up is not in the result (2026-11-18)
   if(flats.some(function(f){ var r=DATA.pnl[f][MONTH]; return r&&r.setup&&r.setup.usd>0.005; }))
     h+=cmp('Set-up before the launch — not in the result (→ owner\'s balance)',flats,pm,function(r){return r&&r.setup?r.setup.usd:0;},'USD','attr');
-  if(flats.some(isPartnerFlat))
+  if(flats.some(isPartnerFlat)&&CMPV==='owner')   // in the OWH view the fee IS the partner column's earnings
     h+=cmp('OWH fee from partner flats',flats,pm,function(r){return r&&r.partnerLedger?r.partnerLedger.fee:0;},'USD','tot',true);
   h+=csec('Attribution',flats.length);
   h+=cmp('Khaled',flats,pm,function(r){return r&&r.attribution?r.attribution.khaled:0;},'USD','attr');
@@ -1270,9 +1294,9 @@ function isPartnerFlat(f){ var x=((DATA.flats)||[]).filter(function(o){ return o
   return !!(x&&x.partner&&x.partner.hasPartner); }
 function cmp(label,flats,pm,getNative,native,cls,inclPartner){
   var row='<tr'+(cls?' class="'+cls+'"':'')+'><td>'+label+'</td>',tot=0,ptot=0;
-  flats.forEach(function(f){ var v=toCur(getNative(DATA.pnl[f][MONTH]),native), pv=toCur(getNative(DATA.pnl[f][pm]),native,pm);
-    if(inclPartner||!isPartnerFlat(f)){ tot+=v||0; ptot+=pv||0; }
-    row+='<td'+(!inclPartner&&isPartnerFlat(f)?' style="opacity:.55"':'')+'>'+m(v)+'</td>'; });
+  flats.forEach(function(f){ var v=toCur(getNative(cmpRec(f,MONTH)),native), pv=toCur(getNative(cmpRec(f,pm)),native,pm), inT=inclPartner||!isPartnerFlat(f)||CMPV==='owh';   // OWH view: a partner home's OWH figures count in the totals
+    if(inT){ tot+=v||0; ptot+=pv||0; }
+    row+='<td'+(!inT?' style="opacity:.55"':'')+'>'+m(v)+'</td>'; });
   row+='<td><b>'+m(tot)+'</b></td><td>'+deltaCell(tot,ptot)+'</td></tr>';
   return row;
 }
