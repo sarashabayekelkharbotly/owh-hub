@@ -119,6 +119,9 @@ function monLabel(ym){ var p=(ym||'').split('-'); return p.length===2 ? MON[(+p[
 function fxNow(){ return (DATA.meta.fx&&DATA.meta.fx.current)||1; }
 function rateFor(r){
   if(!r) return fxNow();
+  /* the FX table first (2026-11-18: the rate typed — or carried from the last typed one — for the month; a month with little EGP in it
+     recovered 55.80 from rounded figures, so December opened at 15,136 against November's 15,132) */
+  var bmT=(DATA.meta.fx&&DATA.meta.fx.byMonth)||{}, Pm=(DATA.pnl&&DATA.pnl[myFlat()])||{}; for(var km in Pm) if(Pm[km]===r&&+bmT[km]>0) return +bmT[km];
   var egp=0, usd=0;
   (r.costs||[]).forEach(function(c){ if(!c.amount) return; if(c.currency==='EGP') egp+=c.amount; else usd+=c.amount; });
   var allCostsUsd=r.revenue.total-r.net, egpAsUsd=allCostsUsd-usd;

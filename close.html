@@ -469,6 +469,9 @@ var __rateCache={};
 function rateFor(mo){
   if(!mo) return fx();
   if(__rateCache[mo]) return __rateCache[mo];
+  /* the FX table first (2026-11-18: the rate typed — or carried from the last typed one — for the month; a month with little EGP in it
+     recovered 55.80 from rounded figures, so December opened at 15,136 against November's 15,132) */
+  var bmT=(DATA.meta.fx&&DATA.meta.fx.byMonth)||{}; if(+bmT[mo]>0) return (__rateCache[mo]=+bmT[mo]);
   var egp=0,usd=0,rev=0,net=0;
   (DATA.meta.flatsOrder||[]).forEach(function(f){
     var p=(DATA.pnl[f]||{})[mo]; if(!p) return;
