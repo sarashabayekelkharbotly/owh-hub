@@ -299,11 +299,12 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
      OWH's own pre-launch costs: those are repaid out of her month results under clause 5.3, so counting them here would count them twice),
      against each month's result as the statement shows it. USD, the statement's basis; an EGP set-up converts at its month's rate.
      Used by the owner's Overview and by OWH's Statistics, so the two always agree. ---- */
-  function investReturn(D, f) {
+  function investReturn(D, f, upTo) {
     /* her investment = what she paid herself for the set-up (Settings → PARTNER_SETUP) + the set-up costs OWH paid before the launch
        (2026-11-09: "set-up counts as her investment" — repaid through her balance, so each is an outflow in the month it was paid) */
     var su = D.meta && D.meta.partnerSetup && D.meta.partnerSetup[f], fx = (D.meta && D.meta.fx) || {}, cm = (D.meta && D.meta.currentMonth) || '9999-99';
-    var ms = monthsOf(D, f).filter(function (m) { return m <= cm; }), own = su && su.amount > 0, sm = own ? String(su.date).slice(0, 7) : null;
+    var lim = upTo && upTo > cm ? upTo : cm;   // up to the month picked; beyond the current one it is projected (2026-11-18)
+    var ms = monthsOf(D, f).filter(function (m) { return m <= lim; }), own = su && su.amount > 0, sm = own ? String(su.date).slice(0, 7) : null;
     var rate = own ? ((fx.byMonth && fx.byMonth[sm]) || fx.current || 1) : null, ownUsd = own ? (su.currency === 'USD' ? su.amount : su.amount / rate) : 0;
     var rateM = function (m) { return +(fx.byMonth && fx.byMonth[m]) || fx.current || 1; };
     var ownEgp = own ? (su.currency === 'USD' ? su.amount * rate : su.amount) : 0, owhEgp = 0;
@@ -317,7 +318,7 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
       var md = model(D, f, m); if (!md) return; var res = r2(md.v.res || 0);
       acc = r2(acc + res); flows[idx(m)] = (flows[idx(m)] || 0) + res;
       var resE = r2(res * rateM(m)); accE = r2(accE + resE);
-      rows.push({ m: m, res: res, acc: acc, resE: resE, accE: accE, final: md.status === 'final' });
+      rows.push({ m: m, res: res, acc: acc, resE: resE, accE: accE, final: md.status === 'final', proj: m > cm });
       if (back === null && acc >= 0) back = m;
     });
     for (var i = 0; i < flows.length; i++) if (flows[i] == null) flows[i] = 0;
@@ -343,14 +344,15 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
         (x.currency === 'EGP' ? '<tr class="subrow"><td>EGP ' + Math.round(x.amount).toLocaleString('en-US') + ' at ' + x.rate + ' EGP per USD</td><td class="r"></td></tr>' : '') : '') +
       (x.owhSetupUsd > 0 ? '<tr><td>Set-up OWH paid before the launch · charged to ' + (you ? 'your' : 'the owner\'s') + ' balance</td><td class="r">' + fm(-x.owhSetupUsd) + '</td></tr>' : '') +
       (x.ownUsd > 0 && x.owhSetupUsd > 0 ? '<tr class="tot"><td>Total set-up</td><td class="r">' + fm(-x.setupUsd) + '</td></tr>' : '') +
-      '<tr><td>Month results to date · ' + x.rows.length + ' month' + (x.rows.length === 1 ? '' : 's') + (lastRow && !lastRow.final ? ' (the last one in progress)' : '') + '</td><td class="r">' + fm(x.got) + '</td></tr>' +
+      '<tr><td>Month results ' + (lastRow && lastRow.proj ? 'to ' + monLabelP(lastRow.m) : 'to date') + ' · ' + x.rows.length + ' month' + (x.rows.length === 1 ? '' : 's') +
+        (lastRow && lastRow.proj ? ' (' + x.rows.filter(function (r) { return r.proj; }).length + ' projected)' : (lastRow && !lastRow.final ? ' (the last one in progress)' : '')) + '</td><td class="r">' + fm(x.got) + '</td></tr>' +
       '<tr class="net"><td>Where ' + (you ? 'you stand' : 'the owner stands') + '</td><td class="r">' + fm(x.acc) + '</td></tr></table>' +
       '<div style="margin:9px 0 3px;height:9px;border-radius:5px;background:#f0e6e6;overflow:hidden"><div style="height:100%;width:' + Math.round(pct * 100) + '%;background:#3a7d4d"></div></div>' +
       '<p class="note" style="margin:0">' + (x.payback ? '<b>Paid back in ' + monLabelP(x.payback) + '.</b>' + (x.irr != null ? ' Yearly return so far: <b>' + (x.irr * 100).toFixed(1) + '%</b> (from the set-up date to the latest month).' : '')
                                                     : '<b>' + Math.round(pct * 100) + '% recovered</b> — ' + fm(-x.acc) + ' to go before the set-up is paid back. The yearly return shows once it is.') + '</p>';
     if (x.rows.length) {
       h += '<details style="margin-top:6px"><summary class="note" style="cursor:pointer">Month by month</summary><table class="d" style="font-size:11.5px"><tr><th>Month</th><th class="r">Month result</th><th class="r">Running total</th></tr>' +
-        x.rows.map(function (r) { return '<tr><td>' + monLabelP(r.m) + (r.final ? '' : ' <span class="muted">· in progress</span>') + '</td><td class="r">' + fm(r.res) + '</td><td class="r">' + fm(r.acc) + '</td></tr>'; }).join('') + '</table></details>';
+        x.rows.map(function (r) { return '<tr><td>' + monLabelP(r.m) + (r.proj ? ' <span class="muted" style="color:#b8860b">· projected</span>' : (r.final ? '' : ' <span class="muted">· in progress</span>')) + '</td><td class="r">' + fm(r.res) + '</td><td class="r">' + fm(r.acc) + '</td></tr>'; }).join('') + '</table></details>';
     }
     h += '<p class="note" style="margin-top:6px">' + (you ? 'Your' : 'The owner\'s') + ' set-up — what ' + (you ? 'you' : 'the owner') + ' paid directly and what OWH paid before the launch (repaid through the balance, clause 5.3) — in ' + (eg ? 'EGP — the set-up as it was paid, each month at its own rate' : 'USD, the statement\'s basis') + '. The month results exclude the set-up, so nothing is counted twice.</p></div>';
     return h;
