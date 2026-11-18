@@ -757,10 +757,27 @@ function secDelta(){
   rows.forEach(function(r){
     h+=rowH(r,false,true);
     if(dOpen[r.f]&&partnerCfg(r.f)){
-      // a partner flat's costs are the OWNER's — nothing here belongs in OWH's cost anatomy
-      h+='<tr><td colspan="7" style="padding:4px 8px 8px 24px;background:var(--surface2,#faf7f4);font-size:11.5px;color:var(--text3,#777)">'+
-         'Partner flat — the owner bears the operating costs; OWH\'s number above is the '+Math.round(feePctOf(r.f)*100)+'% management fee. Full performance: scope the screen to '+esc(r.f)+', or the Close page.'+
-         occLine(r.f,mNow,refMs)+'</td></tr>';
+      /* A PARTNER HOME'S COST CHANGES TOO (Sarah 2026-11-18: "every apartment when clicked shows the changes in cost, except VW1").
+         1 · OWH's own costs on the home — they ARE the row's Costs (fee − OWH's result) and add up to its Δ, like every other home;
+         2 · the home's operating costs, which the owner pays — shown for the full picture, with their own total, never mixed into OWH's. */
+      var avgBy=function(msArr,fn){ var by={},n=0; msArr.forEach(function(m){ if(!pnlOf(r.f,m))return; n++; var o=fn(m); for(var k in o) by[k]=(by[k]||0)+o[k]; }); if(n>1) for(var k2 in by) by[k2]/=n; return by; };
+      var owhBy=function(m){ var p=pnlOf(r.f,m), o={}, rt=rateFor(m);
+        (p.costs||[]).forEach(function(c){ if(!c.amount||(c.key!=='subscription'&&c.key!=='rent')) return;
+          var lbl=c.key==='subscription'?'Channel management (Smoobu + Dani)':'Rent'; o[lbl]=(o[lbl]||0)+disp(c.currency==='USD'?c.amount:c.amount/rt,m); });
+        var rv=0; (D.stays||[]).forEach(function(s){ if(s.flat===r.f&&s.review==='owh'&&String(s.checkOut||'').slice(0,7)===m&&(s.reviewGross||0)>(s.reviewNet||0)) rv+=s.reviewGross-s.reviewNet; });
+        if(rv) o['Review bookings OWH paid — platform fees']=disp(rv,m); return o; };
+      var ownBy=function(m){ var c=costsUSD(r.f,m), o={}; for(var k in c.by){ if(k==='subscription'||k==='rent'||!c.by[k]) continue; o[k]=disp(c.by[k],m); } return o; };
+      var block=function(bNow,bRef,title,totLbl){ var keys={}, sum=0, now=0; for(var k in bNow) keys[k]=1; for(var k1 in bRef) keys[k1]=1;
+        var dets=Object.keys(keys).map(function(k){ var d=(bNow[k]||0)-(bRef[k]||0); sum+=d; now+=(bNow[k]||0); return {k:k,d:d,now:bNow[k]||0}; }).sort(function(x,y){ return Math.abs(y.d)-Math.abs(x.d); });
+        return '<div style="font-size:10.5px;font-weight:800;color:var(--text3,#777);margin:4px 0 2px">'+title+'</div>'+
+          (dets.length?dets.map(function(x){ return '<div style="display:flex;justify-content:space-between;font-size:11.5px;padding:1px 0"><span>'+esc(x.k)+'</span><span>'+money(x.now)+' &nbsp;'+dc(x.d,false)+'</span></div>'; }).join('')
+                      :'<div style="font-size:11.5px;color:var(--text3,#777)">none either month</div>')+
+          '<div style="display:flex;justify-content:space-between;font-size:11.5px;padding:3px 0 0;border-top:1px solid var(--line,#ddd);font-weight:800"><span>'+totLbl+'</span><span>'+money(now)+' &nbsp;'+dc(sum,false)+'</span></div>'; };
+      h+='<tr><td colspan="7" style="padding:4px 8px 8px 24px;background:var(--surface2,#faf7f4)">'+
+        block(avgBy([mNow],owhBy),avgBy(refMs,owhBy),'OWH\'S COSTS ON '+esc(r.f).toUpperCase()+' — the row above is the '+Math.round(feePctOf(r.f)*100)+'% fee less these','Σ OWH\'s costs (= Costs Δ)')+
+        '<div style="height:6px"></div>'+
+        block(avgBy([mNow],ownBy),avgBy(refMs,ownBy),'THE HOME\'S OPERATING COSTS — paid by the owner, not in OWH\'s numbers','Σ the owner\'s operating costs')+
+        occLine(r.f,mNow,refMs)+'</td></tr>';
     } else if(dOpen[r.f]){
       // the COMPLETE category list — every line, summing exactly to the Costs Δ shown above
       function catAgg(msArr){ var by={},n=0; msArr.forEach(function(m){ if(!pnlOf(r.f,m))return; n++;
