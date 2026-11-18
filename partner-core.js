@@ -103,7 +103,7 @@ var PC = (function () {
               openBal: openBal, prep: prep, balAfter: pl.balanceAfter, floatOpen: r2(pl.floatAfter - (pl.floatRetained || 0) + (pl.floatDrawn || 0)),
               floatAfter: pl.floatAfter, target: pl.floatTarget, paid: pl.paidToDate || 0, still: pl.outstanding || 0 };
     }
-    return { ym: ym, r: r, rate: rate, status: r.status, closedAt: r.closedAt || null, pct: pv.managementFeePct || 0,
+    return { ym: ym, r: r, rate: rate, status: r.status, projected: !!(pl && pl.projected), closedAt: r.closedAt || null, pct: pv.managementFeePct || 0,
              k: { stays: done, turn: turnoversOf(D, f, ym), nights: nights, nightsAdr: nightsAdr, occ: avail ? nights / avail : 0, availDays: avail, adr: nightsAdr ? E / nightsAdr : null },
              v: { G: G, F: G - N, adj: E - N, E: E, O: O, T: T, fee: fee, share: T - fee, ret: ret, res: res, costs: (T - fee) - res },
              cost: cost, costNative: costNative, led: led, setup: su };

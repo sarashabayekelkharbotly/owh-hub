@@ -90,7 +90,7 @@ table.d tr.sub td:first-child{padding-left:20px;background:#fbf7f7}
 </nav>
 
 <script src="auth.js?v=c5d7281b"></script>
-<script src="partner-core.js?v=13"></script>
+<script src="partner-core.js?v=14"></script>
 <script>
 /* SCREEN 7 — Partner, history & statistics.
    Each card carries its own time range, the same 3M/6M/YTD/12M/all control the Statistics screen uses,
@@ -345,14 +345,14 @@ function render(){
   var sms=inRange(R.sum), smodels=modelsIn(sms), bdefs=PC.rowDefs(smodels,{brief:true}), sncol=smodels.length+1;
   var anyOpen=smodels.some(function(m){ return m.status!=='final'; });
   h+='<div class="card"><div class="chead"><h3>Your statement, month by month</h3><div class="rowbtns">'+timeSeg('sum')+seg([['USD','USD'],['EGP','EGP']],CUR,'setCur')+'</div></div>'+
-     '<div class="wrap"><table class="d"><thead><tr><th>Line</th>'+smodels.map(function(m){ return '<th>'+monShort(m.ym)+(m.ym.slice(0,4)!==(smodels[smodels.length-1]||{ym:''}).ym.slice(0,4)?' '+m.ym.slice(2,4):'')+(m.status!=='final'?'*':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
+     '<div class="wrap"><table class="d"><thead><tr><th>Line</th>'+smodels.map(function(m){ return '<th>'+monShort(m.ym)+(m.ym.slice(0,4)!==(smodels[smodels.length-1]||{ym:''}).ym.slice(0,4)?' '+m.ym.slice(2,4):'')+(m.projected?' <span style="font-weight:400;color:#b8860b">proj.</span>':(m.status!=='final'?'*':''))+'</th>'; }).join('')+'</tr></thead><tbody>';
   bdefs.forEach(function(d){
     if(d.sec){ h+='<tr class="head"><td colspan="'+sncol+'" style="background:#f6f2f2;font-weight:700;text-transform:uppercase;font-size:10px;letter-spacing:.04em">'+d.sec+'</td></tr>'; return; }
     var cls=(d.cls==='cat'?'sub':(d.cls||''));
     h+='<tr class="'+cls+'"><td>'+d.label+'</td>'+smodels.map(function(m){ var v=d.get(m); return '<td class="'+(v!=null&&d.t==='m'&&v<0?'neg':'')+'">'+cellTxt(d,m)+'</td>'; }).join('')+'</tr>';
   });
   h+='</tbody></table></div>'+
-     '<p class="note">Minus on the balance means owed to OWH. All figures '+CUR+', each month converted at the rate shown above (the rate for that month)'+(anyOpen?' · <b>*</b> still open, may change until the month is closed':'')+
+     '<p class="note">Minus on the balance means owed to OWH. All figures '+CUR+', each month converted at the rate shown above (the rate for that month)'+(anyOpen?' · <b>*</b> still open, may change until the month is closed':'')+(smodels.some(function(m){ return m.projected; })?' · <b>proj.</b> projected — a month still to come, worked out from the bookings and costs already registered':'')+
      '. This is the short version: every cost category, the settlement steps, every cost entry and every booking are in the Excel download on the <a href="partner.html#statement">Statement</a> tab.</p></div>';
 
   /* ---- occupancy & average nightly rate ---- */

@@ -665,7 +665,7 @@ function ownerCard(){
   var rowsH='';
   Object.keys(D.pnl||{}).forEach(function(f){
     var byM=D.pnl[f]||{}, latest=null, pl=null;
-    Object.keys(byM).forEach(function(m){ if(byM[m]&&byM[m].partnerLedger&&(!latest||m>latest)){ latest=m; pl=byM[m].partnerLedger; } });
+    Object.keys(byM).forEach(function(m){ if(byM[m]&&byM[m].partnerLedger&&!byM[m].partnerLedger.projected&&(!latest||m>latest)){ latest=m; pl=byM[m].partnerLedger; } });   // real months only (projected ones are not due — 2026-11-18)
     if(!pl) return;
     if(Math.abs(pl.balanceAfter)<0.005&&pl.floatAfter<0.005&&pl.outstanding<0.005&&!pl.payable) return;
     var bits=[];
@@ -692,7 +692,7 @@ function needs(cm,pmY){
   var pays=directNeedsPay();   // internet dangers + the Thursday confirm live on الكنترول's «مطلوب منكم» card (Switch C, 2026-10-03)
   // an owner payout the statements say is due but no 🏦 entry has settled — Clause 7.2's 7th-of-month wire
   Object.keys(D.pnl||{}).forEach(function(fO){ var byMO=D.pnl[fO]||{}, plO=null, lO=null;
-    Object.keys(byMO).forEach(function(mO){ if(byMO[mO]&&byMO[mO].partnerLedger&&(!lO||mO>lO)){ lO=mO; plO=byMO[mO].partnerLedger; } });
+    Object.keys(byMO).forEach(function(mO){ if(byMO[mO]&&byMO[mO].partnerLedger&&!byMO[mO].partnerLedger.projected&&(!lO||mO>lO)){ lO=mO; plO=byMO[mO].partnerLedger; } });
     if(plO&&plO.outstanding>0.005) items.unshift({t:'warn',txt:'<b>'+esc(fO)+' — owner payout $'+fmt(plO.outstanding)+' due</b> (settlement by the 7th). Wire it, then log it as 🏦 Owner payout in WeShare.'});
   });
   if(ALERTS && ALERTS.pendingCount>0) items.unshift({t:'warn',txt:'<b>'+ALERTS.pendingCount+' expense'+(ALERTS.pendingCount>1?'s':'')+' awaiting confirmation</b> in WeShare — confirm who paid and they flow to the P&amp;L.'});

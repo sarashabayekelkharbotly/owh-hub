@@ -121,7 +121,7 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
 </nav>
 
 <script src="auth.js?v=c5d7281b"></script>
-<script src="partner-core.js?v=13"></script>
+<script src="partner-core.js?v=14"></script>
 <script>
 /* SCREEN 6 — Partner, this month. Built to the mock-up (OWH_final_2.html §6):
    4 KPIs · the month's stays · statement with this month beside last month · drill-down per cost line.
@@ -456,39 +456,6 @@ function drillBlock(key){
   return out ? '<tr><td colspan="3" style="padding:2px 4px"><div class="drill"><table>'+out+'</table></div></td></tr>' : '';
 }
 
-/* WHERE YOU STAND — TODAY (Sarah 2026-11-18: "the settlement should be calculated on the current state of things, regardless of whether a
-   month has a result — the partner wants to see where she stands and how much is owed vs settled to OWH"). Always the LATEST position
-   (every month up to now, the current one to date), whatever month is picked. It adds up: charged − settled = still owed. */
-function standCard(){
-  var f=myFlat(), cmK=(DATA.meta&&DATA.meta.currentMonth)||'', ms=Object.keys((DATA.pnl&&DATA.pnl[f])||{}).sort().filter(function(m){ return (!cmK||m<=cmK)&&recFor(m)&&recFor(m).partnerLedger; });
-  if(!ms.length) return '';
-  var su=0, loss=0, settled=0, rv=0, prep=0, last=null, lastM='';
-  ms.forEach(function(m){ var mo=PC.model(DATA,f,m); if(!mo||!mo.led) return; var l=mo.led;
-    su+=l.setup||0; rv+=l.rvBack||0; prep+=l.prep||0;
-    if(l.applied>=0) settled+=l.applied; else loss+=-l.applied;   // a loss month adds to what is owed
-    last=mo; lastM=m; });
-  if(!last) return '';
-  var r=last.r, M=function(v){ return sym()+fmt(conv(v,'USD',r)); };
-  var charged=su+loss, paidDown=settled+rv+prep, bal=last.led.balAfter, fin=last.status==='final';
-  var row=function(l,v,cls){ return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+l+'</td><td class="r">'+v+'</td></tr>'; };
-  var h='<div class="card"><h3>Where you stand — today <span class="pill '+(fin?'pf':'pa')+'" style="float:right">'+monShort(lastM)+(fin?' final':' to date')+'</span></h3><table class="d">';
-  h+='<tr><th colspan="2">What OWH has paid for you</th></tr>';
-  h+=row('Set-up before the launch',M(su),'subrow');
-  if(loss>0.005) h+=row('Months whose costs were more than your share',M(loss),'subrow');
-  h+=row('<b>Total owed to OWH</b>','<b>'+M(charged)+'</b>','tot');
-  h+='<tr><th colspan="2">What has settled it</th></tr>';
-  h+=row('From your bookings (month results)',M(settled),'subrow');
-  if(rv>0.005) h+=row('Review bookings you paid — returned to you',M(rv),'subrow');
-  if(prep>0.005) h+=row('Your prepayments',M(prep),'subrow');
-  h+=row('<b>Total settled</b>','<b>'+M(paidDown)+'</b>','tot');
-  h+=row('<b>'+(bal<-0.005?'Still owed to OWH':(bal>0.005?'Held for you by OWH':'Settled in full'))+'</b>','<b>'+M(Math.abs(bal))+'</b>','net');
-  h+='<tr><th colspan="2">Your money held by OWH</th></tr>';
-  h+=row('Security float',M(last.led.floatAfter)+' of '+M(last.led.target),'subrow');
-  h+=row('Payable to you, not yet paid',M(last.led.still||0),'subrow');
-  h+=row('Paid to you, to date',M(last.led.paid||0),'subrow');
-  h+='</table><p class="note">Every month up to today, '+monShort(lastM)+(fin?'':' as it stands now (it moves as the month goes on)')+'. Each month\'s result first pays down what is owed to OWH, then fills the security float, and only then is paid to you (clause 7).</p></div>';
-  return h;
-}
 /* The balance with OWH, in words — minus = owed to OWH, plus = held for her. */
 function balWords(v,r){ var s=sym()+fmt(conv(Math.abs(v),'USD',r));
   return v<-0.005 ? s+' owed to OWH' : (v>0.005 ? s+' held for you' : 'settled'); }
@@ -581,7 +548,6 @@ function render(){
        tile('Nights',fmtN(cm.k.nights),'booked this month')+
        tile('Balance with OWH',cm.led?balWords(cm.led.balAfter,cm.r):'—',cm.led?'after '+monShort(MONTH):'')+
        '</div>';
-    vb+=standCard();
     vb+='<div class="card"><h3>Where the month\'s money goes <span class="pill '+(isFinal?'pf':'pa')+'" style="float:right">'+(isFinal?'final':'in progress')+'</span></h3><table class="d">'+
        '<tr><td>Net revenue</td><td class="r">'+mv(cm.v.T)+'</td></tr>'+
        '<tr class="subrow"><td>management fee — '+Math.round(pct*100)+'%</td><td class="r">'+mv(-cm.v.fee)+'</td></tr>'+
@@ -686,8 +652,8 @@ function render(){
   vb+=excelCard();
 
     } else if(SUB==='settle'){
-      vb+=standCard();
       vb+='<div class="card">';
+      if(cm.projected) vb+='<p class="note" style="margin:0 0 8px;background:#fdf6e3;border-radius:8px;padding:6px 9px"><b>Projected</b> — '+monLabel(MONTH)+' has not happened yet. This settlement is worked out from the bookings and the costs already registered, carried on from where your balance stands today; it changes as new bookings and costs come in.</p>';
       if(cm.led){
         var pbF=cm.led.target>0?Math.max(0,Math.min(100,100*cm.led.floatAfter/cm.led.target)):0;
         vb+='<h3>Security float <span class="muted" style="float:right">'+mv(cm.led.floatAfter)+' of '+mv(cm.led.target)+'</span></h3><div class="pbar"><i style="width:'+pbF.toFixed(0)+'%"></i></div>';
@@ -721,7 +687,7 @@ function render(){
     vb+='</table><p class="note">Minus = owed to OWH. Per clause 7: each month\'s result first pays down what you owe (set-up costs and advances), then fills the security float to its target; only the remainder is paid to you. In a loss month any prepayment absorbs it first, then the float. The float stays yours and is returned at the end, less anything properly owing (7.1.4).</p>';
   }
 
-      if(!cm.led) vb+='<p class="note" style="margin:0">'+monLabel(MONTH)+' has not started yet, so it has nothing to settle — where you stand today is above.</p>';
+      if(!cm.led) vb+='<p class="note" style="margin:0">'+monLabel(MONTH)+' has no bookings or costs registered yet, so there is nothing to project.</p>';
       vb+='</div>';
   /* ---- operating costs budget — clause 6.5.1 ---- */
   var bg=budgetFor(MONTH);
