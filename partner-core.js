@@ -199,155 +199,213 @@ var PC = (function () {
   /* ---- THE EXCEL FILE (Sarah 2026-10-13): one formatted workbook for a chosen run of months — the statement's own rows (one column per month),
      every cost entry, every booking. E = ExcelJS (loaded by the page when the button is pressed). Used by «Statement» → Download. ---- */
 function xlDate(ymd){ var m=(ymd||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m?new Date(Date.UTC(+m[1],+m[2]-1,+m[3])):(ymd||null); }
+/* THE EXCEL FILE — EVERY DERIVED FIGURE IS A FORMULA (Sarah 2026-11-18: "all sheets should have formulas and not burnt numbers").
+   The only typed numbers are the records themselves: each booking, each cost entry, and — on «Typed figures» — the few figures that have
+   no source sheet in the file (the month's EGP rate, turnovers, other revenue and booking adjustments from the P&L, prepayments, payouts,
+   the balances before the first month shown, the launch date). Every other cell traces back to them.
+   Sheets: Statement by month · How the balance is worked out · Typed figures · Cost entries · Bookings · Bookings by month. */
 function buildWorkbook(E,D,f,flat,CUR,ms){
   var models=ms.map(function(m){ return model(D,f,m); }).filter(Boolean), defs=rowDefs(models);
-  var RED='FFCC5F5F', BLUSH='FFF9F0F0', LINE='FFECDEDE', GREY='FF6B6B6B', SOFT='FF7A6A6A', INK='FF1A1A1A', AMBER='FFFDF1D8';
-  var MONEY=CUR==='USD'?'#,##0.00;[Red]-#,##0.00;"–"':'#,##0;[Red]-#,##0;"–"';
+  var RED='FFCC5F5F', BLUSH='FFF9F0F0', LINE='FFECDEDE', GREY='FF6B6B6B', SOFT='FF7A6A6A', INK='FF1A1A1A', AMBER='FFFDF1D8', TYPED='FFFFF7D6', GREEN='FF3A7D4D';
+  var MONEY=CUR==='USD'?'#,##0.00;[Red]-#,##0.00;"–"':'#,##0;[Red]-#,##0;"–"', USDF='#,##0.00;[Red]-#,##0.00;"–"';
   var fill=function(a){ return {type:'pattern',pattern:'solid',fgColor:{argb:a}}; };
   var hair={style:'thin',color:{argb:LINE}}, dark={style:'thin',color:{argb:INK}};
-  var wb=new E.Workbook(); wb.creator='The Hub · OurWelcomeHome'; wb.created=new Date(); try{ wb.calcProperties.fullCalcOnLoad=true; }catch(e){}   // the formula sheet computes on open
+  var wb=new E.Workbook(); wb.creator='The Hub · OurWelcomeHome'; wb.created=new Date(); try{ wb.calcProperties.fullCalcOnLoad=true; }catch(e){}   // formulas compute on open
   var when=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
   var range=monLabelP(ms[0])+(ms.length>1?' → '+monLabelP(ms[ms.length-1]):'');
+  var colL=function(n){ var s=''; while(n>0){ var q=(n-1)%26; s=String.fromCharCode(65+q)+s; n=Math.floor((n-1)/26); } return s; };
+  var Fm=function(x){ return {formula:x}; };
+  var dt=function(ym,add){ var y=+ym.slice(0,4), mo=+ym.slice(5,7)+(add||0); while(mo>12){ mo-=12; y++; } return 'DATE('+y+','+mo+',1)'; };
+  var lmModels=models.filter(function(m){ return m.led; }), launch=String((D.meta&&D.meta.commencement&&D.meta.commencement[f])||'').slice(0,10);
+  var asOf=String((D.meta&&D.meta.asOf)||new Date().toISOString().slice(0,10)).slice(0,10);
+  var all=monthsOf(D,f), first=models[0], prevM=first?all[all.indexOf(first.ym)-1]:null, pmod=prevM?model(D,f,prevM):null;
+  var target=(lmModels[0]&&lmModels[0].led.target)||400, pct=(models.length?models[models.length-1].pct:0.25)||0.25;
+  var head=function(row,color){ row.eachCell(function(c,n){ c.font={name:'Calibri',size:10,bold:true,color:{argb:'FFFFFFFF'}}; c.fill=fill(color); c.alignment={vertical:'middle',wrapText:true,horizontal:n===1?'left':'right'}; }); };
 
-  /* ---------- sheet 1 — the statement, month by month ---------- */
-  var ws=wb.addWorksheet('Statement by month',{properties:{tabColor:{argb:RED}},views:[{state:'frozen',xSplit:1,ySplit:5,showGridLines:false}],
-    pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'4:5'}});
-  var nc=models.length+1;
-  ws.columns=[{width:54}].concat(models.map(function(){ return {width:15}; }));
-  ws.mergeCells(1,1,1,nc); var t1=ws.getCell(1,1); t1.value=flat+' — statement by month'; t1.font={name:'Calibri',size:16,bold:true,color:{argb:RED}}; ws.getRow(1).height=26;
-  ws.mergeCells(2,1,2,nc); var t2=ws.getCell(2,1);
-  t2.value=range+' · '+models.length+' month'+(models.length===1?'':'s')+' · amounts in '+CUR+(CUR==='EGP'?'':' (each month converted at its own EGP/USD rate, shown in the statement)')+' · prepared '+when;
-  t2.font={name:'Calibri',size:10,color:{argb:GREY}};
-  ws.addRow([]);
-  var hr=ws.addRow(['Line'].concat(models.map(function(m){ return monLabelP(m.ym); })));
-  hr.height=22; hr.eachCell(function(c,n){ c.font={name:'Calibri',size:11,bold:true,color:{argb:'FFFFFFFF'}}; c.fill=fill(RED); c.alignment={vertical:'middle',horizontal:n===1?'left':'right'}; });
-  var sr=ws.addRow([''].concat(models.map(function(m){ return m.status==='final'?'final':'in progress'; })));
-  sr.eachCell(function(c,n){ c.font={name:'Calibri',size:9,italic:true,color:{argb:GREY}}; c.fill=fill(BLUSH); c.alignment={horizontal:n===1?'left':'right'}; c.border={bottom:hair}; });
+  // the sheets, in the order they appear
+  var ws=wb.addWorksheet('Statement by month',{properties:{tabColor:{argb:RED}},views:[{state:'frozen',xSplit:1,ySplit:5,showGridLines:false}],pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'4:5'}});
+  var w4=lmModels.length?wb.addWorksheet('How the balance is worked out',{properties:{tabColor:{argb:GREEN}},views:[{state:'frozen',xSplit:1,ySplit:4}],pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0}}):null;
+  var wi=wb.addWorksheet('Typed figures',{properties:{tabColor:{argb:'FFB8860B'}},views:[{state:'frozen',xSplit:1,ySplit:4}]});
+  var w2=wb.addWorksheet('Cost entries',{properties:{tabColor:{argb:'FF8A6420'}},views:[{state:'frozen',ySplit:1}],pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'1:1'}});
+  var w3=wb.addWorksheet('Bookings',{properties:{tabColor:{argb:'FF4A7FB5'}},views:[{state:'frozen',ySplit:1}],pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'1:1'}});
+  var w5=wb.addWorksheet('Bookings by month',{properties:{tabColor:{argb:'FF6F9AC8'}},views:[{state:'frozen',ySplit:1}]});
+  var TF="'Typed figures'", CE="'Cost entries'", BK="Bookings", BM="'Bookings by month'", HB="'How the balance is worked out'";
 
-  defs.forEach(function(d){
-    if(d.sec){
-      var sh=ws.addRow([d.sec.toUpperCase()]);
-      for(var k=1;k<=nc;k++){ var c=sh.getCell(k); c.fill=fill(BLUSH); c.font={name:'Calibri',size:10,bold:true,color:{argb:GREY}}; c.border={top:hair,bottom:hair}; }
-      sh.height=20; return;
-    }
-    if(d.sub){ var sb=ws.addRow([d.sub]); sb.getCell(1).font={name:'Calibri',size:10,bold:true,italic:true,color:{argb:SOFT}}; sb.getCell(1).alignment={indent:0}; return; }
-    var vals=models.map(function(m){ var v=d.get(m); if(v==null||!isFinite(v)) return null;
-      if(d.t==='n') return Math.round(v); if(d.t==='p') return Math.round(v*1000)/1000; if(d.t==='r') return Math.round(v*100)/100; return Math.round((CUR==='USD'?v:v*m.rate)*100)/100; });
-    var row=ws.addRow([d.label].concat(vals));
-    var fmtz=d.t==='n'?'#,##0':(d.t==='p'?'0.0%':(d.t==='r'?'0.00':MONEY));
-    var bold=(d.cls==='tot'||d.cls==='net'), grey=(d.cls==='sub'||d.cls==='cat');
-    row.eachCell({includeEmpty:true},function(c,n){
-      if(n>nc) return;
-      c.font={name:'Calibri',size:11,bold:bold,color:{argb:grey?SOFT:INK}};
-      c.border={bottom:hair};
-      if(n===1){ c.alignment={horizontal:'left',indent:d.cat?2:(d.cls==='sub'?1:0)}; }
-      else { c.numFmt=fmtz; c.alignment={horizontal:'right'}; }
-      if(d.cls==='tot') c.border={top:dark,bottom:hair};
-      if(d.cls==='net'){ c.fill=fill(BLUSH); c.border={top:dark,bottom:dark}; }
-    });
-  });
-  ws.addRow([]);
-  var notes=['Minus on the balance means owed to OWH. Management fee and costs are shown as they reduce your share.',
-             'Every cost category is a line above; the entries behind each are on the “Cost entries” sheet, and every booking is on the “Bookings” sheet.'];
-  notes.forEach(function(t){ var r=ws.addRow([t]); ws.mergeCells(r.number,1,r.number,nc); r.getCell(1).font={name:'Calibri',size:9,italic:true,color:{argb:GREY}}; r.getCell(1).alignment={wrapText:true,vertical:'top'}; r.height=26; });
+  /* ---------- Typed figures — the ONLY numbers typed in this file besides the bookings and cost entries ---------- */
+  wi.columns=[{width:46}].concat(models.map(function(){ return {width:14}; }));
+  wi.getCell(1,1).value='Typed figures — the numbers this file starts from'; wi.getCell(1,1).font={name:'Calibri',size:14,bold:true,color:{argb:'FFB8860B'}};
+  wi.getCell(2,1).value='Besides each booking (Bookings) and each cost entry (Cost entries), these are the only typed numbers — they have no source sheet in this file. Every other figure is a formula.';
+  wi.getCell(2,1).font={name:'Calibri',size:9,italic:true,color:{argb:GREY}};
+  var ih=wi.getRow(4); ih.values=['Figure'].concat(models.map(function(m){ return monLabelP(m.ym); })); head(ih,'FFB8860B');
+  var IROW={rate:5,turn:6,other:7,adj:8,prep:9,paid:10};
+  var irow=function(r,label,get,fmtz){ var row=wi.getRow(r); row.getCell(1).value=label; models.forEach(function(m,i){ var v=get(m); row.getCell(i+2).value=(v==null||!isFinite(v))?null:Math.round(v*100)/100; row.getCell(i+2).numFmt=fmtz; row.getCell(i+2).fill=fill(TYPED); });
+    row.getCell(1).font={name:'Calibri',size:11}; };
+  irow(5,'EGP per USD — the month\'s rate',function(m){ return m.rate; },'0.00');
+  irow(6,'Turnovers — cleanings that took place',function(m){ return m.k.turn; },'0');
+  irow(7,'Other revenue (USD) — from the P&L',function(m){ return m.v.O; },USDF);
+  irow(8,'Adjustments to booking revenue (USD) — from the P&L',function(m){ return m.v.adj; },USDF);
+  irow(9,'Your prepayments received (USD)',function(m){ return m.led?m.led.prep:null; },USDF);
+  irow(10,'Paid to you, to date (USD)',function(m){ return m.led?m.led.paid:null; },USDF);
+  var one=function(r,label,v,fmtz){ wi.getCell(r,1).value=label; var c=wi.getCell(r,2); c.value=v; c.numFmt=fmtz; c.fill=fill(TYPED); };
+  one(12,'Balance with OWH before '+monLabelP(first?first.ym:ms[0])+' (USD, minus = owed to OWH)',lmModels[0]?Math.round(lmModels[0].led.openBal*100)/100:0,USDF);
+  one(13,'Security float before '+monLabelP(first?first.ym:ms[0])+' (USD)',lmModels[0]?Math.round(lmModels[0].led.floatOpen*100)/100:0,USDF);
+  one(14,'Paid to you before '+monLabelP(first?first.ym:ms[0])+' (USD)',pmod&&pmod.led?Math.round(pmod.led.paid*100)/100:0,USDF);
+  one(15,'Still to pay to you before '+monLabelP(first?first.ym:ms[0])+' (USD)',pmod&&pmod.led?Math.round(pmod.led.still*100)/100:0,USDF);
+  one(17,'Launch (commencement) date',launch?xlDate(launch):null,'dd mmm yyyy');
+  one(18,'Figures as of',xlDate(asOf),'dd mmm yyyy');
+  one(19,'Management fee (share of net revenue)',pct,'0%');
+  one(20,'Security float target (USD)',target,USDF);
+  var IN=function(key,i){ return TF+'!$'+colL(i+2)+'$'+IROW[key]; }, RATE=function(i){ return IN('rate',i); };
+  var LAUNCH=TF+'!$B$17', ASOF=TF+'!$B$18', PCT=TF+'!$B$19', TGT=TF+'!$B$20';
+  var RATEAT=function(cellMonthLabel){ return 'INDEX('+TF+'!$B$5:$'+colL(models.length+1)+'$5,MATCH('+cellMonthLabel+','+TF+'!$B$4:$'+colL(models.length+1)+'$4,0))'; };
 
-  /* ---------- sheet 2 — every cost entry ---------- */
+  /* ---------- Bookings — one row per booking (the records) ---------- */
+  var lo=ms[0], hi=ms[ms.length-1];
+  w3.columns=[{header:'Guest',width:24},{header:'Channel',width:14},{header:'Status',width:12},{header:'Booked',width:13},{header:'Check-in',width:13},{header:'Check-out',width:13},{header:'Nights',width:8},
+              {header:'Gross guest payment (USD)',width:16},{header:'Platform and card fees (USD)',width:16},{header:'Net (USD)',width:12},{header:'Other revenue (USD)',width:14},{header:'Review booking',width:30},{header:'Returned to you (USD)',width:16}];
+  var bs=(D.stays||[]).filter(function(s){ return s.flat===f&&s.portal!=='Blocked'&&s.checkIn&&s.checkOut&&s.checkIn.slice(0,7)<=hi&&s.checkOut.slice(0,7)>=lo; }).sort(function(a,b){ return a.checkIn<b.checkIn?-1:1; });
+  var r2d=function(x){ return Math.round(x*100)/100; };
+  bs.forEach(function(s,i){ var r=i+2, w=(s.allIn||0)-(s.other||0), g=(s.gross>0&&s.gross>=w)?s.gross:w;
+    w3.addRow([s.guest||'',s.portal||'Direct',s.status||'',xlDate(s.booked),xlDate(s.checkIn),xlDate(s.checkOut),s.nights||null,r2d(g),Fm('H'+r+'-J'+r),r2d(w),r2d(s.other||0),
+      s.review==='owh'?'OWH-funded (outside revenue)':(s.review==='owner'?'owner-funded (outside revenue)':''),s.review==='owner'?r2d(s.reviewNet||0):null]); s.__row=r; });
+  head(w3.getRow(1),'FF4A7FB5'); w3.getRow(1).height=34;
+  for(var r3=2;r3<=bs.length+1;r3++){ var b=w3.getRow(r3), flagged=!!b.getCell(12).value;
+    [4,5,6].forEach(function(n){ b.getCell(n).numFmt='dd mmm yyyy'; b.getCell(n).alignment={horizontal:'left'}; });
+    [8,9,10,11,13].forEach(function(n){ b.getCell(n).numFmt='#,##0.00;[Red]-#,##0.00'; b.getCell(n).alignment={horizontal:'right'}; });
+    b.eachCell({includeEmpty:true},function(c,n){ if(n>13) return; c.font={name:'Calibri',size:11}; c.border={bottom:hair}; if(flagged) c.fill=fill(AMBER); }); }
+  if(bs.length){
+    w3.autoFilter={from:{row:1,column:1},to:{row:bs.length+1,column:13}};
+    var tb=w3.addRow(['Total (visible rows)','','','','','',Fm('SUBTOTAL(109,G2:G'+(bs.length+1)+')'),Fm('SUBTOTAL(109,H2:H'+(bs.length+1)+')'),Fm('SUBTOTAL(109,I2:I'+(bs.length+1)+')'),Fm('SUBTOTAL(109,J2:J'+(bs.length+1)+')'),Fm('SUBTOTAL(109,K2:K'+(bs.length+1)+')'),'',Fm('SUBTOTAL(109,M2:M'+(bs.length+1)+')')]);
+    tb.eachCell({includeEmpty:true},function(c,n){ if(n>13) return; c.font={name:'Calibri',size:11,bold:true}; c.fill=fill(BLUSH); c.border={top:dark}; if(n>=7&&n!==12){ c.alignment={horizontal:'right'}; c.numFmt=n===7?'#,##0':'#,##0.00;[Red]-#,##0.00'; } });
+  }
+
+  /* ---------- Bookings by month — each booking's nights and money split over the months it touches (all formulas) ---------- */
+  w5.columns=[{header:'Guest',width:22},{header:'Month',width:11},{header:'Check-in',width:12},{header:'Check-out',width:12},{header:'Month starts',width:12},{header:'Next month starts',width:12},
+              {header:'Nights in the booking',width:10},{header:'Nights in this month',width:10},{header:'Share of the booking',width:10},{header:'Gross in the month (USD)',width:13},{header:'Net in the month (USD)',width:13},
+              {header:'Nights from the launch (occupancy)',width:12},{header:'Counts for the nightly rate (1 = yes)',width:12}];
+  var live=bs.filter(function(s){ var st=String(s.status||'').toLowerCase(); return st.indexOf('cancel')<0&&st.indexOf('block')<0; }), r5=2;
+  live.forEach(function(s){ models.forEach(function(m){ var ym=m.ym; if(!(s.checkIn.slice(0,7)<=ym&&s.checkOut.slice(0,7)>=ym)) return; var R=s.__row, r=r5++;
+    w5.addRow([Fm(BK+'!A'+R),monLabelP(ym),Fm(BK+'!E'+R),Fm(BK+'!F'+R),Fm(dt(ym)),Fm(dt(ym,1)),Fm(BK+'!G'+R),Fm('MAX(0,MIN(D'+r+',F'+r+')-MAX(C'+r+',E'+r+'))'),Fm('IF(G'+r+'>0,H'+r+'/G'+r+',0)'),
+      Fm(BK+'!H'+R+'*I'+r),Fm(BK+'!J'+R+'*I'+r),Fm('MAX(0,MIN(D'+r+',F'+r+')-MAX(C'+r+',E'+r+','+LAUNCH+'))'),Fm('IF('+BK+'!L'+R+'="",1,0)')]); }); });
+  head(w5.getRow(1),'FF6F9AC8'); w5.getRow(1).height=46;
+  for(var q5=2;q5<r5;q5++){ var rw5=w5.getRow(q5); [3,4,5,6].forEach(function(n){ rw5.getCell(n).numFmt='dd mmm yyyy'; }); rw5.getCell(9).numFmt='0.0%'; [10,11].forEach(function(n){ rw5.getCell(n).numFmt=USDF; });
+    rw5.eachCell({includeEmpty:true},function(c){ c.font={name:'Calibri',size:10}; c.border={bottom:hair}; }); }
+
+  /* ---------- Cost entries — one row per cost (the records); the USD column and the rate are formulas ---------- */
   var inR={}; ms.forEach(function(m){ inR[m]=1; });
   var catKey={}; Object.keys(CATMAP).forEach(function(k){ catKey[CATMAP[k]]=k; });
-  var w2=wb.addWorksheet('Cost entries',{properties:{tabColor:{argb:'FF8A6420'}},views:[{state:'frozen',ySplit:1}],pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'1:1'}});
-  w2.columns=[{header:'Month',width:11},{header:'Category',width:20},{header:'Date',width:13},{header:'Description',width:52},{header:'Amount',width:13},{header:'Currency',width:10},{header:"USD at that month's rate",width:22},
-              {header:'Treated as',width:24},{header:'EGP per USD (the month)',width:14}];   // how each entry counts (2026-11-18: so the balance can be rebuilt from this sheet)
+  w2.columns=[{header:'Month',width:11},{header:'Category',width:20},{header:'Date',width:13},{header:'Description',width:52},{header:'Amount',width:13},{header:'Currency',width:10},{header:"USD at that month's rate",width:16},
+              {header:'Treated as',width:24},{header:'EGP per USD (the month)',width:12}];
   var entries=(D.tx||[]).filter(function(t){ return t.flat===f&&inR[t.ym]; }).sort(function(a,b){ return (a.ym+a.date)<(b.ym+b.date)?-1:1; });
-  entries.forEach(function(t){
-    var m=models.filter(function(x){ return x.ym===t.ym; })[0], usd=(t.currency==='USD')?t.amount:(m?t.amount/m.rate:null), k=catKey[t.cat];
-    w2.addRow([monLabelP(t.ym),(k&&LABEL[k])||t.cat,xlDate(t.date),t.desc||'',t.amount==null?null:Math.round(t.amount*100)/100,t.currency||'',usd==null?null:Math.round(usd*100)/100,
-      t.setup?'Set-up → your balance':'Operating cost',m?Math.round(m.rate*100)/100:null]); });
-  var h2=w2.getRow(1); h2.height=22; h2.eachCell(function(c,n){ c.font={name:'Calibri',size:11,bold:true,color:{argb:'FFFFFFFF'}}; c.fill=fill('FF8A6420'); c.alignment={vertical:'middle',horizontal:n>=5&&n!==6?'right':'left'}; });
+  entries.forEach(function(t,i){ var r=i+2, k=catKey[t.cat];
+    w2.addRow([monLabelP(t.ym),(k&&LABEL[k])||t.cat,xlDate(t.date),t.desc||'',t.amount==null?null:Math.round(t.amount*100)/100,t.currency||'',Fm('IF(F'+r+'="USD",E'+r+',E'+r+'/I'+r+')'),
+      t.setup?'Set-up → your balance':'Operating cost',Fm(RATEAT('A'+r))]); });
+  head(w2.getRow(1),'FF8A6420'); w2.getRow(1).height=30;
   for(var r2=2;r2<=entries.length+1;r2++){ var rw=w2.getRow(r2);
     rw.getCell(3).numFmt='dd mmm yyyy'; rw.getCell(3).alignment={horizontal:'left'}; rw.getCell(5).numFmt='#,##0.00'; rw.getCell(7).numFmt='#,##0.00'; rw.getCell(9).numFmt='0.00';
     rw.eachCell({includeEmpty:true},function(c){ c.font={name:'Calibri',size:11}; c.border={bottom:hair}; }); }
   if(entries.length){
     w2.autoFilter={from:{row:1,column:1},to:{row:entries.length+1,column:9}};
-    var tr=w2.addRow(['Total (visible rows)','','','','','',{formula:'SUBTOTAL(109,G2:G'+(entries.length+1)+')'}]);
+    var tr=w2.addRow(['Total (visible rows)','','','','','',Fm('SUBTOTAL(109,G2:G'+(entries.length+1)+')')]);
     tr.eachCell({includeEmpty:true},function(c,n){ if(n>7) return; c.font={name:'Calibri',size:11,bold:true}; c.fill=fill(BLUSH); c.border={top:dark}; });
     tr.getCell(7).numFmt='#,##0.00';
   }
+  // a month's costs of one kind, in USD: the EGP added up then converted once at the month's rate (as the statement does), plus any USD
+  var costUSD=function(monthCell,rateRef,treated,catCell){
+    var c=CE+'!A:A,'+monthCell+','+CE+'!H:H,"'+treated+'"'+(catCell?','+CE+'!B:B,'+catCell:'');
+    return '(SUMIFS('+CE+'!E:E,'+c+','+CE+'!F:F,"EGP")/'+rateRef+'+SUMIFS('+CE+'!E:E,'+c+','+CE+'!F:F,"USD"))'; };
 
-  /* ---------- sheet 3 — every booking ---------- */
-  var lo=ms[0], hi=ms[ms.length-1];
-  var w3=wb.addWorksheet('Bookings',{properties:{tabColor:{argb:'FF4A7FB5'}},views:[{state:'frozen',ySplit:1}],pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'1:1'}});
-  w3.columns=[{header:'Guest',width:24},{header:'Channel',width:14},{header:'Status',width:12},{header:'Booked',width:13},{header:'Check-in',width:13},{header:'Check-out',width:13},{header:'Nights',width:8},
-              {header:'Gross guest payment (USD)',width:16},{header:'Platform and card fees (USD)',width:16},{header:'Net (USD)',width:12},{header:'Other revenue (USD)',width:14},{header:'Review booking',width:30},{header:'Returned to you (USD)',width:16}];
-  var bs=(D.stays||[]).filter(function(s){ return s.flat===f&&s.portal!=='Blocked'&&s.checkIn&&s.checkOut&&s.checkIn.slice(0,7)<=hi&&s.checkOut.slice(0,7)>=lo; }).sort(function(a,b){ return a.checkIn<b.checkIn?-1:1; });
-  var r2d=function(x){ return Math.round(x*100)/100; };
-  bs.forEach(function(s){
-    var w=(s.allIn||0)-(s.other||0), g=(s.gross>0&&s.gross>=w)?s.gross:w;
-    w3.addRow([s.guest||'',s.portal||'Direct',s.status||'',xlDate(s.booked),xlDate(s.checkIn),xlDate(s.checkOut),s.nights||null,r2d(g),r2d(g-w),r2d(w),r2d(s.other||0),
-      s.review==='owh'?'OWH-funded (outside revenue)':(s.review==='owner'?'owner-funded (outside revenue)':''),s.review==='owner'?r2d(s.reviewNet||0):null]); });
-  var h3=w3.getRow(1); h3.height=34; h3.eachCell(function(c,n){ c.font={name:'Calibri',size:10,bold:true,color:{argb:'FFFFFFFF'}}; c.fill=fill('FF4A7FB5'); c.alignment={vertical:'middle',wrapText:true,horizontal:(n>=7&&n!==12)?'right':'left'}; });
-  for(var r3=2;r3<=bs.length+1;r3++){ var b=w3.getRow(r3), flagged=!!b.getCell(12).value;
-    [4,5,6].forEach(function(n){ b.getCell(n).numFmt='dd mmm yyyy'; b.getCell(n).alignment={horizontal:'left'}; });
-    [8,9,10,11,13].forEach(function(n){ b.getCell(n).numFmt='#,##0.00;[Red]-#,##0.00'; b.getCell(n).alignment={horizontal:'right'}; });
-    b.getCell(7).alignment={horizontal:'right'};
-    b.eachCell({includeEmpty:true},function(c,n){ if(n>13) return; c.font={name:'Calibri',size:11}; c.border={bottom:hair}; if(flagged) c.fill=fill(AMBER); }); }
-  if(bs.length){
-    w3.autoFilter={from:{row:1,column:1},to:{row:bs.length+1,column:13}};
-    var tb=w3.addRow(['Total (visible rows)','','','','','',{formula:'SUBTOTAL(109,G2:G'+(bs.length+1)+')'},{formula:'SUBTOTAL(109,H2:H'+(bs.length+1)+')'},{formula:'SUBTOTAL(109,I2:I'+(bs.length+1)+')'},{formula:'SUBTOTAL(109,J2:J'+(bs.length+1)+')'},{formula:'SUBTOTAL(109,K2:K'+(bs.length+1)+')'},'',{formula:'SUBTOTAL(109,M2:M'+(bs.length+1)+')'}]);
-    tb.eachCell({includeEmpty:true},function(c,n){ if(n>13) return; c.font={name:'Calibri',size:11,bold:true}; c.fill=fill(BLUSH); c.border={top:dark}; if(n>=7&&n!==12){ c.alignment={horizontal:'right'}; c.numFmt=n===7?'#,##0':'#,##0.00;[Red]-#,##0.00'; } });
-  }
-  /* ---------- sheet 4 — HOW THE BALANCE IS WORKED OUT (Sarah 2026-11-18: Ahmed rebuilt the balance by hand and missed the fee — every step
-     is a live formula, the costs pulled from «Cost entries», so the owner reaches the statement's exact figure himself). USD, the statement's
-     basis; the last columns put the statement's own figures beside, so any difference shows. ---------- */
-  var lm=models.filter(function(m){ return m.led; });
-  if(lm.length){
-    var w4=wb.addWorksheet('How the balance is worked out',{properties:{tabColor:{argb:'FF3A7D4D'}},views:[{state:'frozen',xSplit:1,ySplit:4}],pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0}});
-    var cols=[['Month',11],['EGP per USD',10],['Net revenue',12],['Management fee '+Math.round((lm[0].pct||0.25)*100)+'%',13],['Your share',12],['Operating costs (Cost entries)',15],['Month result',12],
-              ['Set-up charged (Cost entries)',15],['Review bookings you paid — returned',15],['Your prepayments',12],['Balance brought forward',13],['Balance before the result',13],
-              ['Result → pays down your balance',14],['Result → security float',12],['Float used to cover a loss',12],['Payable to you',12],['Balance after the month',13],['Float after the month',12],
-              ['Balance after — in EGP',14],['Statement: balance after',13],['Difference',11]];
+  /* ---------- How the balance is worked out (USD) — every cell a formula ---------- */
+  var HBROW={}, HB0=5;
+  if(w4){
+    var cols=[['Month',13],['EGP per USD',10],['Bookings\' net in the month',13],['Adjustments',11],['Other revenue',11],['Net revenue',12],['Management fee',12],['Your share',12],['Operating costs',13],['Month result',12],
+              ['Set-up charged',13],['Review bookings you paid — returned',14],['Your prepayments',12],['Balance brought forward',13],['Balance before the result',13],['Result → pays down your balance',14],
+              ['Result → security float',12],['Float used to cover a loss',12],['Payable to you',12],['Balance after the month',13],['Float after the month',12],['Paid to you, to date',12],['Still to pay to you',12],['Balance after — in EGP',14]];
     w4.columns=cols.map(function(c){ return {width:c[1]}; });
-    w4.mergeCells(1,1,1,cols.length); var t4=w4.getCell(1,1); t4.value=flat+' — how the balance with OWH is worked out, month by month (USD)'; t4.font={name:'Calibri',size:14,bold:true,color:{argb:'FF3A7D4D'}};
+    w4.mergeCells(1,1,1,cols.length); w4.getCell(1,1).value=flat+' — how the balance with OWH is worked out, month by month (USD)'; w4.getCell(1,1).font={name:'Calibri',size:14,bold:true,color:{argb:GREEN}};
     w4.mergeCells(2,1,2,cols.length); var s4=w4.getCell(2,1);
-    s4.value='Each cell is a formula. Costs come from the “Cost entries” sheet by month and by “Treated as”. Order (clause 7): set-up and returns move the balance; the month result first pays down what you owe OWH, then fills the security float (target '+Math.round(lm[0].led.target)+'), and only the rest is payable to you. Minus = owed to OWH.';
+    s4.value='Every cell is a formula: revenue from «Bookings by month», costs from «Cost entries» (by month and by «Treated as»), the rest from «Typed figures». Clause 7: set-up and returns move the balance; the month result first pays down what you owe OWH, then fills the security float, and only the rest is payable to you. Minus = owed to OWH.';
     s4.font={name:'Calibri',size:9,italic:true,color:{argb:GREY}}; s4.alignment={wrapText:true,vertical:'top'}; w4.getRow(2).height=40;
-    var hr4=w4.getRow(4); cols.forEach(function(c,i){ var cell=hr4.getCell(i+1); cell.value=c[0]; cell.font={name:'Calibri',size:10,bold:true,color:{argb:'FFFFFFFF'}}; cell.fill=fill('FF3A7D4D'); cell.alignment={wrapText:true,vertical:'middle',horizontal:i?'right':'left'}; }); hr4.height=46;
-    var CE="'Cost entries'", tgt=lm[0].led.target, first=5;
-    lm.forEach(function(m,i){
-      var r=first+i, R=function(L){ return L+r; }, P=function(L){ return L+(r-1); }, lab=monLabelP(m.ym);
-      var F=function(fx,res){ return {formula:fx,result:res}; };
-      var row=w4.getRow(r);
-      row.getCell(1).value=lab;
-      row.getCell(2).value=Math.round(m.rate*100)/100;
-      row.getCell(3).value=Math.round(m.v.T*100)/100;                                   // net revenue — the bookings' net, each stay split by its nights in the month
-      row.getCell(4).value=F(R('C')+'*'+(m.pct||0.25));
-      row.getCell(5).value=F(R('C')+'-'+R('D'));
-      var sumT=function(tr){ return 'ROUND(SUMIFS('+CE+'!E:E,'+CE+'!A:A,'+R('A')+','+CE+'!H:H,"'+tr+'",'+CE+'!F:F,"EGP")/'+R('B')+'+SUMIFS('+CE+'!E:E,'+CE+'!A:A,'+R('A')+','+CE+'!H:H,"'+tr+'",'+CE+'!F:F,"USD"),2)'; };   // EGP added up first, converted once at the month's rate — as the statement does
-      row.getCell(6).value=F(sumT('Operating cost'));
-      row.getCell(7).value=F(R('E')+'-'+R('F'));
-      row.getCell(8).value=F(sumT('Set-up → your balance'));
-      row.getCell(9).value=Math.round((m.led.rvBack||0)*100)/100;
-      row.getCell(10).value=Math.round((m.led.prep||0)*100)/100;
-      row.getCell(11).value=i===0?Math.round((m.led.openBal||0)*100)/100:F(P('Q'));
-      row.getCell(12).value=F(R('K')+'+'+R('J')+'-'+R('H')+'+'+R('I'));
-      var fOpen=i===0?String(Math.round((m.led.floatOpen||0)*100)/100):P('R');
-      row.getCell(13).value=F('IF('+R('G')+'>=0,MIN('+R('G')+',MAX(0,-'+R('L')+')),-MIN(MAX(0,'+R('L')+'),-'+R('G')+')-MAX(0,-'+R('G')+'-MAX(0,'+R('L')+')-'+fOpen+'))');
-      row.getCell(14).value=F('IF('+R('G')+'>=0,MIN('+R('G')+'-'+R('M')+',MAX(0,'+tgt+'-'+fOpen+')),0)');
-      row.getCell(15).value=F('IF('+R('G')+'<0,MIN('+fOpen+',MAX(0,-'+R('G')+'-MAX(0,'+R('L')+'))),0)');
-      row.getCell(16).value=F('IF('+R('G')+'>=0,'+R('G')+'-'+R('M')+'-'+R('N')+',0)');
-      row.getCell(17).value=F(R('L')+'+'+R('M'));
-      row.getCell(18).value=F(fOpen+'+'+R('N')+'-'+R('O'));
-      row.getCell(19).value=F(R('Q')+'*'+R('B'));
-      row.getCell(20).value=Math.round((m.led.balAfter||0)*100)/100;
-      row.getCell(21).value=F('ROUND('+R('Q')+'-'+R('T')+',2)');
-      row.eachCell({includeEmpty:true},function(c,n){ if(n>cols.length) return; c.font={name:'Calibri',size:11,bold:n===17||n===7}; c.border={bottom:hair};
-        if(n===1) c.alignment={horizontal:'left'}; else { c.numFmt=n===2?'0.00':'#,##0.00;[Red]-#,##0.00'; c.alignment={horizontal:'right'}; }
-        if(n===17) c.fill=fill(BLUSH); if(n>=20) c.font={name:'Calibri',size:10,italic:true,color:{argb:SOFT}}; });
+    var hr4=w4.getRow(4); cols.forEach(function(c,i){ hr4.getCell(i+1).value=c[0]; }); head(hr4,GREEN); hr4.height=46;
+    var o=w4.getRow(HB0); o.getCell(1).value='Before '+monLabelP(lmModels[0].ym);
+    o.getCell(20).value=Fm(TF+'!$B$12'); o.getCell(21).value=Fm(TF+'!$B$13'); o.getCell(22).value=Fm(TF+'!$B$14'); o.getCell(23).value=Fm(TF+'!$B$15');
+    lmModels.forEach(function(m,j){ var i=models.indexOf(m), r=HB0+1+j, R=function(L){ return L+r; }, P=function(L){ return L+(r-1); }; HBROW[m.ym]=r;
+      var row=w4.getRow(r), V=function(n,x){ row.getCell(n).value=Fm(x); };
+      row.getCell(1).value=monLabelP(m.ym);
+      V(2,RATE(i)); V(3,'SUMIFS('+BM+'!K:K,'+BM+'!B:B,'+R('A')+')'); V(4,IN('adj',i)); V(5,IN('other',i)); V(6,R('C')+'+'+R('D')+'+'+R('E'));
+      V(7,R('F')+'*'+PCT); V(8,R('F')+'-'+R('G')); V(9,costUSD(R('A'),R('B'),'Operating cost')); V(10,R('H')+'-'+R('I'));
+      V(11,costUSD(R('A'),R('B'),'Set-up → your balance'));
+      V(12,'SUMIFS('+BK+'!M:M,'+BK+'!F:F,">="&'+dt(m.ym)+','+BK+'!F:F,"<"&'+dt(m.ym,1)+')'); V(13,IN('prep',i)); V(14,P('T')); V(15,R('N')+'+'+R('M')+'-'+R('K')+'+'+R('L'));
+      var fO=P('U');
+      V(16,'IF('+R('J')+'>=0,MIN('+R('J')+',MAX(0,-'+R('O')+')),-MIN(MAX(0,'+R('O')+'),-'+R('J')+')-MAX(0,-'+R('J')+'-MAX(0,'+R('O')+')-'+fO+'))');
+      V(17,'IF('+R('J')+'>=0,MIN('+R('J')+'-'+R('P')+',MAX(0,'+TGT+'-'+fO+')),0)');
+      V(18,'IF('+R('J')+'<0,MIN('+fO+',MAX(0,-'+R('J')+'-MAX(0,'+R('O')+'))),0)');
+      V(19,'IF('+R('J')+'>=0,'+R('J')+'-'+R('P')+'-'+R('Q')+',0)');
+      V(20,R('O')+'+'+R('P')); V(21,fO+'+'+R('Q')+'-'+R('R')); V(22,IN('paid',i)); V(23,P('W')+'+'+R('S')+'-('+R('V')+'-'+P('V')+')'); V(24,R('T')+'*'+R('B'));
     });
-    var nr=w4.addRow([]); var nr2=w4.addRow(['Net revenue = the net of each booking (gross − platform and card fees, see “Bookings”), split by its nights in the month. Small differences of a cent or two come from rounding the EGP costs to USD.']);
-    w4.mergeCells(nr2.number,1,nr2.number,cols.length); nr2.getCell(1).font={name:'Calibri',size:9,italic:true,color:{argb:GREY}}; nr2.getCell(1).alignment={wrapText:true}; nr2.height=28;
+    for(var r4=HB0;r4<HB0+1+lmModels.length;r4++){ w4.getRow(r4).eachCell({includeEmpty:true},function(c,n){ if(n>24) return; c.font={name:'Calibri',size:11,bold:n===20||n===10}; c.border={bottom:hair};
+      if(n===1) c.alignment={horizontal:'left'}; else { c.numFmt=n===2?'0.00':USDF; c.alignment={horizontal:'right'}; } if(n===20) c.fill=fill(BLUSH); }); }
+    var nr2=w4.addRow([]); nr2=w4.addRow(['Small differences of a cent come from rounding.']); nr2.getCell(1).font={name:'Calibri',size:9,italic:true,color:{argb:GREY}};
   }
+
+  /* ---------- Statement by month — every money row a formula (USD sources, ×the month's rate when the file is in EGP) ---------- */
+  var nc=models.length+1;
+  ws.columns=[{width:54}].concat(models.map(function(){ return {width:15}; }));
+  ws.mergeCells(1,1,1,nc); var t1=ws.getCell(1,1); t1.value=flat+' — statement by month'; t1.font={name:'Calibri',size:16,bold:true,color:{argb:RED}}; ws.getRow(1).height=26;
+  ws.mergeCells(2,1,2,nc); var t2=ws.getCell(2,1);
+  t2.value=range+' · '+models.length+' month'+(models.length===1?'':'s')+' · amounts in '+CUR+(CUR==='EGP'?'':' (each month converted at its own EGP/USD rate)')+' · prepared '+when+' · every figure is a formula — see «Typed figures» for the few numbers typed in';
+  t2.font={name:'Calibri',size:10,color:{argb:GREY}};
+  ws.getRow(3).values=[];
+  var hr=ws.getRow(4); hr.values=['Line'].concat(models.map(function(m){ return monLabelP(m.ym); })); hr.height=22;
+  hr.eachCell(function(c,n){ c.font={name:'Calibri',size:11,bold:true,color:{argb:'FFFFFFFF'}}; c.fill=fill(RED); c.alignment={vertical:'middle',horizontal:n===1?'left':'right'}; });
+  var sr=ws.getRow(5); sr.values=[''].concat(models.map(function(m){ return m.projected?'projected':(m.status==='final'?'final':'in progress'); }));
+  sr.eachCell(function(c,n){ c.font={name:'Calibri',size:9,italic:true,color:{argb:GREY}}; c.fill=fill(BLUSH); c.alignment={horizontal:n===1?'left':'right'}; c.border={bottom:hair}; });
+  var ROW={}, rr=6, laid=[];
+  defs.forEach(function(d){ if(d.id) ROW[d.id]=rr; laid.push({d:d,r:rr}); rr++; });
+  var costIds=defs.filter(function(d){ return d.cat; }).map(function(d){ return d.id; });
+  laid.forEach(function(x){ var d=x.d, r=x.r, row=ws.getRow(r);
+    if(d.sec){ row.getCell(1).value=d.sec.toUpperCase(); for(var k=1;k<=nc;k++){ var c=row.getCell(k); c.fill=fill(BLUSH); c.font={name:'Calibri',size:10,bold:true,color:{argb:GREY}}; c.border={top:hair,bottom:hair}; } row.height=20; return; }
+    if(d.sub){ row.getCell(1).value=d.sub; row.getCell(1).font={name:'Calibri',size:10,bold:true,italic:true,color:{argb:SOFT}}; return; }
+    row.getCell(1).value=d.label;
+    models.forEach(function(m,i){ var C=colL(i+2), cell=row.getCell(i+2), X=CUR==='EGP'?'*'+RATE(i):'', mlab=C+'$4', at=function(id){ return C+ROW[id]; }, hb=HBROW[m.ym], H=function(L){ return HB+'!'+L+hb; };
+      var y=+m.ym.slice(0,4), mo=+m.ym.slice(5,7), fx=null;
+      switch(d.id){
+        case 'stays': fx='COUNTIFS('+BK+'!F:F,">="&'+dt(m.ym)+','+BK+'!F:F,"<"&'+dt(m.ym,1)+','+BK+'!F:F,"<="&'+ASOF+','+BK+'!F:F,">"&'+LAUNCH+','+BK+'!C:C,"<>*ancel*")'; break;
+        case 'turn': fx=IN('turn',i); break;
+        case 'nights': fx='SUMIFS('+BM+'!L:L,'+BM+'!B:B,'+mlab+')'; break;
+        case 'occ': fx='IFERROR('+at('nights')+'/MAX(0,'+dt(m.ym,1)+'-MAX('+dt(m.ym)+','+LAUNCH+')),0)'; break;
+        case 'adr': fx='IFERROR('+at('earn')+'/SUMIFS('+BM+'!L:L,'+BM+'!B:B,'+mlab+','+BM+'!M:M,1),"")'; break;
+        case 'fx': fx=RATE(i); break;
+        case 'gross': fx='SUMIFS('+BM+'!J:J,'+BM+'!B:B,'+mlab+')'+X; break;
+        case 'fees': fx='-(SUMIFS('+BM+'!J:J,'+BM+'!B:B,'+mlab+')-SUMIFS('+BM+'!K:K,'+BM+'!B:B,'+mlab+'))'+X; break;
+        case 'adj': fx=IN('adj',i)+X; break;
+        case 'earn': fx='SUMIFS('+BM+'!K:K,'+BM+'!B:B,'+mlab+')'+X+(ROW.adj?'+'+at('adj'):'+'+IN('adj',i)+X); break;
+        case 'other': fx=IN('other',i)+X; break;
+        case 'net': fx=at('earn')+'+'+at('other'); break;
+        case 'fee': fx='-'+at('net')+'*'+PCT; break;
+        case 'share': fx=at('net')+'+'+at('fee'); break;
+        case 'costs': fx=costIds.length?'SUM('+C+ROW[costIds[0]]+':'+C+ROW[costIds[costIds.length-1]]+')':'0'; break;
+        case 'res': fx=at('share')+'-'+at('costs'); break;
+        default:
+          if(d.cat) fx=costUSD(mlab,RATE(i),'Operating cost','$A'+r)+X;
+          else if(hb){ var M={s_res:'J',s_applied:'P',s_ret:'Q',s_drawn:'-R',s_pay:'S',b_open:'N',b_prep:'M',b_setup:'-K',b_rv:'L',b_applied:'P',bal:'T',f_ret:'Q',f_drawn:'-R',f_after:'U',p_pay:'S',p_paid:'V',p_still:'W'}[d.id];
+            if(M) fx=(M.charAt(0)==='-'?'-'+H(M.slice(1)):H(M))+X;
+            else if(d.id==='f_open') fx=HB+'!U'+(hb-1)+X; }
+      }
+      if(fx) cell.value=Fm(fx);
+      cell.numFmt=d.t==='n'?'#,##0':(d.t==='p'?'0.0%':(d.t==='r'?'0.00':MONEY)); cell.alignment={horizontal:'right'};
+    });
+    var bold=(d.cls==='tot'||d.cls==='net'), grey=(d.cls==='sub'||d.cls==='cat');
+    row.eachCell({includeEmpty:true},function(c,n){ if(n>nc) return; c.font={name:'Calibri',size:11,bold:bold,color:{argb:grey?SOFT:INK}}; c.border={bottom:hair};
+      if(n===1) c.alignment={horizontal:'left',indent:d.cat?2:(d.cls==='sub'?1:0)};
+      if(d.cls==='tot') c.border={top:dark,bottom:hair}; if(d.cls==='net'){ c.fill=fill(BLUSH); c.border={top:dark,bottom:dark}; } });
+  });
+  var notes=['Minus on the balance means owed to OWH. Management fee and costs are shown as they reduce your share.',
+             'Revenue comes from «Bookings by month» (each booking split by its nights in the month), costs from «Cost entries», the settlement from «How the balance is worked out»; the only typed numbers are on «Typed figures», «Bookings» and «Cost entries».'];
+  rr++; notes.forEach(function(t){ var r=ws.getRow(rr++); r.getCell(1).value=t; ws.mergeCells(r.number,1,r.number,nc); r.getCell(1).font={name:'Calibri',size:9,italic:true,color:{argb:GREY}}; r.getCell(1).alignment={wrapText:true,vertical:'top'}; r.height=26; });
   return wb;
 }
+
   /* ---- THE OWNER'S INVESTMENT AND RETURN (Sarah 2026-10-18) — one set-up amount the owner paid herself (entered by OWH in Close, never
      OWH's own pre-launch costs: those are repaid out of her month results under clause 5.3, so counting them here would count them twice),
      against each month's result as the statement shows it. USD, the statement's basis; an EGP set-up converts at its month's rate.
