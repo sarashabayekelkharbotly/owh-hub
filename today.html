@@ -311,7 +311,7 @@ function render(){
   flats.forEach(function(f){
     var sh=ourShare(f), earnFull=(((D.pnl[f]||{})[cmY]||{}).revenue||{}).earnings||0, earn=earnFull*sh;
     var n=flatNights(f,cm), nmEarn=flatBooked(f,nm)*sh, nmN=flatNights(f,nm), pmN=flatNights(f,pm);
-    var tB=targetB(f,cm), nmtB=targetB(f,nm), nA=flatNightsAdr(f,cm), adr=nA?earnFull/nA:0, blk=flatBlockedNights(f,cm);
+    var ocB=opClip(f,cm), tB=targetB(f,cm), nmtB=targetB(f,nm), nA=flatNightsAdr(f,cm), adr=nA?earnFull/nA:0, blk=ocB?flatBlockedNights(f,ocB):0;   // a partner home has no blocked nights before its launch (2026-11-18)
     pf[f]={sh:sh,earn:earn,n:n,occ:n/cm.dim,adr:adr,vsB:tB?earn/tB:NaN, nmEarn:nmEarn,nmVsB:nmtB?nmEarn/nmtB:NaN, blk:blk, blkVal:blk*adr};
     // vs B over the homes that HAVE a target that month (VW1 before its plan starts adds to the $, not to the ratio)
     var oc=opClip(f,cm), opm=opClip(f,pm), nO=oc?flatNights(f,oc):0, dO=oc?oc.dim:0, bO=oc?flatBlockedNights(f,oc):0;

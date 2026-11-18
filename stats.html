@@ -1096,6 +1096,7 @@ function secNights(){
       var b0=b, bl0=bl, fr0=fr, e0=earn;
       if(isLongLet(f)){ b+=dim; earn+=0; pf[f]={b:dim,bl:0,fr:0,earn:0}; return; }        // let: every night is booked, no per-night rate
       for(var dd=1;dd<=dim;dd++){
+        if(preOp(f,y+'-'+('0'+mo).slice(-2)+'-'+('0'+dd).slice(-2))) continue;   // before a partner home's launch a night is none of booked / blocked / free (2026-11-18)
         var dt=new Date(y,mo-1,dd), occ=false,blk=false;
         (D.stays||[]).forEach(function(s){
           if(s.flat!==f||!s.checkIn||!s.checkOut)return;
@@ -1103,7 +1104,7 @@ function secNights(){
           if(!(day(s.checkIn)<=dt&&dt<day(s.checkOut)))return;
           if(st.indexOf('block')>-1)blk=true; else occ=true;
         });
-        if(occ)b++; else if(blk)bl++; else if(!preOp(f,y+'-'+('0'+mo).slice(-2)+'-'+('0'+dd).slice(-2))) fr++;
+        if(occ)b++; else if(blk)bl++; else fr++;
       }
       rawStays().forEach(function(s){ if(s.flat!==f||!isLive(s))return; earn+=earnedIn(s,m); nn+=adrN(s,overlapNights(s,m)); });
       pf[f]={b:b-b0,bl:bl-bl0,fr:fr-fr0,earn:earn-e0};
