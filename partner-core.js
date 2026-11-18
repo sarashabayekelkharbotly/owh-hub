@@ -305,15 +305,19 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
     var su = D.meta && D.meta.partnerSetup && D.meta.partnerSetup[f], fx = (D.meta && D.meta.fx) || {}, cm = (D.meta && D.meta.currentMonth) || '9999-99';
     var ms = monthsOf(D, f).filter(function (m) { return m <= cm; }), own = su && su.amount > 0, sm = own ? String(su.date).slice(0, 7) : null;
     var rate = own ? ((fx.byMonth && fx.byMonth[sm]) || fx.current || 1) : null, ownUsd = own ? (su.currency === 'USD' ? su.amount : su.amount / rate) : 0;
-    var owhSet = {}, owhUsd = 0; ms.forEach(function (m) { var rr = recOf(D, f, m); if (rr && rr.setup && rr.setup.usd > 0) { owhSet[m] = rr.setup.usd; owhUsd += rr.setup.usd; } });
+    var rateM = function (m) { return +(fx.byMonth && fx.byMonth[m]) || fx.current || 1; };
+    var ownEgp = own ? (su.currency === 'USD' ? su.amount * rate : su.amount) : 0, owhEgp = 0;
+    var owhSet = {}, owhUsd = 0; ms.forEach(function (m) { var rr = recOf(D, f, m); if (rr && rr.setup && rr.setup.usd > 0) { owhSet[m] = rr.setup.usd; owhUsd += rr.setup.usd;
+      owhEgp += (rr.setup.egp || 0) + (rr.setup.usdN || 0) * rateM(m); } });
     var setupUsd = r2(ownUsd + owhUsd); if (!(setupUsd > 0)) return null;
-    var setM = Object.keys(owhSet).sort(), first = [ms[0], sm, setM[0]].filter(Boolean).sort()[0], rows = [], acc = -setupUsd, back = null, flows = [];
+    var setM = Object.keys(owhSet).sort(), first = [ms[0], sm, setM[0]].filter(Boolean).sort()[0], rows = [], acc = -setupUsd, back = null, flows = [], accE = -(ownEgp + owhEgp);
     var idx = function (m) { return (+m.slice(0, 4) - +first.slice(0, 4)) * 12 + (+m.slice(5, 7) - +first.slice(5, 7)); };
     if (own) flows[idx(sm)] = -ownUsd; setM.forEach(function (m) { flows[idx(m)] = (flows[idx(m)] || 0) - owhSet[m]; });
     ms.forEach(function (m) {
       var md = model(D, f, m); if (!md) return; var res = r2(md.v.res || 0);
       acc = r2(acc + res); flows[idx(m)] = (flows[idx(m)] || 0) + res;
-      rows.push({ m: m, res: res, acc: acc, final: md.status === 'final' });
+      var resE = r2(res * rateM(m)); accE = r2(accE + resE);
+      rows.push({ m: m, res: res, acc: acc, resE: resE, accE: accE, final: md.status === 'final' });
       if (back === null && acc >= 0) back = m;
     });
     for (var i = 0; i < flows.length; i++) if (flows[i] == null) flows[i] = 0;
@@ -323,11 +327,13 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
       var lo = -0.99, hi = 1; if (npv(lo) * npv(hi) < 0) { for (var it = 0; it < 200; it++) { var mid = (lo + hi) / 2; if (npv(lo) * npv(mid) <= 0) hi = mid; else lo = mid; } irr = Math.pow(1 + (lo + hi) / 2, 12) - 1; }
     }
     return { amount: own ? su.amount : r2(setupUsd), currency: own ? su.currency : 'USD', date: own ? su.date : (setM[0] || '') + '-01', rate: own && su.currency !== 'USD' ? rate : null, setupUsd: r2(setupUsd),
-             ownUsd: r2(ownUsd), owhSetupUsd: r2(owhUsd),
+             ownUsd: r2(ownUsd), owhSetupUsd: r2(owhUsd), E: { own: r2(ownEgp), owh: r2(owhEgp), setup: r2(ownEgp + owhEgp), got: r2(accE + ownEgp + owhEgp), acc: r2(accE) },
              rows: rows, got: got, acc: acc, recovered: setupUsd ? got / setupUsd : 0, payback: back, irr: irr };
   }
   function investCard(x, opts) {
-    opts = opts || {}; var you = opts.you !== false, fm = function (v) { var n = Math.abs(v), s2 = n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return '<span style="white-space:nowrap">' + (v < -0.004 ? '−' : '') + '$' + s2 + '</span>'; };
+    opts = opts || {}; var you = opts.you !== false, eg = opts.cur === 'EGP' && x && x.E, fm = function (v) { var n = Math.abs(v), s2 = n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return '<span style="white-space:nowrap">' + (v < -0.004 ? '−' : '') + (eg ? 'EGP ' : '$') + s2 + '</span>'; };
+    if (eg) { x = Object.assign({}, x, { ownUsd: x.E.own, owhSetupUsd: x.E.owh, setupUsd: x.E.setup, got: x.E.got, acc: x.E.acc, currency: 'USD',   // the same card, its figures in EGP (2026-11-18)
+      rows: x.rows.map(function (r) { return Object.assign({}, r, { res: r.resE, acc: r.accE }); }) }); }
     var esc2 = function (s) { return String(s == null ? '' : s).replace(/[<>&]/g, ''); };
     if (!x) return '';
     var lastRow = x.rows.length ? x.rows[x.rows.length - 1] : null, pct = Math.max(0, Math.min(1, x.recovered));
@@ -346,7 +352,7 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
       h += '<details style="margin-top:6px"><summary class="note" style="cursor:pointer">Month by month</summary><table class="d" style="font-size:11.5px"><tr><th>Month</th><th class="r">Month result</th><th class="r">Running total</th></tr>' +
         x.rows.map(function (r) { return '<tr><td>' + monLabelP(r.m) + (r.final ? '' : ' <span class="muted">· in progress</span>') + '</td><td class="r">' + fm(r.res) + '</td><td class="r">' + fm(r.acc) + '</td></tr>'; }).join('') + '</table></details>';
     }
-    h += '<p class="note" style="margin-top:6px">' + (you ? 'Your' : 'The owner\'s') + ' set-up — what ' + (you ? 'you' : 'the owner') + ' paid directly and what OWH paid before the launch (repaid through the balance, clause 5.3) — in USD, the statement\'s basis. The month results exclude the set-up, so nothing is counted twice.</p></div>';
+    h += '<p class="note" style="margin-top:6px">' + (you ? 'Your' : 'The owner\'s') + ' set-up — what ' + (you ? 'you' : 'the owner') + ' paid directly and what OWH paid before the launch (repaid through the balance, clause 5.3) — in ' + (eg ? 'EGP — the set-up as it was paid, each month at its own rate' : 'USD, the statement\'s basis') + '. The month results exclude the set-up, so nothing is counted twice.</p></div>';
     return h;
   }
 

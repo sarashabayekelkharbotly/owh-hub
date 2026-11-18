@@ -121,7 +121,7 @@ select{font-family:inherit;font-size:12px;border:1px solid var(--line);border-ra
 </nav>
 
 <script src="auth.js?v=c5d7281b"></script>
-<script src="partner-core.js?v=15"></script>
+<script src="partner-core.js?v=16"></script>
 <script>
 /* SCREEN 6 — Partner, this month. Built to the mock-up (OWH_final_2.html §6):
    4 KPIs · the month's stays · statement with this month beside last month · drill-down per cost line.
@@ -562,7 +562,7 @@ function render(){
        (isFinal ? 'Published'+(pubO?' <b>'+longDay(new Date(pubO.slice(0,10)+'T12:00:00'))+'</b>':'')+'. If you disagree with a line, write to us in <a href="#contract" onclick="setTab(\'contract\');return false">Contract</a> — see the deadline there.'
                 : 'Not published yet — the figures are provisional and can change until the month is closed. The statement is published by the 5th of the following month.')+'</p></div>';
 
-    if(!isDemoView()) vb+=PC.investCard(PC.investReturn(DATA,myFlat()),{you:true});   // her investment and return (2026-10-18) — only once OWH entered her set-up
+    if(!isDemoView()) vb+=PC.investCard(PC.investReturn(DATA,myFlat()),{you:true,cur:CUR});   // her investment and return (2026-10-18) — only once OWH entered her set-up
   } else if(TAB==='bookings'){
     /* ============ BOOKINGS — every booking, the nights, the channels ============ */
   /* ---- the month's stays ---- */

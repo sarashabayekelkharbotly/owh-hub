@@ -77,7 +77,7 @@ table.t{width:100%;border-collapse:collapse;font-size:12px}
   <a class="tab active" href="stats.html"><span class="ti">📊</span>Stats</a>
 </nav>
 
-<script src="partner-core.js?v=15"></script>
+<script src="partner-core.js?v=16"></script>
 <script src="vw1-plan.js?v=1"></script>
 <script src="auth.js?v=c5d7281b"></script>
 <script>
@@ -700,7 +700,7 @@ function fcRender(x, view){
 var INV_CACHE={};
 function invPartnerFill(){
   var su=(D.meta&&D.meta.partnerSetup)||{}, homes=Object.keys(su).filter(function(h){ return su[h]&&su[h].amount>0; }); if(!homes.length||typeof PC==='undefined') return;
-  var put=function(){ var el=document.getElementById('invPartner'); if(!el) return; el.innerHTML=homes.map(function(h){ var d=INV_CACHE[h]; return d?PC.investCard(PC.investReturn(d,h),{you:false}).replace('<h3>','<h3>'+esc(h)+' · '):''; }).join(''); };
+  var put=function(){ var el=document.getElementById('invPartner'); if(!el) return; el.innerHTML=homes.map(function(h){ var d=INV_CACHE[h]; return d?PC.investCard(PC.investReturn(d,h),{you:false,cur:CUR}).replace('<h3>','<h3>'+esc(h)+' · '):''; }).join(''); };
   put();
   homes.forEach(function(h){ if(INV_CACHE[h]) return; api('props_get_all',{asPartner:h}).then(function(j){ if(j&&j.ok&&j.data){ INV_CACHE[h]=j.data; put(); } }); });
 }
