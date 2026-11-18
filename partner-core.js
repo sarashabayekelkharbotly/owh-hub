@@ -321,9 +321,10 @@ function buildWorkbook(E,D,f,flat,CUR,ms){
       row.getCell(3).value=Math.round(m.v.T*100)/100;                                   // net revenue — the bookings' net, each stay split by its nights in the month
       row.getCell(4).value=F(R('C')+'*'+(m.pct||0.25));
       row.getCell(5).value=F(R('C')+'-'+R('D'));
-      row.getCell(6).value=F('SUMIFS('+CE+'!G:G,'+CE+'!A:A,'+R('A')+','+CE+'!H:H,"Operating cost")');
+      var sumT=function(tr){ return 'ROUND(SUMIFS('+CE+'!E:E,'+CE+'!A:A,'+R('A')+','+CE+'!H:H,"'+tr+'",'+CE+'!F:F,"EGP")/'+R('B')+'+SUMIFS('+CE+'!E:E,'+CE+'!A:A,'+R('A')+','+CE+'!H:H,"'+tr+'",'+CE+'!F:F,"USD"),2)'; };   // EGP added up first, converted once at the month's rate — as the statement does
+      row.getCell(6).value=F(sumT('Operating cost'));
       row.getCell(7).value=F(R('E')+'-'+R('F'));
-      row.getCell(8).value=F('SUMIFS('+CE+'!G:G,'+CE+'!A:A,'+R('A')+','+CE+'!H:H,"Set-up → your balance")');
+      row.getCell(8).value=F(sumT('Set-up → your balance'));
       row.getCell(9).value=Math.round((m.led.rvBack||0)*100)/100;
       row.getCell(10).value=Math.round((m.led.prep||0)*100)/100;
       row.getCell(11).value=i===0?Math.round((m.led.openBal||0)*100)/100:F(P('Q'));
