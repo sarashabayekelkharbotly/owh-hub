@@ -564,14 +564,14 @@ function bkExcel(){
     if(!ok){ if(msg) msg.textContent=' could not load the Excel library'; return; }
     var wb=new ExcelJS.Workbook(), ws=wb.addWorksheet('Bookings');
     var cols=[['Home',12],['Channel',12],['Bank',10],['Review booking',18],['Guest',24],['Smoobu ID',12],['Booking ref',14],['Status',11],['Booked',11],['Check-in',11],['Check-out',11],['Nights',7],
-      ['Gross',11],['Commission',11],['Payment charge',11],['VAT',9],['Net',11],['Other services',11],['All-in',11],['Earnings',11],['ADR',9]];
+      ['Gross',11],['Commission',11],['Payment charge',11],['VAT',9],['Guest refund',11],['Net (after refund)',12],['Other services',11],['All-in',11],['Earnings',11],['ADR',9]];
     if(rev) cols.push(['Nights in range',9],['Revenue in range',12]);
     ws.columns=cols.map(function(c){ return {header:c[0],width:c[1]}; });
     ws.getRow(1).font={bold:true}; ws.views=[{state:'frozen',ySplit:1}];
     var dt=function(d){ return d?new Date(d+'T12:00:00Z'):null; };
     rows.forEach(function(s){ var cx=/cancel/i.test(s.status||''), earn=s.allIn-s.other, n=s.nights||0;
       var r=[s.flat,bkChOf(s.portal),bkBank(s),bkRevLbl(s),s.guest||'',s.smoobu||s.id||'',s.conf||'',s.status||'',dt(s.booked),dt(s.checkIn),dt(s.checkOut),n,
-        s.gross,s.comm,s.charge,s.vat,s.net,s.other,s.allIn,earn,(!cx&&n)?Math.round(earn/n*100)/100:null];
+        s.gross,s.comm,s.charge,s.vat,-(s.refund||0),bkNet(s),s.other,s.allIn,earn,(!cx&&n)?Math.round(earn/n*100)/100:null];
       if(rev) r.push(s.nIn||0,s.revIn||0);
       var row=ws.addRow(r); if(cx) row.font={color:{argb:'FF999999'},strike:true}; });
     var T=bkSum(rows), tot=['Total ('+T.cnt+' bookings'+(T.cx?', '+T.cx+' cancelled not counted':'')+')','','','','','','','','','','',T.n,T.gross,T.comm,T.charge,T.vat,T.net,T.other,T.allIn,T.earn,T.n?Math.round(T.earn/T.n*100)/100:null];
@@ -634,8 +634,9 @@ function bkRows(){
     var da=a[dk]||'', db=b[dk]||''; return da<db?-1:(da>db?1:0);
   });
 }
-function bkSum(list){ var T={gross:0,comm:0,charge:0,vat:0,net:0,other:0,allIn:0,n:0,cnt:0,cx:0,nIn:0,rev:0,earn:0};
-  list.forEach(function(s){ if(/cancel/i.test(s.status||'')){ T.cx++; return; } T.cnt++; T.gross+=s.gross; T.comm+=s.comm; T.charge+=s.charge; T.vat+=s.vat; T.net+=s.net; T.other+=s.other; T.allIn+=s.allIn; T.n+=s.nights||0;
+function bkNet(s){ return (s.net||0)-(s.refund||0); }   // the booking's net after a guest refund (2026-11-19)
+function bkSum(list){ var T={gross:0,comm:0,charge:0,vat:0,net:0,refund:0,other:0,allIn:0,n:0,cnt:0,cx:0,nIn:0,rev:0,earn:0};
+  list.forEach(function(s){ if(/cancel/i.test(s.status||'')){ T.cx++; return; } T.cnt++; T.gross+=s.gross; T.comm+=s.comm; T.charge+=s.charge; T.vat+=s.vat; T.refund+=(s.refund||0); T.net+=bkNet(s); T.other+=s.other; T.allIn+=s.allIn; T.n+=s.nights||0;
     T.earn+=s.allIn-s.other;
     if(s.revIn!==undefined){ T.nIn+=s.nIn; T.rev+=s.revIn; } });
   T.rev=Math.round(T.rev*100)/100; return T; }
@@ -678,11 +679,12 @@ function bkRun(){
   el.innerHTML=revNote+top+(BK_LAYOUT==='cards'?bkCards(rows):bkTable(rows));
 }
 function bkTable(rows){
+  var RF=rows.some(function(s){ return (s.refund||0)>0.005; });   // a Refund column only when a listed booking has one
   /* 7 columns so it fits a vertical phone: Fees = commission + payment charge, which is exactly what
      Booking.com calls "Commission and charges" (cards + CSV keep them apart). */
   function num(v){ return '<td class="bn">'+bkMoney(v)+'</td>'; }
   function sumRow(label,T,cls,extra){
-    return '<tr class="'+cls+'"><td colspan="2">'+label+' <span class="muted">· '+T.cnt+(T.cx?' (+'+T.cx+' cx)':'')+'</span>'+(extra||'')+'</td><td class="bn">'+T.n+'</td>'+num(T.gross)+num(T.comm+T.charge)+num(T.vat)+num(T.net)+num(bkAdr(T.earn,T.n))+'</tr>'; }
+    return '<tr class="'+cls+'"><td colspan="2">'+label+' <span class="muted">· '+T.cnt+(T.cx?' (+'+T.cx+' cx)':'')+'</span>'+(extra||'')+'</td><td class="bn">'+T.n+'</td>'+num(T.gross)+num(T.comm+T.charge)+num(T.vat)+(RF?num(-T.refund):'')+num(T.net)+num(bkAdr(T.earn,T.n))+'</tr>'; }
   var body='', homes=[], byHome={};
   rows.forEach(function(s){ if(!byHome[s.flat]){ byHome[s.flat]=[]; homes.push(s.flat); } byHome[s.flat].push(s); });
   homes.forEach(function(h){
@@ -690,20 +692,20 @@ function bkTable(rows){
     byHome[h].forEach(function(s){ var c=bkChOf(s.portal); if(!byCh[c]){ byCh[c]=[]; chs.push(c); } byCh[c].push(s); });
     chs.forEach(function(c){
       var cc=BK_CH[c]||'#8a8a8a', list=byCh[c], T=bkSum(list);
-      body+='<tr class="bkg"><td colspan="8">'+bkBadge(h,hc,true)+' '+bkBadge(c,cc,true)+'</td></tr>';
+      body+='<tr class="bkg"><td colspan="'+(RF?9:8)+'">'+bkBadge(h,hc,true)+' '+bkBadge(c,cc,true)+'</td></tr>';
       list.forEach(function(s){
         var cx=/cancel/i.test(s.status||''), n=s.nights||0;
         body+='<tr class="'+(cx?'cx':'')+'"><td class="bg1"><bdi>'+esc(s.guest||'—')+'</bdi>'+(cx?' <span style="color:var(--rr);font-size:9px">cancelled</span>':'')+'<div class="bki">'+bkRef(s)+'</div></td>'+
           '<td class="bd">'+bkShort(s.checkIn)+'<br>→ '+bkShort(s.checkOut)+'</td><td class="bn">'+n+'</td>'+
-          num(s.gross)+num(s.comm+s.charge)+num(s.vat)+num(s.net)+num(cx?null:bkAdr(s.allIn-s.other,n))+'</tr>';
+          num(s.gross)+num(s.comm+s.charge)+num(s.vat)+(RF?'<td class="bn"'+(s.refund>0.005?' style="color:#c0392b;font-weight:700" title="'+esc(s.refundNote||'')+'"':'')+'>'+(s.refund>0.005?bkMoney(-s.refund):'')+'</td>':'')+num(bkNet(s))+num(cx?null:bkAdr(s.allIn-s.other,n))+'</tr>';
       });
       body+=sumRow('Σ '+esc(h)+' · '+esc(c),T,'bks',c==='Booking.com'?'<div class="muted" style="font-weight:400">invoice = fees × 1.14 = <b style="color:var(--ink)">'+bkMoney((T.comm+T.charge)*1.14)+'</b></div>':'');
     });
     if(chs.length>1) body+=sumRow('Σ '+esc(h)+' · all channels',bkSum(byHome[h]),'bkh2','');
   });
   body+=sumRow('Σ ALL',bkSum(rows),'bkgt','');
-  return '<div class="card" style="padding:6px 4px"><table class="bkT"><thead><tr><th style="text-align:left">Guest · ref</th><th style="text-align:left">Stay</th><th>N</th><th>Gross</th><th>Fees</th><th>VAT</th><th>Net</th><th>ADR</th></tr></thead><tbody>'+body+'</tbody></table>'+
-    '<div class="muted" style="padding:4px 4px 0">Fees = commission + payment charge. ADR = earnings (net, before other services) ÷ nights. Smoobu IDs and the split are on the cards.</div></div>';
+  return '<div class="card" style="padding:6px 4px"><table class="bkT"><thead><tr><th style="text-align:left">Guest · ref</th><th style="text-align:left">Stay</th><th>N</th><th>Gross</th><th>Fees</th><th>VAT</th>'+(RF?'<th>Refund</th>':'')+'<th>Net</th><th>ADR</th></tr></thead><tbody>'+body+'</tbody></table>'+
+    '<div class="muted" style="padding:4px 4px 0">Fees = commission + payment charge.'+(RF?' Refund = money sent back to the guest after the booking; Net is after it (the platform\'s payout is Net + Refund).':'')+' ADR = earnings (net, before other services) ÷ nights. Smoobu IDs and the split are on the cards.</div></div>';
 }
 function bkTableRev(rows){
   /* revenue view: per stay, the nights and USD that fall in the period (from 'Revenue by month' — the
@@ -744,7 +746,7 @@ function bkCards(rows){
       '<div class="bkd">'+bkShort(s.checkIn)+' → '+bkShort(s.checkOut)+' · '+n+' night'+(n===1?'':'s')+' <span class="muted">· booked '+bkShort(s.booked)+'</span></div>'+
       '<div class="bki">Smoobu '+esc(s.smoobu||s.id||'—')+' · ref <b style="color:var(--ink)">'+esc(s.conf||'—')+'</b></div>'+
       (s.revIn!==undefined?'<div style="margin-top:6px;background:#fbf7f7;border:1px solid var(--line);border-radius:8px;padding:5px 8px">Revenue in this period: <b>'+s.nIn+' of '+n+' nights · $'+bkMoney(s.revIn)+' · ADR $'+bkMoney(s.nIn?s.revIn/s.nIn:null)+'</b></div>':'')+
-      '<div class="bkm">'+r('Gross',bkMoney(s.gross))+r('Gross/night',bkMoney(gpn))+r('Commission',bkMoney(s.comm))+r('Pay charge',bkMoney(s.charge))+r('VAT',bkMoney(s.vat))+r('Net',bkMoney(s.net))+
+      '<div class="bkm">'+r('Gross',bkMoney(s.gross))+r('Gross/night',bkMoney(gpn))+r('Commission',bkMoney(s.comm))+r('Pay charge',bkMoney(s.charge))+r('VAT',bkMoney(s.vat))+(s.refund>0.005?r('Guest refund',bkMoney(-s.refund)):'')+r('Net',bkMoney(bkNet(s)))+
         (s.other?r('Other',bkMoney(s.other)):'')+r('All-in',bkMoney(s.allIn))+r('ADR',bkMoney(epn))+'</div>'+
       (rm?'<div class="bkr">Revenue: '+rm+'</div>':'')+'</div>';
   }).join('');
@@ -752,9 +754,9 @@ function bkCards(rows){
 }
 function bkCsv(){
   var rows=bkRows(), q=function(x){ x=String(x==null?'':x); return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; };
-  var out=[['Home','Channel','Guest','Status','Booked','Check-in','Check-out','Nights','Smoobu ID','Booking ref','Gross','Gross/night','Commission','Payment charge','VAT','Net','Other','All-in','ADR','Revenue by month','Nights in period','Revenue in period'].join(',')];
+  var out=[['Home','Channel','Guest','Status','Booked','Check-in','Check-out','Nights','Smoobu ID','Booking ref','Gross','Gross/night','Commission','Payment charge','VAT','Guest refund','Net (after refund)','Other','All-in','ADR','Revenue by month','Nights in period','Revenue in period'].join(',')];
   rows.forEach(function(s){ var n=s.nights||0;
-    out.push([s.flat,bkChOf(s.portal),s.guest,s.status,s.booked,s.checkIn,s.checkOut,n,s.smoobu||s.id,s.conf,s.gross,n?(s.gross/n).toFixed(2):'',s.comm,s.charge,s.vat,s.net,s.other,s.allIn,n?((s.allIn-s.other)/n).toFixed(2):'',
+    out.push([s.flat,bkChOf(s.portal),s.guest,s.status,s.booked,s.checkIn,s.checkOut,n,s.smoobu||s.id,s.conf,s.gross,n?(s.gross/n).toFixed(2):'',s.comm,s.charge,s.vat,-(s.refund||0),bkNet(s),s.other,s.allIn,n?((s.allIn-s.other)/n).toFixed(2):'',
       (s.months||[]).map(function(x){ return x.m+':'+x.n+'n:'+x.usd; }).join(' | '),s.revIn!==undefined?s.nIn:'',s.revIn!==undefined?s.revIn:''].map(q).join(',')); });
   var txt=out.join('\n'), done=function(ok){ var m=$('#bkmsg'); if(m) m.textContent=ok?'copied ✓':'copy failed'; };
   if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(function(){ done(true); },function(){ done(false); });
