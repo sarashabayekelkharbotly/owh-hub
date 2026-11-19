@@ -790,7 +790,7 @@ function savePay(id){
 /* 🛠 BOOKING ADJUSTMENTS (v244, Sarah 2026-10-14 — Christina: VRBO could not move her check-in, so VRBO says 9→16 while
    she really stays 10→17). Pick an upcoming booking: set its REAL dates (the schedule, Dani's ladder, door codes and the
    revenue follow them; Smoobu never overwrites them), and for a VRBO booking re-enter VRBO's numbers after a change. */
-var ADJ_SEL='';
+var ADJ_SEL='', ADJ_MSG={};   // the saved-confirmation stays on the card (2026-11-19: Azza's refund looked unsaved — the 2-second reload brought back data from before the save)
 function adjustCard(){
   var asOf=D.meta.asOf, back=(function(){ var x=new Date(asOf+'T12:00:00'); x.setDate(x.getDate()-120); return ymd(x); })();   // refunds come after the stay — the last 120 days too
   var list=rawStays().filter(function(s){ var st=String(s.status||'').toLowerCase();
@@ -807,13 +807,13 @@ function adjustCard(){
       '<label class="paymsg">out <input type="date" id="rdo_'+id+'" value="'+esc(s.checkOut)+'" '+inp+'></label>'+
       '<label class="paymsg">why <input id="rdw_'+id+'" placeholder="e.g. VRBO could not move the check-in" style="width:190px;font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"></label>'+
       '<button class="paybtn" onclick="saveRealDates(\''+id+'\')">Save</button>'+(s.realDates?'<button class="paybtn" style="background:#fff;color:var(--red);border:1px solid var(--line)" onclick="saveRealDates(\''+id+'\',true)">Back to channel dates</button>':'')+
-      '<span class="paymsg" id="rdm_'+id+'"></span></div></div>';
+      '<span class="paymsg" id="rdm_'+id+'" style="color:#2e7d32;font-weight:700">'+esc(ADJ_MSG['rd'+s.id]||'')+'</span></div></div>';
     h+='<div style="margin-top:10px"><b>💸 Guest refund</b> <span class="paymsg">— money sent back to the guest outside the booking price (e.g. Airbnb reconciliation), which Smoobu never sees. Open months: it comes off this booking. All its months closed: a minus line in Other revenue this month.</span>'+
       (s.refundNote?'<div class="paymsg" style="margin-top:3px">now: '+esc(s.refundNote)+'</div>':'')+
       '<div class="payctl"><label class="paymsg">refunded $ <input type="number" step="0.01" min="0" id="rfa_'+id+'" value="'+(s.refund||'')+'" '+inp+'></label>'+
       '<label class="paymsg">why <input id="rfw_'+id+'" placeholder="e.g. AC broken one night" style="width:190px;font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 5px"></label>'+
       '<button class="paybtn" onclick="saveRefund(\''+id+'\')">Save</button>'+(s.refundNote?'<button class="paybtn" style="background:#fff;color:var(--red);border:1px solid var(--line)" onclick="saveRefund(\''+id+'\',true)">Remove refund</button>':'')+
-      '<span class="paymsg" id="rfm_'+id+'"></span></div></div>';
+      '<span class="paymsg" id="rfm_'+id+'" style="color:#2e7d32;font-weight:700">'+esc(ADJ_MSG['rf'+s.id]||'')+'</span></div></div>';
     if(s.portal==='Vrbo') h+='<div style="margin-top:10px"><b>💲 VRBO numbers</b> <span class="paymsg">— after a change on VRBO, copy the new figures from «View full payment details».</span>'+
       '<div class="payctl"><label class="paymsg">total traveler payment $ <input type="number" step="0.01" id="vt_'+id+'" '+inp+'></label>'+
       '<label class="paymsg">booking amount $ <input type="number" step="0.01" id="vn_'+id+'" '+inp+'></label>'+
@@ -846,8 +846,10 @@ function saveRefund(id,clear){
   msg.textContent='saving…';
   api('props_guest_refund',clear?{id:id,clear:1}:{id:id,amount:a,reason:why}).then(function(j){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
-    var r=j.result||{}; msg.textContent=clear?'refund removed':(r.where==='booking'?'saved · taken off this booking':'saved · its months are closed, so it is a minus line in Other revenue this month');
-    setTimeout(boot,2200);
+    var r=j.result||{}, done=clear?'✓ refund removed':(r.where==='booking'?'✓ saved · taken off this booking':'✓ saved · its months are closed, so it is a minus line in Other revenue this month');
+    /* show it at once on the booking (the screens' data catches up within a minute), and keep the confirmation on the card */
+    rawStays().forEach(function(st){ if(String(st.id)!==String(id)) return; if(clear){ st.refund=0; st.refundNote=''; } else if(r.where==='booking'){ st.refund=+r.amount||0; st.refundNote=r.note||''; } });
+    ADJ_MSG['rf'+id]=done; render(); setTimeout(function(){ boot(); },60000);
   }).catch(function(e){ msg.textContent='failed: '+(e.message||e); });
 }
 function saveRealDates(id,clear){
@@ -856,8 +858,8 @@ function saveRealDates(id,clear){
   msg.textContent='saving…';
   api('props_set_real_dates',clear?{id:id,clear:1}:{id:id,ci:ci,co:co,reason:why}).then(function(j){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
-    msg.textContent=clear?'back to the channel\'s dates (restored on the next sync)':'saved · real stay '+dmon(j.result.ci)+' → '+dmon(j.result.co)+' — الكنترول follows within ~10 min';
-    setTimeout(boot,2200);
+    ADJ_MSG['rd'+id]=clear?'✓ back to the channel\'s dates (restored on the next sync)':'✓ saved · real stay '+dmon(j.result.ci)+' → '+dmon(j.result.co)+' — الكنترول follows within ~10 min';
+    render(); setTimeout(function(){ boot(); },60000);   // the confirmation stays; the data catches up (2026-11-19)
   }).catch(function(e){ msg.textContent='failed: '+(e.message||e); });
 }
 function stripeCard(){
