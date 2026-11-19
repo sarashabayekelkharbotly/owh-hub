@@ -848,7 +848,16 @@ function saveRefund(id,clear){
     if(!j||!j.ok)throw new Error(j&&j.error||'bad');
     var r=j.result||{}, done=clear?'✓ refund removed':(r.where==='booking'?'✓ saved · taken off this booking':'✓ saved · its months are closed, so it is a minus line in Other revenue this month');
     /* show it at once on the booking (the screens' data catches up within a minute), and keep the confirmation on the card */
-    rawStays().forEach(function(st){ if(String(st.id)!==String(id)) return; if(clear){ st.refund=0; st.refundNote=''; } else if(r.where==='booking'){ st.refund=+r.amount||0; st.refundNote=r.note||''; } });
+    rawStays().forEach(function(st){ if(String(st.id)!==String(id)) return;
+      var old=+st.refund||0, now=clear?0:(r.where==='booking'?(+r.amount||0):old), dlt=now-old;
+      /* the month totals move at once too (2026-11-19: «the month total on Today didn't change») — the change spread over the stay's nights,
+         as the server does; the rebuilt data replaces these figures within a minute */
+      if(dlt&&st.checkIn&&st.checkOut){ var tot=Math.max(1,Math.round((day(st.checkOut)-day(st.checkIn))/DAYMS)), per={};
+        for(var dd=day(st.checkIn); dd<day(st.checkOut); dd.setDate(dd.getDate()+1)){ var mk=ymd(dd).slice(0,7); per[mk]=(per[mk]||0)+1; }
+        Object.keys(per).forEach(function(mk){ var p=D.pnl&&D.pnl[st.flat]&&D.pnl[st.flat][mk]; if(!p||!p.revenue||p.status==='final') return; var cut=dlt*per[mk]/tot;
+          p.revenue.earnings=(p.revenue.earnings||0)-cut; p.revenue.total=(p.revenue.total||0)-cut; p.net=(p.net||0)-cut; });
+        st.allIn=(st.allIn||0)-dlt; }
+      if(clear){ st.refund=0; st.refundNote=''; } else if(r.where==='booking'){ st.refund=now; st.refundNote=r.note||''; } });
     ADJ_MSG['rf'+id]=done; render(); setTimeout(function(){ boot(); },60000);
   }).catch(function(e){ msg.textContent='failed: '+(e.message||e); });
 }
