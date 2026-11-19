@@ -515,7 +515,7 @@ var BK_BANKC={'Mercury':'#5b4bb7','HSBC':'#c0282d','Instapay':'#1c7c84','Cash':'
 function bkBank(s){ var r=String(s.route||'').toLowerCase(); for(var k in BK_BANK) if(r.indexOf(k)===0) return BK_BANK[k]; return r?s.route:'not set'; }
 function bkBanks(){ var l=[]; (BK||[]).forEach(function(s){ var b=bkBank(s); if(l.indexOf(b)<0) l.push(b); }); return l.sort(function(a,b){ return a==='not set'?1:b==='not set'?-1:(a<b?-1:1); }); }
 /* the reference line: booking ref · Smoobu ID for a Direct booking (it has no channel ref of its own) · the bank */
-function bkRef(s){ return esc(s.conf||'—')+(bkChOf(s.portal)==='Direct'?' · Smoobu '+esc(s.smoobu||s.id||'—'):'')+' · '+esc(bkBank(s))+(s.review?' · <b style="color:#a0346b">'+bkRevLbl(s)+'</b>':''); }
+function bkRef(s){ return esc(s.conf||'—')+(bkChOf(s.portal)==='Direct'?' · Smoobu '+esc(s.smoobu||s.id||'—'):'')+' · '+esc(bkBank(s))+(s.review?' · <b style="color:#a0346b">'+bkRevLbl(s)+'</b>':'')+(s.refund>0.005?' · <b style="color:#c0392b" title="'+esc(s.refundNote||'')+'">💸 refund $'+Number(s.refund).toFixed(2)+'</b>':''); }   // a guest refund shows on the booking (2026-11-19)
 var BK_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var BK_CH={'Airbnb':'#d6455d','Booking.com':'#1f4e9c','Direct':'#2f8f5b'}, BK_CHORD=['Airbnb','Booking.com','Direct'];
 var BK_HC=['#7a4f9a','#2c7a7b','#b7791f','#9c4221','#2b6cb0','#6b7280','#a0346b'];
