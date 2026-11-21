@@ -826,7 +826,7 @@ function bookingsCard(kind){
   var sum=0,nsum=0,count=0,body='';
   // grouped by flat, flats in house order, stays by check-in — a ledger, not a leaderboard
   scopeStayFlats().forEach(function(f){
-    var list=rawStays().filter(function(s){ return s.flat===f&&isLive(s)&&overlapNights(s,m)>0; })
+    var list=rawStays().filter(function(s){ return s.flat===f&&isLive(s)&&!s.review&&overlapNights(s,m)>0; })   // review bookings earn nothing — listed they distorted the nights and ADR (Sarah 2026-11-21)
       .sort(function(a,z){ return (a.checkIn||'')<(z.checkIn||'')?-1:1; });
     if(!list.length)return;
     var fsum=0,fn=0,rows='';
